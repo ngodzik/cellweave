@@ -1,0 +1,12 @@
+[package]
+name    = "cellweave-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+serde.workspace     = true
+
+[dev-dependencies]
+proptest = "1"

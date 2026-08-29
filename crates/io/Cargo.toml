@@ -1,0 +1,15 @@
+[package]
+name    = "cellweave-io"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+cellweave-core.workspace   = true
+cellweave-engine.workspace = true
+thiserror.workspace        = true
+serde.workspace            = true
+serde_json.workspace       = true
+toml.workspace             = true
+anyhow.workspace           = true
+tracing.workspace          = true

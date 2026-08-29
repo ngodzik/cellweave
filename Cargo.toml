@@ -1,0 +1,57 @@
+[workspace]
+members = [
+    "crates/core",
+    "crates/engine",
+    "crates/io",
+    ".",
+]
+resolver = "2"
+
+[workspace.package]
+version     = "0.1.0"
+edition     = "2024"
+authors     = ["Nicolas Godzik"]
+license     = "MIT"
+
+[workspace.dependencies]
+cellweave-core   = { path = "crates/core" }
+cellweave-engine = { path = "crates/engine" }
+cellweave-io     = { path = "crates/io" }
+
+thiserror = "2"
+anyhow    = "1"
+serde     = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml      = "0.8"
+ndarray   = { version = "0.16", features = ["rayon"] }
+rand      = "0.9"
+rayon     = "1"
+tracing            = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[package]
+name    = "cellweave"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "cellweave"
+path = "src/main.rs"
+
+[dependencies]
+cellweave-core.workspace   = true
+cellweave-engine.workspace = true
+cellweave-io.workspace     = true
+anyhow.workspace           = true
+rand.workspace             = true
+tracing.workspace          = true
+tracing-subscriber.workspace = true
+
+[profile.release]
+opt-level     = 3
+lto           = "fat"
+codegen-units = 1
+
+[profile.dev]
+opt-level = 1
