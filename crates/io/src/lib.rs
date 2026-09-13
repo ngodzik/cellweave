@@ -1,5 +1,7 @@
 //! cellweave-io: configuration loading and simulation output.
 
+#![deny(unsafe_code)]
+
 pub mod config;
 pub mod output;
 

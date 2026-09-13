@@ -28,10 +28,10 @@ cellweave      (bin, depends on core + engine + io)
 |--------------------|-------------------------------------------------|
 | `cellweave-core`   | Domain types + traits, zero I/O, zero compute   |
 | `cellweave-engine` | CPM, per-cell ODE, PDE diffusion                |
-| `cellweave-io`     | TOML config, VTK export, web snapshot server    |
+| `cellweave-io`     | TOML config, JSON snapshot output                |
 | `cellweave` (bin)  | CLI entry point                                 |
 
-No AI/MCP dependency inside cellweave. External tools connect via CLI or HTTP snapshot API.
+No AI/MCP dependency inside cellweave. External tools connect through the CLI.
 
 ---
 
@@ -127,8 +127,8 @@ cells.par_iter().map(|c| c.protein_state())
 - Never `.unwrap()` on domain logic `None`: return `Option` or `Result`
 
 ### Unsafe
-- `#![deny(unsafe_code)]` in `core` and `engine`
-- `unsafe` allowed in `io` only for VTK binary buffers, documented, isolated in an `unsafe_impl` module
+- `#![deny(unsafe_code)]` in every crate, the binary included
+- There is no `unsafe` anywhere. Lifting the deny in one crate is a decision to argue for in the pull request that needs it, not a standing permission
 
 ### Parallelism
 - `rayon` exclusively: no manual threads, no `std::sync::Mutex` in hot paths
