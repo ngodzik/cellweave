@@ -1,0 +1,25 @@
+name: Security
+
+# Dependencies do not have to change for the news about them to change. An
+# advisory published against a crate that has been in Cargo.lock for months is
+# exactly the case a push-triggered workflow never catches, hence the schedule.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deny:
+    name: Advisories, licences, sources
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check

@@ -1,0 +1,20 @@
+version: 2
+
+updates:
+  # Security fixes arrive as dependency bumps, so an unattended project needs
+  # something that opens the pull request on its own.
+  - package-ecosystem: cargo
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+
+  # The actions in the workflows are dependencies too, and the ones that go
+  # stale quietly are the ones nobody thinks of.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly

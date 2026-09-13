@@ -1,5 +1,8 @@
 # cellweave
 
+[![CI](https://github.com/ngodzik/cellweave/actions/workflows/ci.yml/badge.svg)](https://github.com/ngodzik/cellweave/actions/workflows/ci.yml)
+[![Security](https://github.com/ngodzik/cellweave/actions/workflows/security.yml/badge.svg)](https://github.com/ngodzik/cellweave/actions/workflows/security.yml)
+
 **cellweave runs a molecular hypothesis inside every cell, and shows what it does to
 the tissue.**
 
@@ -96,7 +99,7 @@ Listed plainly, because a green test suite is not the same thing as correct phys
 
 ## Building and running
 
-Requires a recent Rust toolchain (edition 2024, so 1.85 or newer).
+Requires Rust 1.85 or newer, which is the minimum CI builds against.
 
 ```bash
 cargo build --release
@@ -109,7 +112,24 @@ cargo test --workspace
 ./target/release/cellweave --config sim.toml
 ```
 
-Snapshots are written as `output/snapshot_NNNNNN.json`.
+Snapshots are written as `output/snapshot_NNNNNN.json`. Two runs of the same
+configuration produce byte-identical snapshots, and CI checks that they still do.
+
+## Checks
+
+What every push is held to, all of it runnable locally:
+
+```bash
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
+```
+
+On top of that, CI builds on Linux, macOS and Windows, holds the minimum
+toolchain to 1.85, runs the simulator twice and refuses any difference between
+the two runs, and checks dependencies weekly against the advisory database with
+`cargo-deny`.
 
 ## Architecture
 

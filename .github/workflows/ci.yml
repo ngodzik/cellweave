@@ -1,0 +1,94 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A new push replaces the run it supersedes instead of queueing behind it.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# The workflow only reads the repository. Nothing here needs write access.
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # A warning that nobody reads is a warning that does not exist.
+  RUSTFLAGS: -D warnings
+
+jobs:
+  lint:
+    name: Format, lints and docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Formatting
+        run: cargo fmt --all -- --check
+
+      - name: Lints
+        run: cargo clippy --workspace --all-targets --all-features
+
+      # CLAUDE.md requires a doc-comment on every public item. This is what
+      # checks that the promise is kept, and it catches broken intra-doc links
+      # at the same time.
+      - name: Documentation
+        run: cargo doc --workspace --no-deps --all-features
+        env:
+          RUSTDOCFLAGS: -D warnings
+
+  test:
+    name: Tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Tests
+        run: cargo test --workspace --all-features
+
+  msrv:
+    name: Oldest supported Rust
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Kept in step with rust-version in Cargo.toml. The README tells people
+      # which toolchain they need; this is what makes that sentence true.
+      - uses: dtolnay/rust-toolchain@1.85
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo check --workspace --all-targets --all-features
+
+  determinism:
+    name: Same seed, same run
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      # A simulation whose output moves between two runs of the same seed
+      # cannot be argued with, because no result can be attributed to the
+      # change that was made rather than to the noise. This is the one property
+      # the compiler cannot check and the whole method rests on.
+      - name: Run the simulation twice
+        run: |
+          cargo build --release
+          ./target/release/cellweave --mcs 500
+          mv output run-a
+          ./target/release/cellweave --mcs 500
+          mv output run-b
+
+      - name: Compare the two runs
+        run: diff --recursive run-a run-b
