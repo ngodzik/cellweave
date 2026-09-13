@@ -6,14 +6,13 @@
 
 ## Prose and Markdown
 
-**Never use em dashes or en dashes in Markdown files (README, CLAUDE.md, docs).**
-Use a comma, a colon, parentheses, or a new sentence instead. This applies to all
-prose in the repository, not just the README.
+**Never use em dashes or en dashes in Markdown files (README, CLAUDE.md, docs).** Use a comma, a colon, parentheses, or a new sentence instead. This applies to all prose in the repository, not just the README.
+
+**Never hard-wrap prose at a fixed column.** One paragraph is one line, one bullet is one line. Soft wrapping is the job of the renderer and the editor, and a fixed column makes every later edit reflow a whole block for nothing. Fenced blocks, mermaid diagrams and table rows keep their own line structure.
 
 ## Architecture
 
-Separation of concerns is **enforced by the crate dependency graph**, not by convention.
-The compiler refuses inverted dependencies.
+Separation of concerns is **enforced by the crate dependency graph**, not by convention. The compiler refuses inverted dependencies.
 
 ```
 crates/core    ← no internal dependencies
@@ -53,12 +52,10 @@ pub struct HallmarksNetwork { /* ... */ }
 impl SignalingNetwork for HallmarksNetwork { /* ... */ }
 ```
 
-Use `impl Trait` for static dispatch (hot paths).
-Use `dyn Trait` only for heterogeneous collections (mixed cell types).
+Use `impl Trait` for static dispatch (hot paths). Use `dyn Trait` only for heterogeneous collections (mixed cell types).
 
 ### 2. Newtypes for domain primitives
-Never bare `u32` or `f64` where a domain type makes sense.
-The compiler prevents confusing a `Concentration` with an `Energy`.
+Never bare `u32` or `f64` where a domain type makes sense. The compiler prevents confusing a `Concentration` with an `Energy`.
 
 ```rust
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, serde::Serialize, serde::Deserialize)]
@@ -180,8 +177,7 @@ Extracellular fields feed into per-cell ODEs:
 - Local EGF → EGFR → RAS (proliferation signaling)
 
 ### Extensibility
-The protein network is an `impl SignalingNetwork`.
-To simulate a different paper: new trait implementation, no engine modification.
+The protein network is an `impl SignalingNetwork`. To simulate a different paper: new trait implementation, no engine modification.
 
 ---
 
