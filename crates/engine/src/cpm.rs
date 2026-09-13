@@ -223,7 +223,9 @@ impl CpmLattice {
     }
 
     fn kind(&self, id: u32) -> CellKind {
-        self.cells.get(id as usize).map_or(CellKind::Medium, |r| r.kind)
+        self.cells
+            .get(id as usize)
+            .map_or(CellKind::Medium, |r| r.kind)
     }
 
     /// Von Neumann neighbourhood (4-connected), boundary-clipped.

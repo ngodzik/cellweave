@@ -14,8 +14,7 @@ impl JsonOutput {
     /// Create a new writer; `dir` is created if it does not exist.
     pub fn new(dir: impl Into<PathBuf>) -> Result<Self, CellweaveError> {
         let dir = dir.into();
-        fs::create_dir_all(&dir)
-            .map_err(|e| CellweaveError::Config(format!("output dir: {e}")))?;
+        fs::create_dir_all(&dir).map_err(|e| CellweaveError::Config(format!("output dir: {e}")))?;
         Ok(Self { dir })
     }
 }

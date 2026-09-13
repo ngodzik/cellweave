@@ -170,6 +170,10 @@ mod tests {
         }
         let hif1 = net.state().values[HIF1].0;
         // Steady-state for dHIF = 0.6*(1-hif) - 0.5*hif → hif = 0.6/1.1 ≈ 0.545.
-        assert!(hif1 > 0.5, "HIF-1α should be elevated under hypoxia, got {:.3}", hif1);
+        assert!(
+            hif1 > 0.5,
+            "HIF-1α should be elevated under hypoxia, got {:.3}",
+            hif1
+        );
     }
 }

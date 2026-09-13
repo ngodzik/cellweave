@@ -1,15 +1,18 @@
 //! cellweave: multiscale cancer cell simulator.
 //!
 //! Usage:
-//!   cellweave [--config <path>] [--mcs <n>]
-//!   cellweave --version
+//!
+//! ```text
+//! cellweave [--config <path>] [--mcs <n>]
+//! cellweave --version
+//! ```
 
 use anyhow::{Context, Result};
+use cellweave_core::traits::SignalingNetwork;
+use cellweave_core::traits::SimOutput;
 use cellweave_core::{CellInputs, CellKind, Concentration, Pos2, SimSnapshot, TimeStep};
 use cellweave_engine::{CpmLattice, RasErkNetwork};
 use cellweave_io::{JsonOutput, SimConfig};
-use cellweave_core::traits::SimOutput;
-use cellweave_core::traits::SignalingNetwork;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 
@@ -46,8 +49,7 @@ fn run(config: SimConfig) -> Result<()> {
         config.width, config.height, config.mcs, config.output_dir
     );
 
-    let mut output =
-        JsonOutput::new(&config.output_dir).context("creating output directory")?;
+    let mut output = JsonOutput::new(&config.output_dir).context("creating output directory")?;
 
     // Build the CPM lattice.
     let mut lattice = CpmLattice::new(config.width, config.height, config.temperature)
