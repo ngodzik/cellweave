@@ -28,6 +28,19 @@ Three scales, coupled, in one program:
 - **Inside each cell.** A small system of ordinary differential equations over protein concentrations, integrated per cell. Each cell carries its own state.
 - **Around the cells.** Reaction diffusion fields for what moves through the space between cells, oxygen first.
 
+The loop is the whole point. Cells change the environment that then decides their fate, so what the tissue does is not written anywhere in the code. The diagram is the design, not a claim about today: what is actually wired is in [What does not work yet](#what-does-not-work-yet).
+
+```mermaid
+flowchart TD
+    PDE["Around the cells<br/>oxygen now, signals and drugs later<br/>reaction diffusion, finite differences"]
+    ODE["Inside each cell<br/>protein concentrations<br/>RK4, one system per cell"]
+    CPM["The cells themselves<br/>shape, adhesion, volume<br/>Cellular Potts, Metropolis"]
+
+    PDE -->|"the concentration<br/>this cell sits in"| ODE
+    ODE -->|"target volume, adhesion,<br/>whether it survives"| CPM
+    CPM -->|"uptake and secretion,<br/>wherever the cells are"| PDE
+```
+
 Behaviour has to follow from that model rather than from hardcoded rules. A cell grows, loosens its grip on its neighbours, or dies because its internal state says so, not because a flag was set. A necrotic core, if one appears, has to appear because the cells in the middle ran out of oxygen, not because the code drew a circle.
 
 ## Status
@@ -88,21 +101,43 @@ cargo test --workspace
 RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 ```
 
-On top of that, CI builds on Linux, macOS and Windows, holds the minimum toolchain to 1.85, runs the simulator twice and refuses any difference between the two runs, and checks dependencies weekly against the advisory database with `cargo-deny`.
+On top of that, CI builds on three platforms, holds the minimum toolchain, and checks the one property the compiler cannot see: that the same seed produces the same run, byte for byte. Without that, no result can be attributed to the change that was made rather than to the noise.
+
+```mermaid
+flowchart LR
+    push(["push or pull request"])
+    cron(["weekly schedule"])
+
+    push --> lint["lint<br/>fmt, clippy, docs"]
+    push --> test["test<br/>Linux, macOS, Windows"]
+    push --> msrv["msrv<br/>Rust 1.85"]
+    push --> det["determinism<br/>two runs, one seed"]
+    push --> deny["cargo-deny<br/>advisories, licences, sources"]
+    cron --> deny
+```
+
+`cargo-deny` runs on a schedule as well as on a push, because an advisory published against a crate that has been in `Cargo.lock` for months arrives with no push at all.
 
 ## Architecture
 
 Separation between layers is enforced by the crate dependency graph, so the compiler rejects inverted dependencies rather than relying on convention.
 
+```mermaid
+flowchart BT
+    core["cellweave-core<br/>domain types and traits<br/>no I/O, no computation"]
+    engine["cellweave-engine<br/>lattice, ODE solver, diffusion"]
+    io["cellweave-io<br/>TOML config, snapshot output"]
+    bin["cellweave<br/>command line"]
+
+    engine --> core
+    io --> core
+    io --> engine
+    bin --> core
+    bin --> engine
+    bin --> io
 ```
-cellweave-core      domain types and traits, zero internal dependencies
-      ^
-cellweave-engine    lattice, ODE solver, diffusion
-      ^
-cellweave-io        TOML config, snapshot output
-      ^
-cellweave (bin)     CLI
-```
+
+An arrow reads "depends on". Cargo refuses the reverse, so a layering mistake is a build failure rather than something a reviewer has to catch.
 
 There is no AI or MCP dependency inside cellweave. External tools connect through the CLI. See [CLAUDE.md](CLAUDE.md) for coding rules.
 
