@@ -18,3 +18,10 @@ updates:
     directory: "/"
     schedule:
       interval: weekly
+    ignore:
+      # The branches of this action are toolchain names, not releases: @stable
+      # installs stable and @1.85 installs 1.85. Dependabot reads the second as
+      # a version and offers to raise it, which would quietly stop the job from
+      # testing the minimum toolchain the README promises. The version that
+      # matters lives in rust-version in Cargo.toml.
+      - dependency-name: dtolnay/rust-toolchain
