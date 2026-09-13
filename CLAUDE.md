@@ -127,8 +127,8 @@ cells.par_iter().map(|c| c.protein_state())
 - Never `.unwrap()` on domain logic `None`: return `Option` or `Result`
 
 ### Unsafe
-- `#![deny(unsafe_code)]` in `core` and `engine`
-- There is no `unsafe` anywhere, and every crate denies it. Lifting that in one crate is a decision to argue for in the pull request that needs it, not a standing permission
+- `#![deny(unsafe_code)]` in every crate, the binary included
+- There is no `unsafe` anywhere. Lifting the deny in one crate is a decision to argue for in the pull request that needs it, not a standing permission
 
 ### Parallelism
 - `rayon` exclusively: no manual threads, no `std::sync::Mutex` in hot paths
