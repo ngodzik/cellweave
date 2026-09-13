@@ -55,8 +55,8 @@ Features will be added progressively, and this README will follow as they land.
 
 ## What works today
 
-- Builds clean, `cargo clippy -D warnings` passes, 12 tests green
-- 2D lattice with Monte Carlo spin flips and a volume constraint
+- Builds clean, `cargo clippy -D warnings` passes, 16 tests green
+- 2D lattice with Monte Carlo spin flips and a volume constraint, with the boundary term pinned by four tests whose values are computable by hand
 - RK4 solver for a small per-cell protein network
 - Explicit finite-difference diffusion solver with fixed boundaries
 - TOML configuration, JSON snapshot output per saved step
@@ -66,7 +66,6 @@ Features will be added progressively, and this README will follow as they land.
 
 Listed plainly, because a green test suite is not the same thing as correct physics.
 
-- **The contact energy in the lattice is wrong**, so surface tension does not behave correctly. This is the first thing to fix.
 - **The three scales are not coupled.** The binary runs the lattice and the protein network side by side with hardcoded inputs, and the diffusion solver is not wired in. Until that is done, the sentence at the top of this file describes the intent and not yet the program.
 - **No parallelism.** `rayon` is declared as a dependency and unused.
 - **No cell division, no cell death.** Cell count is static.

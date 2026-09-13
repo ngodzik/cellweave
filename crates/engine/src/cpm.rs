@@ -15,26 +15,80 @@ pub enum CpmError {
     InvalidDims(u32, u32),
 }
 
-/// Energy parameters between two cell kinds.
+/// Contact energy `J` for every pair of cell kinds.
+///
+/// A boundary between two pixels of different cells costs the value listed here
+/// for their kinds. Keeping `J(medium, cell)` well above `J(cell, cell)` is what
+/// makes cells prefer each other's company over empty space, which is what holds
+/// a cluster together and keeps a single cell compact.
 #[derive(Debug, Clone, Copy)]
 pub struct ContactEnergy {
-    /// J(Medium, Tumor) contact energy.
+    /// J(Medium, Tumor).
     pub medium_tumor: f64,
-    /// J(Tumor, Tumor) contact energy.
+    /// J(Medium, Normal).
+    pub medium_normal: f64,
+    /// J(Medium, Necrotic).
+    pub medium_necrotic: f64,
+    /// J(Tumor, Tumor).
     pub tumor_tumor: f64,
-    /// J(Tumor, Normal) contact energy.
+    /// J(Tumor, Normal).
     pub tumor_normal: f64,
-    /// J(Normal, Normal) contact energy.
+    /// J(Tumor, Necrotic).
+    pub tumor_necrotic: f64,
+    /// J(Normal, Normal).
     pub normal_normal: f64,
+    /// J(Normal, Necrotic).
+    pub normal_necrotic: f64,
+    /// J(Necrotic, Necrotic).
+    pub necrotic_necrotic: f64,
 }
 
 impl Default for ContactEnergy {
     fn default() -> Self {
         Self {
             medium_tumor: 16.0,
+            medium_normal: 16.0,
+            // Dead cells hold on to their surroundings less well.
+            medium_necrotic: 12.0,
             tumor_tumor: 2.0,
             tumor_normal: 11.0,
+            tumor_necrotic: 10.0,
             normal_normal: 6.0,
+            normal_necrotic: 12.0,
+            necrotic_necrotic: 8.0,
+        }
+    }
+}
+
+impl ContactEnergy {
+    /// Energy of a boundary between two pixels of the given kinds.
+    ///
+    /// The table is symmetric, so the pair is ordered before lookup.
+    pub fn between(&self, a: CellKind, b: CellKind) -> f64 {
+        let (i, j) = (Self::index(a), Self::index(b));
+        let (lo, hi) = if i <= j { (i, j) } else { (j, i) };
+        match (lo, hi) {
+            (0, 0) => 0.0,
+            (0, 1) => self.medium_tumor,
+            (0, 2) => self.medium_normal,
+            (0, 3) => self.medium_necrotic,
+            (1, 1) => self.tumor_tumor,
+            (1, 2) => self.tumor_normal,
+            (1, 3) => self.tumor_necrotic,
+            (2, 2) => self.normal_normal,
+            (2, 3) => self.normal_necrotic,
+            (3, 3) => self.necrotic_necrotic,
+            // Ordering above makes every other pair impossible.
+            _ => 0.0,
+        }
+    }
+
+    fn index(k: CellKind) -> u8 {
+        match k {
+            CellKind::Medium => 0,
+            CellKind::Tumor => 1,
+            CellKind::Normal => 2,
+            CellKind::Necrotic => 3,
         }
     }
 }
@@ -176,18 +230,27 @@ impl CpmLattice {
 
     /// ΔH for copying spin `dst` into pixel `(row, col)` currently holding `src`.
     fn delta_h(&self, row: u32, col: u32, src: u32, dst: u32) -> f64 {
-        let mut dh = 0.0;
+        self.contact_delta_h(row, col, src, dst) + self.volume_delta_h(src, dst)
+    }
 
-        // Contact energy contribution.
+    /// Change in boundary energy alone, with no volume term.
+    ///
+    /// The Hamiltonian sums `J(tau_i, tau_j)` over neighbouring pixel pairs that
+    /// belong to different cells. Both the removed and the created boundaries have
+    /// to be accounted for: a neighbour that already holds `src` contributes zero
+    /// before the flip but a real cost afterwards, so it must not be skipped.
+    fn contact_delta_h(&self, row: u32, col: u32, src: u32, dst: u32) -> f64 {
+        let mut dh = 0.0;
         for (nr, nc) in self.von_neumann(row, col) {
             let neighbour = self.grid[[nr as usize, nc as usize]];
-            if neighbour == src {
-                continue; // same spin, boundary removed
-            }
             dh += self.contact_energy(dst, neighbour) - self.contact_energy(src, neighbour);
         }
+        dh
+    }
 
-        // Volume constraint: λ * (V - V_t)^2.
+    /// Change in the volume constraint `lambda * (V - V_target)^2`.
+    fn volume_delta_h(&self, src: u32, dst: u32) -> f64 {
+        let mut dh = 0.0;
         if src != 0 {
             let r = &self.cells[src as usize];
             let v = r.volume.0 as f64;
@@ -200,26 +263,19 @@ impl CpmLattice {
             let vt = r.target_volume.0 as f64;
             dh += r.lambda_volume * ((v + 1.0 - vt).powi(2) - (v - vt).powi(2));
         }
-
         dh
     }
 
     /// J(a, b) contact energy between spin ids `a` and `b`.
+    ///
+    /// Two pixels of the same cell share no boundary, so they cost nothing. This
+    /// is the Kronecker delta of the Potts Hamiltonian, and it applies to the cell
+    /// identity, not to the cell kind: two distinct tumor cells in contact do pay.
     fn contact_energy(&self, a: u32, b: u32) -> f64 {
-        let ka = self.kind(a);
-        let kb = self.kind(b);
-        match (ka, kb) {
-            (CellKind::Medium, _) | (_, CellKind::Medium) => {
-                if matches!(ka, CellKind::Tumor) || matches!(kb, CellKind::Tumor) {
-                    self.contact.medium_tumor
-                } else {
-                    0.0
-                }
-            }
-            (CellKind::Tumor, CellKind::Tumor) => self.contact.tumor_tumor,
-            (CellKind::Normal, CellKind::Normal) => self.contact.normal_normal,
-            _ => self.contact.tumor_normal,
+        if a == b {
+            return 0.0;
         }
+        self.contact.between(self.kind(a), self.kind(b))
     }
 
     fn kind(&self, id: u32) -> CellKind {
@@ -307,5 +363,59 @@ mod tests {
     fn invalid_dims_rejected() {
         assert!(CpmLattice::new(0, 100, 10.0).is_err());
         assert!(CpmLattice::new(100, 0, 10.0).is_err());
+    }
+
+    /// Lattice holding one tumor cell over a rectangle, with the volume constraint
+    /// switched off so that only the contact term is measured.
+    fn block_cell(fill_w: u32, fill_h: u32) -> CpmLattice {
+        let mut lat = CpmLattice::new(20, 20, 10.0).unwrap();
+        lat.cells.push(CellRecord {
+            kind: CellKind::Tumor,
+            volume: Volume(fill_w * fill_h),
+            target_volume: Volume(fill_w * fill_h),
+            lambda_volume: 0.0,
+        });
+        for y in 0..fill_h {
+            for x in 0..fill_w {
+                lat.grid[[y as usize, x as usize]] = 1;
+            }
+        }
+        lat
+    }
+
+    #[test]
+    fn same_cell_pixels_share_no_boundary() {
+        let lat = block_cell(10, 20);
+        assert_eq!(lat.contact_energy(1, 1), 0.0);
+        assert_eq!(lat.contact_energy(0, 0), 0.0);
+        assert_eq!(lat.contact_energy(1, 0), lat.contact.medium_tumor);
+    }
+
+    #[test]
+    fn punching_a_hole_costs_four_boundary_units() {
+        // Pixel (10, 5) sits well inside the cell, so all four neighbours belong to
+        // it. Handing the pixel to the medium creates four new boundaries and
+        // removes none, so the cost is exactly 4 J(medium, tumor).
+        let lat = block_cell(10, 20);
+        let j = lat.contact.medium_tumor;
+        assert_eq!(lat.contact_delta_h(10, 5, 1, 0), 4.0 * j);
+    }
+
+    #[test]
+    fn growing_an_isolated_bump_costs_two_boundary_units() {
+        // Pixel (10, 10) is medium with a single cell neighbour. The cell taking it
+        // removes one boundary and creates three, for a net cost of 2 J.
+        let lat = block_cell(10, 20);
+        let j = lat.contact.medium_tumor;
+        assert_eq!(lat.contact_delta_h(10, 10, 0, 1), 2.0 * j);
+    }
+
+    #[test]
+    fn sliding_a_diagonal_corner_costs_nothing() {
+        // With the cell filling a quadrant, pixel (9, 9) is the corner: two
+        // neighbours inside the cell, two in the medium. Moving the corner trades
+        // two boundaries for two others, so the energy must not change at all.
+        let lat = block_cell(10, 10);
+        assert_eq!(lat.contact_delta_h(9, 9, 1, 0), 0.0);
     }
 }
