@@ -4,7 +4,9 @@
 
 use cellweave_core::{CellId, CellKind, Pos2, Volume};
 use ndarray::Array2;
-use rand::Rng;
+// rand 0.10 split the trait: Rng carries the raw bits, RngExt the helpers.
+// Public signatures keep the Rng bound, since RngExt is blanket implemented.
+use rand::{Rng, RngExt};
 use thiserror::Error;
 
 /// Errors specific to the CPM lattice.
