@@ -55,7 +55,7 @@ Features will be added progressively, and this README will follow as they land.
 
 ## What works today
 
-- Builds clean, `cargo clippy -D warnings` passes, 24 tests green
+- Builds clean, `cargo clippy -D warnings` passes, 26 tests green
 - 2D lattice with Monte Carlo spin flips and a volume constraint, with the boundary term pinned by four tests whose values are computable by hand
 - RK4 solver for a small per-cell protein network
 - Explicit finite-difference diffusion solver, supplied by a bath held against the surface of the tissue rather than at the edge of the grid, so the size of the simulated square is not a biological parameter. It reproduces the closed-form profile of a bathed disc, and refuses a time step the explicit scheme cannot take instead of diverging quietly

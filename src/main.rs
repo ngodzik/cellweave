@@ -7,6 +7,8 @@
 //! cellweave --version
 //! ```
 
+#![deny(unsafe_code)]
+
 use anyhow::{Context, Result};
 use cellweave_core::traits::SignalingNetwork;
 use cellweave_core::traits::SimOutput;
