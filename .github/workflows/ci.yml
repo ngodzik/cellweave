@@ -69,6 +69,24 @@ jobs:
       # sentence true. Dependabot is told to leave it alone in dependabot.yml.
       - uses: dtolnay/rust-toolchain@1.85
       - uses: Swatinem/rust-cache@v2
+
+      # The ref above and rust-version state the same fact in two places, and two
+      # places drift. This makes them disagree loudly instead of leaving the job
+      # quietly testing a toolchain nobody promised.
+      - name: The toolchain is the one the manifest promises
+        run: |
+          declared=$(sed -n 's/^rust-version *= *"\([^"]*\)".*/\1/p' Cargo.toml | head -1 | cut -d. -f1,2)
+          installed=$(rustc --version | cut -d' ' -f2 | cut -d. -f1,2)
+          echo "Cargo.toml says $declared, this runner has $installed"
+          if [ -z "$declared" ]; then
+            echo "::error::no rust-version found in Cargo.toml"
+            exit 1
+          fi
+          if [ "$declared" != "$installed" ]; then
+            echo "::error::Cargo.toml promises Rust $declared but CI installed $installed"
+            exit 1
+          fi
+
       - name: Build
         run: cargo check --workspace --all-targets --all-features
 
