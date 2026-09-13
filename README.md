@@ -55,10 +55,10 @@ Features will be added progressively, and this README will follow as they land.
 
 ## What works today
 
-- Builds clean, `cargo clippy -D warnings` passes, 16 tests green
+- Builds clean, `cargo clippy -D warnings` passes, 24 tests green
 - 2D lattice with Monte Carlo spin flips and a volume constraint, with the boundary term pinned by four tests whose values are computable by hand
 - RK4 solver for a small per-cell protein network
-- Explicit finite-difference diffusion solver with fixed boundaries
+- Explicit finite-difference diffusion solver, supplied by a bath held against the surface of the tissue rather than at the edge of the grid, so the size of the simulated square is not a biological parameter. It reproduces the closed-form profile of a bathed disc, and refuses a time step the explicit scheme cannot take instead of diverging quietly
 - TOML configuration, JSON snapshot output per saved step
 - CLI entry point
 
@@ -69,7 +69,6 @@ Listed plainly, because a green test suite is not the same thing as correct phys
 - **The three scales are not coupled.** The binary runs the lattice and the protein network side by side with hardcoded inputs, and the diffusion solver is not wired in. Until that is done, the sentence at the top of this file describes the intent and not yet the program.
 - **No parallelism.** `rayon` is declared as a dependency and unused.
 - **No cell division, no cell death.** Cell count is static.
-- **No stability guard on the diffusion solver.** A bad configuration diverges silently.
 - **No calibration, no validation, no visualization.**
 
 ## Building and running
