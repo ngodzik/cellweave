@@ -17,9 +17,9 @@ authors     = ["Nicolas Godzik"]
 license     = "MIT"
 
 [workspace.dependencies]
-cellweave-core   = { path = "crates/core" }
-cellweave-engine = { path = "crates/engine" }
-cellweave-io     = { path = "crates/io" }
+cellweave-core   = { path = "crates/core", version = "0.1.0" }
+cellweave-engine = { path = "crates/engine", version = "0.1.0" }
+cellweave-io     = { path = "crates/io", version = "0.1.0" }
 
 thiserror = "2"
 anyhow    = "1"
