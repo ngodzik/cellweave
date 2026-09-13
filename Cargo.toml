@@ -1,0 +1,66 @@
+[workspace]
+members = [
+    "crates/core",
+    "crates/engine",
+    "crates/io",
+    ".",
+]
+resolver = "2"
+
+[workspace.package]
+version     = "0.1.0"
+edition     = "2024"
+# The oldest toolchain the code is known to build on. CI holds it to this, so
+# the sentence in the README is checked rather than asserted.
+rust-version = "1.85"
+authors     = ["Nicolas Godzik"]
+license     = "MIT"
+
+[workspace.dependencies]
+cellweave-core   = { path = "crates/core", version = "0.1.0" }
+cellweave-engine = { path = "crates/engine", version = "0.1.0" }
+cellweave-io     = { path = "crates/io", version = "0.1.0" }
+
+thiserror = "2"
+anyhow    = "1"
+serde     = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml      = "0.8"
+ndarray   = { version = "0.16", features = ["rayon"] }
+rand      = "0.9"
+rayon     = "1"
+tracing            = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[package]
+name    = "cellweave"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "cellweave"
+path = "src/main.rs"
+
+[dependencies]
+cellweave-core.workspace   = true
+cellweave-engine.workspace = true
+cellweave-io.workspace     = true
+anyhow.workspace           = true
+rand.workspace             = true
+tracing.workspace          = true
+tracing-subscriber.workspace = true
+
+[profile.release]
+opt-level     = 3
+lto           = "fat"
+codegen-units = 1
+# Release builds wrap integer arithmetic silently by default. A lattice index
+# that wraps does not stop the run, it produces a number that looks like a
+# result. For a simulator a panic is the cheaper failure, and the few percent
+# this costs is worth not having to wonder.
+overflow-checks = true
+
+[profile.dev]
+opt-level = 1
