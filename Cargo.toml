@@ -10,6 +10,9 @@ resolver = "2"
 [workspace.package]
 version     = "0.1.0"
 edition     = "2024"
+# The oldest toolchain the code is known to build on. CI holds it to this, so
+# the sentence in the README is checked rather than asserted.
+rust-version = "1.85"
 authors     = ["Nicolas Godzik"]
 license     = "MIT"
 
@@ -33,6 +36,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 name    = "cellweave"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 
 [[bin]]
@@ -52,6 +56,11 @@ tracing-subscriber.workspace = true
 opt-level     = 3
 lto           = "fat"
 codegen-units = 1
+# Release builds wrap integer arithmetic silently by default. A lattice index
+# that wraps does not stop the run, it produces a number that looks like a
+# result. For a simulator a panic is the cheaper failure, and the few percent
+# this costs is worth not having to wonder.
+overflow-checks = true
 
 [profile.dev]
 opt-level = 1
