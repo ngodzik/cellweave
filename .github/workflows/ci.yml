@@ -63,8 +63,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      # Kept in step with rust-version in Cargo.toml. The README tells people
-      # which toolchain they need; this is what makes that sentence true.
+      # The ref is the toolchain: this installs Rust 1.85. Keep it in step with
+      # rust-version in Cargo.toml, which is the value that binds; the README
+      # tells people which toolchain they need, and this is what makes that
+      # sentence true. Dependabot is told to leave it alone in dependabot.yml.
       - uses: dtolnay/rust-toolchain@1.85
       - uses: Swatinem/rust-cache@v2
       - name: Build
