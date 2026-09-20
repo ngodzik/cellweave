@@ -24,6 +24,7 @@ const BCL2: usize = 4;
 ///
 /// Parameters are placeholder values; they will be calibrated from BioModels
 /// SBML records in a later milestone.
+#[derive(Debug, Clone)]
 pub struct RasErkNetwork {
     /// Current protein state.
     state: ProteinState,
@@ -45,6 +46,16 @@ impl RasErkNetwork {
             state,
             base_target_volume,
         }
+    }
+
+    /// Reference volume of this lineage, which the target volume and the
+    /// division threshold are both measured against.
+    ///
+    /// A daughter inherits it unchanged, so the size at which cells divide is a
+    /// property of the lineage rather than of each cell's own birth size, which
+    /// is how a cell type keeps a characteristic size across generations.
+    pub fn base_target_volume(&self) -> u32 {
+        self.base_target_volume
     }
 
     /// ODE right-hand side: dX/dt = f(X, inputs).
@@ -101,8 +112,12 @@ impl SignalingNetwork for RasErkNetwork {
 
     fn mechanics(&self) -> CellMechanics {
         let erk = self.state.values[ERK].0;
-        // High ERK → cell grows faster (proliferation pressure).
-        let target = (self.base_target_volume as f64 * (1.0 + 0.5 * erk)) as u32;
+        // High ERK pushes the cell toward proliferation. The coefficient is set so
+        // that a well stimulated cell aims at roughly twice its newborn size, which
+        // is what lets it reach a division threshold at all: ERK saturates near
+        // 0.55 in this network, so a coefficient of 0.5 would cap growth below any
+        // sensible threshold and no cell would ever divide.
+        let target = (self.base_target_volume as f64 * (1.0 + 1.5 * erk)) as u32;
         // Low BCL2 → weaker survival → let volume shrink (apoptosis onset).
         let _bcl2 = self.state.values[BCL2].0;
         CellMechanics {
