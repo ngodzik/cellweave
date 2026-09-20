@@ -9,6 +9,14 @@
 //! bath held against the surface of the tissue removes the box from the answer,
 //! and leaves the gradient to form where it belongs, inside the tissue, out of the
 //! balance between what diffuses in and what the cells take up.
+//!
+//! Oxygen crosses a cell in a fraction of a second, a signalling network answers
+//! in minutes, a cell cycle takes a day. At the scale where a cell decides
+//! anything, the field is therefore already at equilibrium with the layout of the
+//! cells. [`ScalarField::relax`] is how that is honoured: the field is iterated to
+//! a steady state rather than advanced by some number of sub steps per lattice
+//! step, which would leave it trailing the cells by an amount set by a knob with
+//! no physical meaning.
 
 use cellweave_core::{CellweaveError, DiffusionField, TimeStep};
 
@@ -26,8 +34,10 @@ pub struct ScalarField {
     decay: f64,
     /// Uniform source term (concentration per unit time).
     source: f64,
-    /// Scratch: pixels the last bath call reached.
-    reached: Vec<bool>,
+    /// Pixels the bath holds, which `step` leaves alone.
+    held: Vec<bool>,
+    /// Sink per pixel, what the tissue takes up per unit time.
+    uptake: Vec<f64>,
     /// Scratch: breadth-first frontier for the bath fill.
     frontier: Vec<(u32, u32)>,
 }
@@ -68,7 +78,8 @@ impl ScalarField {
             d,
             decay,
             source: 0.0,
-            reached: Vec::new(),
+            held: vec![false; n],
+            uptake: vec![0.0; n],
             frontier: Vec::new(),
         })
     }
@@ -80,16 +91,59 @@ impl ScalarField {
         self
     }
 
-    /// Remove `amount` from one pixel, never going below zero.
+    /// Set how much one pixel takes up per unit time.
     ///
-    /// This is how a cell takes up what it consumes. Coordinates outside the grid
-    /// are ignored, since callers iterate over a lattice of the same size.
-    pub fn consume(&mut self, x: u32, y: u32, amount: f64) {
+    /// This is how tissue consumes: as a sink in the equation, applied on every
+    /// step, rather than an amount subtracted once, which relaxation would simply
+    /// diffuse away. Coordinates outside the grid are ignored, since callers
+    /// iterate over a lattice of the same size.
+    pub fn set_uptake(&mut self, x: u32, y: u32, rate: f64) {
         if x >= self.width || y >= self.height {
             return;
         }
         let i = self.idx(x, y);
-        self.values[i] = (self.values[i] - amount).max(0.0);
+        self.uptake[i] = rate.max(0.0);
+    }
+
+    /// Forget every sink, before the layout of the tissue is read in again.
+    pub fn clear_uptake(&mut self) {
+        self.uptake.fill(0.0);
+    }
+
+    /// Iterate until the field stops moving, and say how many steps it took.
+    ///
+    /// Converged means no pixel moved by more than `tolerance` over the last
+    /// step. Started from the previous layout's solution this takes a few dozen
+    /// steps; started cold it can take thousands, which is why `max_steps` is a
+    /// hard limit that turns a field which will not settle into an error rather
+    /// than a silent partial answer.
+    ///
+    /// # Errors
+    ///
+    /// Whatever [`DiffusionField::step`] refuses, and [`CellweaveError::Simulation`]
+    /// when `max_steps` pass without convergence.
+    pub fn relax(
+        &mut self,
+        dt: TimeStep,
+        tolerance: f64,
+        max_steps: usize,
+    ) -> Result<usize, CellweaveError> {
+        for done in 1..=max_steps {
+            self.step(dt)?;
+            // After the swap, `next` holds the previous values.
+            let moved = self
+                .values
+                .iter()
+                .zip(&self.next)
+                .map(|(now, before)| (now - before).abs())
+                .fold(0.0_f64, f64::max);
+            if moved < tolerance {
+                return Ok(done);
+            }
+        }
+        Err(CellweaveError::Simulation(format!(
+            "diffusion did not settle within {max_steps} steps at tolerance {tolerance}"
+        )))
     }
 
     /// Hold every pixel a bath can reach at `value`.
@@ -109,8 +163,7 @@ impl ScalarField {
     /// conservative reading of an ambiguous case: leaving a pocket unsupplied
     /// costs a little realism, leaking a source into the tissue costs the result.
     pub fn hold_bath(&mut self, value: f64, is_open: impl Fn(u32, u32) -> bool) {
-        self.reached.clear();
-        self.reached.resize(self.values.len(), false);
+        self.held.fill(false);
         self.frontier.clear();
 
         let (last_x, last_y) = (self.width - 1, self.height - 1);
@@ -139,19 +192,19 @@ impl ScalarField {
         }
 
         for i in 0..self.values.len() {
-            if self.reached[i] {
+            if self.held[i] {
                 self.values[i] = value;
             }
         }
     }
 
-    /// Mark one pixel as reached by the bath, unless it is closed or already marked.
+    /// Mark one pixel as held by the bath, unless it is closed or already marked.
     fn reach(&mut self, x: u32, y: u32, is_open: &impl Fn(u32, u32) -> bool) {
         let i = self.idx(x, y);
-        if self.reached[i] || !is_open(x, y) {
+        if self.held[i] || !is_open(x, y) {
             return;
         }
-        self.reached[i] = true;
+        self.held[i] = true;
         self.frontier.push((x, y));
     }
 
@@ -211,8 +264,17 @@ impl DiffusionField for ScalarField {
             for x in 0..self.width {
                 let i = self.idx(x, y);
                 let c = self.values[i];
+                if self.held[i] {
+                    // A bath pixel is a boundary condition, not an unknown.
+                    self.next[i] = c;
+                    continue;
+                }
                 let lap = self.laplacian(x, y);
-                self.next[i] = c + dt * (self.d * lap - self.decay * c + self.source);
+                let change = self.d * lap - self.decay * c + self.source - self.uptake[i];
+                // The floor is physics, not a safety net: tissue cannot take up
+                // what is not there. Diffusion and decay alone never go below
+                // zero, the stability check sees to that.
+                self.next[i] = (c + dt * change).max(0.0);
             }
         }
 
@@ -252,23 +314,25 @@ mod tests {
     /// Diffusion coefficient every disc test runs at.
     const D: f64 = 0.2;
 
-    /// Concentration at the middle of a consuming disc bathed on its surface,
-    /// after `steps` of a unit time step.
-    fn disc_centre(size: u32, radius: u32, uptake: f64, steps: u32) -> f64 {
+    /// A consuming disc bathed on its surface, relaxed to its steady state.
+    fn bathed_disc(size: u32, radius: u32, uptake: f64) -> ScalarField {
         let outside = outside_disc(size, radius);
         let mut field = ScalarField::new(size, size, D, 0.0, 1.0).unwrap();
-        for _ in 0..steps {
-            for y in 0..size {
-                for x in 0..size {
-                    if !outside(x, y) {
-                        field.consume(x, y, uptake);
-                    }
+        for y in 0..size {
+            for x in 0..size {
+                if !outside(x, y) {
+                    field.set_uptake(x, y, uptake);
                 }
             }
-            field.hold_bath(1.0, &outside);
-            field.step(TimeStep(1.0)).unwrap();
         }
-        field.concentration_at(size / 2, size / 2)
+        field.hold_bath(1.0, &outside);
+        field.relax(TimeStep(1.0), 1e-7, 50_000).unwrap();
+        field
+    }
+
+    /// Steady-state concentration at the middle of that disc.
+    fn disc_centre(size: u32, radius: u32, uptake: f64) -> f64 {
+        bathed_disc(size, radius, uptake).concentration_at(size / 2, size / 2)
     }
 
     #[test]
@@ -278,8 +342,8 @@ mod tests {
         // to be, so doubling the grid changes the biology: at this uptake the same
         // disc reads 0.48 in a box of 30 and 0.22 in a box of 60. Held against the
         // surface of the tissue instead, the box stops being an actor.
-        let small = disc_centre(30, 6, 0.004, 1200);
-        let large = disc_centre(60, 6, 0.004, 1200);
+        let small = disc_centre(30, 6, 0.004);
+        let large = disc_centre(60, 6, 0.004);
 
         assert!(
             (small - large).abs() < 1e-9,
@@ -304,7 +368,7 @@ mod tests {
         const RADIUS: u32 = 8;
         const UPTAKE: f64 = 0.003;
 
-        let measured = disc_centre(32, RADIUS, UPTAKE, 2500);
+        let measured = disc_centre(32, RADIUS, UPTAKE);
 
         let depth = UPTAKE * f64::from(RADIUS * RADIUS) / (4.0 * D);
         let expected = 1.0 - depth;
@@ -465,5 +529,74 @@ mod tests {
                 assert!(c >= 0.0, "negative concentration at ({x},{y}): {c}");
             }
         }
+    }
+
+    #[test]
+    fn relaxing_settles_the_field_and_says_how_long_it_took() {
+        let mut field = bathed_disc(30, 6, 0.004);
+        let settled: Vec<f64> = (0..900).map(|i| field.values[i]).collect();
+
+        let more = field.relax(TimeStep(1.0), 1e-7, 50_000).unwrap();
+
+        // Already settled: one step confirms it, and nothing moved.
+        assert_eq!(more, 1);
+        let drift = (0..900)
+            .map(|i| (field.values[i] - settled[i]).abs())
+            .fold(0.0_f64, f64::max);
+        assert!(drift < 1e-6, "a settled field drifted by {drift:e}");
+    }
+
+    #[test]
+    fn relaxing_refuses_to_pretend_when_it_cannot_settle_in_time() {
+        let outside = outside_disc(30, 6);
+        let mut field = ScalarField::new(30, 30, D, 0.0, 1.0).unwrap();
+        for y in 0..30 {
+            for x in 0..30 {
+                if !outside(x, y) {
+                    field.set_uptake(x, y, 0.004);
+                }
+            }
+        }
+        field.hold_bath(1.0, &outside);
+
+        let refused = field.relax(TimeStep(1.0), 1e-9, 3);
+
+        assert!(matches!(refused, Err(CellweaveError::Simulation(_))));
+    }
+
+    #[test]
+    fn a_held_pixel_is_a_boundary_condition_and_does_not_move() {
+        // The bath sits at 1.0 next to a pocket of tissue draining hard. Without
+        // the hold, diffusion into the drain would pull the bath pixels down.
+        let mut field = bathed_disc(30, 6, 0.05);
+
+        for _ in 0..200 {
+            field.step(TimeStep(1.0)).unwrap();
+        }
+
+        assert_eq!(field.concentration_at(0, 0), 1.0);
+        assert_eq!(
+            field.concentration_at(15, 3),
+            1.0,
+            "a bath pixel at the rim moved"
+        );
+        assert!(
+            field.concentration_at(15, 15) < 0.5,
+            "the drain should be starved"
+        );
+    }
+
+    #[test]
+    fn clearing_the_uptake_lets_the_field_refill() {
+        let mut field = bathed_disc(30, 6, 0.01);
+        assert!(field.concentration_at(15, 15) < 0.9);
+
+        field.clear_uptake();
+        field.relax(TimeStep(1.0), 1e-7, 50_000).unwrap();
+
+        assert!(
+            (field.concentration_at(15, 15) - 1.0).abs() < 1e-5,
+            "with no sink and a bath at 1.0 the centre must return to 1.0"
+        );
     }
 }

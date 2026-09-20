@@ -153,4 +153,6 @@ pub struct CellSnapshot {
     pub volume: Volume,
     /// Protein concentrations.
     pub proteins: ProteinState,
+    /// Mean oxygen over the cell's pixels, as a fraction of the bath.
+    pub oxygen: Concentration,
 }
