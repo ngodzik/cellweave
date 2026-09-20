@@ -95,6 +95,9 @@ impl ContactEnergy {
     }
 }
 
+/// Below this many pixels a cell is too small to be worth splitting.
+const MIN_DIVIDE_VOLUME: u32 = 8;
+
 /// Per-cell properties tracked by the lattice.
 #[derive(Debug, Clone)]
 pub struct CellRecord {
@@ -322,6 +325,90 @@ impl CpmLattice {
             .skip(1)
             .map(|(i, r)| (CellId(i as u32), r))
     }
+
+    /// Biological kind of a cell.
+    pub fn cell_kind(&self, id: CellId) -> Option<CellKind> {
+        self.cells.get(id.0 as usize).map(|r| r.kind)
+    }
+
+    /// Apply the volume parameters a cell's signaling network asks for.
+    ///
+    /// This is the upward half of the coupling: protein state decides how large a
+    /// cell tries to be. Adhesion is still a global table, so the contact fields
+    /// of [`cellweave_core::CellMechanics`] have no effect yet.
+    ///
+    /// An unknown identifier is ignored rather than reported, since the caller
+    /// iterates over cells it just read from this lattice.
+    pub fn set_volume_target(&mut self, id: CellId, target: Volume, lambda: f64) {
+        if let Some(r) = self.cells.get_mut(id.0 as usize) {
+            r.target_volume = target;
+            r.lambda_volume = lambda;
+        }
+    }
+
+    /// Split a cell in two along a straight line through its centre of mass.
+    ///
+    /// Pixels on one side of the line keep the parent identity, the rest go to a
+    /// new cell of the same kind that inherits the parent's volume parameters.
+    /// `angle` orients the cut, in radians.
+    ///
+    /// Returns the daughter's identifier, or `None` when the cell is the medium,
+    /// unknown, too small to split, or when the line leaves one side empty, in
+    /// which case nothing is changed.
+    ///
+    /// This scans the whole lattice once, so it is meant to run every so often
+    /// rather than inside the Monte Carlo loop.
+    pub fn divide(&mut self, id: CellId, angle: f64) -> Option<CellId> {
+        if id.0 == 0 {
+            return None;
+        }
+        let parent = self.cells.get(id.0 as usize)?.clone();
+
+        let mut pixels = Vec::with_capacity(parent.volume.0 as usize);
+        for y in 0..self.height {
+            for x in 0..self.width {
+                if self.grid[[y as usize, x as usize]] == id.0 {
+                    pixels.push((x, y));
+                }
+            }
+        }
+        // The grid is the truth about volume; the record is a cache of it.
+        let total = pixels.len() as u32;
+        if total < MIN_DIVIDE_VOLUME {
+            return None;
+        }
+
+        let n = f64::from(total);
+        let cx = pixels.iter().map(|(x, _)| f64::from(*x)).sum::<f64>() / n;
+        let cy = pixels.iter().map(|(_, y)| f64::from(*y)).sum::<f64>() / n;
+        let (nx, ny) = (angle.cos(), angle.sin());
+
+        let daughter_id = self.cells.len() as u32;
+        let mut moved = 0u32;
+        for (x, y) in &pixels {
+            if (f64::from(*x) - cx) * nx + (f64::from(*y) - cy) * ny > 0.0 {
+                self.grid[[*y as usize, *x as usize]] = daughter_id;
+                moved += 1;
+            }
+        }
+
+        // A line that leaves one side empty is not a division. Put it back.
+        if moved == 0 || moved == total {
+            for (x, y) in &pixels {
+                self.grid[[*y as usize, *x as usize]] = id.0;
+            }
+            return None;
+        }
+
+        self.cells[id.0 as usize].volume = Volume(total - moved);
+        self.cells.push(CellRecord {
+            kind: parent.kind,
+            volume: Volume(moved),
+            target_volume: parent.target_volume,
+            lambda_volume: parent.lambda_volume,
+        });
+        Some(CellId(daughter_id))
+    }
 }
 
 #[cfg(test)]
@@ -419,5 +506,142 @@ mod tests {
         // two boundaries for two others, so the energy must not change at all.
         let lat = block_cell(10, 10);
         assert_eq!(lat.contact_delta_h(9, 9, 1, 0), 0.0);
+    }
+
+    /// Pixel count per identifier, read from the grid rather than the records.
+    fn recount(lat: &CpmLattice) -> Vec<u32> {
+        let mut counts = vec![0u32; lat.cells.len()];
+        for id in &lat.grid {
+            counts[*id as usize] += 1;
+        }
+        counts
+    }
+
+    /// Every record's volume matches what the grid actually holds.
+    fn records_match_grid(lat: &CpmLattice) -> bool {
+        recount(lat)
+            .iter()
+            .zip(&lat.cells)
+            .skip(1)
+            .all(|(counted, record)| *counted == record.volume.0)
+    }
+
+    #[test]
+    fn a_cell_grows_toward_a_raised_target() {
+        let mut lat = CpmLattice::new(120, 120, 12.0).unwrap();
+        let id = lat.add_cell(CellKind::Tumor, Pos2 { x: 60, y: 60 }, 12);
+        let start = lat.volume(id).unwrap().0;
+
+        lat.set_volume_target(id, Volume(start * 2), 20.0);
+        let mut rng = StdRng::seed_from_u64(7);
+        for _ in 0..400 {
+            lat.monte_carlo_step(&mut rng);
+        }
+
+        let grown = lat.volume(id).unwrap().0;
+        assert!(
+            grown > start + start / 4,
+            "expected clear growth, went from {start} to {grown}"
+        );
+        assert!(records_match_grid(&lat));
+    }
+
+    #[test]
+    fn dividing_hands_every_pixel_to_exactly_one_of_the_two() {
+        let mut lat = CpmLattice::new(60, 60, 10.0).unwrap();
+        let parent = lat.add_cell(CellKind::Tumor, Pos2 { x: 30, y: 30 }, 10);
+        let before = lat.volume(parent).unwrap().0;
+
+        let daughter = lat.divide(parent, 0.3).expect("a round cell splits");
+
+        let (p, d) = (
+            lat.volume(parent).unwrap().0,
+            lat.volume(daughter).unwrap().0,
+        );
+        assert_eq!(p + d, before, "pixels were created or lost");
+        assert!(p > 0 && d > 0);
+        // A line through the centre of a disc splits it near the middle.
+        assert!((p as i64 - d as i64).unsigned_abs() < before as u64 / 5);
+        assert!(records_match_grid(&lat));
+    }
+
+    #[test]
+    fn the_daughter_takes_the_parents_kind_and_targets() {
+        let mut lat = CpmLattice::new(60, 60, 10.0).unwrap();
+        let parent = lat.add_cell(CellKind::Normal, Pos2 { x: 30, y: 30 }, 10);
+        lat.set_volume_target(parent, Volume(500), 33.0);
+
+        let daughter = lat.divide(parent, 1.0).unwrap();
+
+        assert_eq!(daughter, CellId(2));
+        assert_eq!(lat.cell_kind(daughter), Some(CellKind::Normal));
+        assert_eq!(lat.cells[2].target_volume, Volume(500));
+        assert_eq!(lat.cells[2].lambda_volume, 33.0);
+        assert_eq!(lat.cell_count(), 2);
+    }
+
+    #[test]
+    fn a_cell_too_small_to_split_is_left_alone() {
+        let mut lat = CpmLattice::new(30, 30, 10.0).unwrap();
+        let tiny = lat.add_cell(CellKind::Tumor, Pos2 { x: 15, y: 15 }, 1);
+        let grid_before = lat.grid.clone();
+
+        assert_eq!(lat.divide(tiny, 0.5), None);
+
+        assert_eq!(lat.grid, grid_before);
+        assert_eq!(lat.cell_count(), 1);
+    }
+
+    #[test]
+    fn the_medium_cannot_be_divided() {
+        let mut lat = CpmLattice::new(30, 30, 10.0).unwrap();
+        lat.add_cell(CellKind::Tumor, Pos2 { x: 15, y: 15 }, 4);
+        let grid_before = lat.grid.clone();
+
+        assert_eq!(lat.divide(CellId(0), 0.5), None);
+        assert_eq!(lat.divide(CellId(42), 0.5), None);
+
+        assert_eq!(lat.grid, grid_before);
+    }
+
+    #[test]
+    fn a_cut_that_leaves_one_side_empty_is_rolled_back() {
+        // A one pixel wide vertical bar, cut by a line whose normal points along x:
+        // every pixel projects to exactly zero, so nothing lands on the far side.
+        let mut lat = CpmLattice::new(20, 20, 10.0).unwrap();
+        lat.cells.push(CellRecord {
+            kind: CellKind::Tumor,
+            volume: Volume(10),
+            target_volume: Volume(10),
+            lambda_volume: 1.0,
+        });
+        for y in 5..15u32 {
+            lat.grid[[y as usize, 10]] = 1;
+        }
+        let grid_before = lat.grid.clone();
+
+        assert_eq!(lat.divide(CellId(1), 0.0), None);
+
+        assert_eq!(lat.grid, grid_before, "a refused cut must change nothing");
+        assert_eq!(lat.cell_count(), 1);
+        assert!(records_match_grid(&lat));
+    }
+
+    #[test]
+    fn bookkeeping_survives_division_followed_by_stepping() {
+        let mut lat = CpmLattice::new(80, 80, 10.0).unwrap();
+        let a = lat.add_cell(CellKind::Tumor, Pos2 { x: 40, y: 40 }, 12);
+        let mut rng = StdRng::seed_from_u64(3);
+
+        let b = lat.divide(a, 0.7).unwrap();
+        for _ in 0..200 {
+            lat.monte_carlo_step(&mut rng);
+        }
+        lat.divide(b, 2.1);
+        for _ in 0..200 {
+            lat.monte_carlo_step(&mut rng);
+        }
+
+        assert!(records_match_grid(&lat), "records drifted from the grid");
     }
 }
