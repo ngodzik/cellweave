@@ -98,6 +98,11 @@ impl ContactEnergy {
 /// Below this many pixels a cell is too small to be worth splitting.
 const MIN_DIVIDE_VOLUME: u32 = 8;
 
+/// Identifier of pixels no cell can ever take: a vessel wall, a piece of
+/// glass. Not a cell, so it has no record, no energy, no volume; a flip into or
+/// out of it is simply never proposed.
+pub const OBSTACLE: u32 = u32::MAX;
+
 /// Per-cell properties tracked by the lattice.
 #[derive(Debug, Clone)]
 pub struct CellRecord {
@@ -169,7 +174,8 @@ impl CpmLattice {
             for col in 0..self.width {
                 let dx = col as i64 - cx;
                 let dy = row as i64 - cy;
-                if dx * dx + dy * dy <= r2 {
+                let free = self.grid[[row as usize, col as usize]] != OBSTACLE;
+                if dx * dx + dy * dy <= r2 && free {
                     self.grid[[row as usize, col as usize]] = id;
                     vol += 1;
                 }
@@ -183,6 +189,31 @@ impl CpmLattice {
             lambda_volume: 50.0,
         });
         CellId(id)
+    }
+
+    /// Fill a disc with obstacle, overwriting whatever was there.
+    ///
+    /// Any cell pixels overwritten are taken off their cells' volumes, so the
+    /// records stay true to the grid. Meant to be called before cells are
+    /// placed, but safe afterwards.
+    pub fn add_obstacle_disc(&mut self, centre: Pos2, radius: u32) {
+        let cx = i64::from(centre.x);
+        let cy = i64::from(centre.y);
+        let r2 = i64::from(radius * radius);
+        for row in 0..self.height {
+            for col in 0..self.width {
+                let dx = i64::from(col) - cx;
+                let dy = i64::from(row) - cy;
+                if dx * dx + dy * dy > r2 {
+                    continue;
+                }
+                let was = self.grid[[row as usize, col as usize]];
+                if was != 0 && was != OBSTACLE {
+                    self.cells[was as usize].volume.0 -= 1;
+                }
+                self.grid[[row as usize, col as usize]] = OBSTACLE;
+            }
+        }
     }
 
     /// Execute one full Monte Carlo step (W×H spin-flip attempts).
@@ -211,7 +242,7 @@ impl CpmLattice {
         let (nr, nc) = neighbours[rng.random_range(0..neighbours.len())];
         let dst = self.grid[[nr as usize, nc as usize]];
 
-        if src == dst {
+        if src == dst || src == OBSTACLE || dst == OBSTACLE {
             return;
         }
 
@@ -284,6 +315,11 @@ impl CpmLattice {
     }
 
     fn kind(&self, id: u32) -> CellKind {
+        if id == OBSTACLE {
+            // No record. A boundary against an obstacle costs what a boundary
+            // against medium costs, so an obstacle is a wall a cell can rest on.
+            return CellKind::Medium;
+        }
         self.cells
             .get(id as usize)
             .map_or(CellKind::Medium, |r| r.kind)
@@ -343,7 +379,8 @@ impl CpmLattice {
         }
     }
 
-    /// The identifier occupying one pixel, 0 for medium.
+    /// The identifier occupying one pixel: 0 for medium, [`OBSTACLE`] for a
+    /// pixel no cell can take.
     ///
     /// Coordinates outside the grid read as medium.
     pub fn occupant(&self, x: u32, y: u32) -> u32 {
@@ -536,10 +573,13 @@ mod tests {
     }
 
     /// Pixel count per identifier, read from the grid rather than the records.
+    /// Obstacles have no record and are skipped.
     fn recount(lat: &CpmLattice) -> Vec<u32> {
         let mut counts = vec![0u32; lat.cells.len()];
         for id in &lat.grid {
-            counts[*id as usize] += 1;
+            if *id != OBSTACLE {
+                counts[*id as usize] += 1;
+            }
         }
         counts
     }
@@ -670,5 +710,85 @@ mod tests {
         }
 
         assert!(records_match_grid(&lat), "records drifted from the grid");
+    }
+
+    #[test]
+    fn an_obstacle_is_never_taken_and_never_moves() {
+        let mut lat = CpmLattice::new(60, 60, 30.0).unwrap();
+        lat.add_obstacle_disc(Pos2 { x: 30, y: 30 }, 5);
+        let cell = lat.add_cell(CellKind::Tumor, Pos2 { x: 30, y: 30 }, 12);
+        let obstacle_before: Vec<(usize, usize)> = (0..60)
+            .flat_map(|y| (0..60).map(move |x| (x, y)))
+            .filter(|&(x, y)| lat.grid[[y, x]] == OBSTACLE)
+            .collect();
+        assert!(!obstacle_before.is_empty());
+
+        // Hot and hungry: a high temperature and a target far above the volume
+        // are what would push a cell into anything it could take.
+        lat.set_volume_target(cell, Volume(2000), 50.0);
+        let mut rng = StdRng::seed_from_u64(11);
+        for _ in 0..300 {
+            lat.monte_carlo_step(&mut rng);
+        }
+
+        for (x, y) in &obstacle_before {
+            assert_eq!(lat.grid[[*y, *x]], OBSTACLE, "obstacle lost at ({x}, {y})");
+        }
+        assert!(records_match_grid(&lat));
+    }
+
+    #[test]
+    fn a_cell_placed_over_an_obstacle_wraps_around_it() {
+        let mut lat = CpmLattice::new(40, 40, 10.0).unwrap();
+        lat.add_obstacle_disc(Pos2 { x: 20, y: 20 }, 4);
+        let obstacle = lat.grid.iter().filter(|&&v| v == OBSTACLE).count() as u32;
+
+        let cell = lat.add_cell(CellKind::Tumor, Pos2 { x: 20, y: 20 }, 8);
+
+        let taken = lat.grid.iter().filter(|&&v| v != 0).count() as u32;
+        assert_eq!(lat.volume(cell).unwrap().0, taken - obstacle);
+        assert!(records_match_grid(&lat));
+    }
+
+    #[test]
+    fn a_cell_aiming_at_nothing_shrinks_to_nothing() {
+        // What resorption relies on: a target of zero drains a cell pixel by
+        // pixel until none is left, and the record says so.
+        let mut lat = CpmLattice::new(50, 50, 10.0).unwrap();
+        let cell = lat.add_cell(CellKind::Necrotic, Pos2 { x: 25, y: 25 }, 6);
+        lat.set_volume_target(cell, Volume(0), 50.0);
+        let mut rng = StdRng::seed_from_u64(5);
+
+        for _ in 0..200 {
+            lat.monte_carlo_step(&mut rng);
+        }
+
+        assert_eq!(lat.volume(cell), Some(Volume(0)));
+        assert!(
+            lat.grid.iter().all(|&v| v != cell.0),
+            "pixels outlived the record"
+        );
+        assert!(records_match_grid(&lat));
+    }
+
+    #[test]
+    fn a_gone_cell_stays_gone_while_another_grows_through_its_old_place() {
+        let mut lat = CpmLattice::new(50, 50, 10.0).unwrap();
+        let gone = lat.add_cell(CellKind::Necrotic, Pos2 { x: 20, y: 25 }, 5);
+        let alive = lat.add_cell(CellKind::Tumor, Pos2 { x: 32, y: 25 }, 5);
+        lat.set_volume_target(gone, Volume(0), 50.0);
+        lat.set_volume_target(alive, Volume(400), 50.0);
+        let mut rng = StdRng::seed_from_u64(9);
+
+        for _ in 0..400 {
+            lat.monte_carlo_step(&mut rng);
+        }
+
+        assert_eq!(lat.volume(gone), Some(Volume(0)));
+        assert!(
+            lat.volume(alive).unwrap().0 > 200,
+            "the living cell should have spread"
+        );
+        assert!(records_match_grid(&lat));
     }
 }

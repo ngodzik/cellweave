@@ -1,0 +1,16 @@
+# A single cell in a bath grows into a spheroid and starves from the inside.
+#
+# This is the default configuration, written out. The bath holds the medium
+# around the tissue at full oxygen, so the size of the grid is not a biological
+# parameter; the run stops the moment the tissue touches the edge of the box.
+
+width = 200
+height = 200
+mcs = 500
+temperature = 10.0
+snapshot_interval = 50
+output_dir = "output"
+oxygen_uptake = 0.0003
+
+[oxygen_source]
+kind = "bath"

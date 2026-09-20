@@ -55,14 +55,15 @@ Features will be added progressively, and this README will follow as they land.
 
 ## What works today
 
-- Builds clean, `cargo clippy -D warnings` passes, 44 tests green
+- Builds clean, `cargo clippy -D warnings` passes, 54 tests green
 - 2D lattice with Monte Carlo spin flips and a volume constraint, with the boundary term pinned by four tests whose values are computable by hand
 - RK4 solver for a small per-cell protein network, whose ERK level sets how large its cell tries to be. This is the upward half of the coupling, protein state driving mechanics
 - Cell division: a cell that grows past a threshold splits along a line through its centre of mass, and the daughter inherits a copy of the parent's network. One cell becomes a population
 - The downward half of the coupling: every lattice step, the oxygen field is relaxed to its steady state against the current layout of the cells, living cells take up oxygen where they sit, and each cell reads the mean over its own pixels into its network. Three clocks, field, network and cell cycle, are kept in the order biology has them, and a test pins the network's response time
 - Three fates from that reading: a cell proliferates, or goes quiescent when its hypoxia response is high, or dies when its survival signal collapses below the anoxia threshold. A necrotic cell holds its shape and stops consuming
-- A necrotic core appears in the middle of the population without any rule placing it there, at the same size and step on a 200 and a 300 pixel grid, so the box does not decide when the tissue starves. The run stops, and says so, the moment tissue touches the edge of the box, since past that point the box would be deciding what the tissue sees
-- Explicit finite-difference diffusion solver, supplied by a bath held against the surface of the tissue rather than at the edge of the grid, so the size of the simulated square is not a biological parameter. It reproduces the closed-form profile of a bathed disc, and refuses a time step the explicit scheme cannot take instead of diverging quietly
+- Two geometries, chosen in the configuration. In a **bath**, the medium around the tissue is held at full oxygen and a single cell grows into a spheroid that starves from the inside: a necrotic core appears without any rule placing it there, at the same size on a 200 and a 300 pixel grid. The run stops, and says so, the moment tissue touches the edge of the box. Around a **vessel**, an obstacle held at full oxygen with consuming stroma all around, the tissue grows into a tumour cord: living out to the depth diffusion can feed, dead beyond, the classic geometry of tumour hypoxia
+- Dead cells are resorbed, giving up their pixels over a few dozen steps until nothing is left. In the cord that makes births balance deaths: about forty living cells, one born every three steps, the same one dying, for as long as the run lasts, without ever nearing the edge of the box. That steady turnover is what an evolving population needs, and what a growing spheroid cannot offer
+- A diffusion field solved to its steady state every lattice step by projected successive over-relaxation, since oxygen equilibrates far faster than anything a cell does. Time stepping is kept for what needs it and refuses a step the explicit scheme cannot take. The field reproduces the closed-form profile of a bathed disc
 - TOML configuration, JSON snapshot output per saved step
 - CLI entry point
 
@@ -71,10 +72,9 @@ Features will be added progressively, and this README will follow as they land.
 Listed plainly, because a green test suite is not the same thing as correct physics.
 
 - **Only oxygen is coupled.** Growth factor is still a hardcoded input the same for every cell, and nothing is secreted, so VEGF is computed and goes nowhere.
-- **No parallelism.** `rayon` is declared as a dependency and unused.
-- **Dead cells never go away.** Nothing resorbs a necrotic cell, so the population is bounded by the box rather than by turnover, and the default grid is reached in about two hundred steps.
+- **No parallelism.** `rayon` is declared as a dependency and unused. Solving the field to equilibrium is now the dominant cost, about two hundred sweeps of the grid per lattice step once tissue is turning over, and it is embarrassingly parallel.
 - **No evolution.** Daughters are exact copies. Nothing varies, so nothing is selected.
-- **No calibration, no visualization.** Every constant is a placeholder: the uptake rate gives a viable rim about one cell thick where a real spheroid keeps several, and no unit of length or time has been fixed.
+- **No calibration, no visualization.** Every constant is a placeholder, and no unit of length or time has been fixed. The uptake rate is now a configuration value, but its two example values were chosen to make each geometry show its structure, not measured against anything.
 
 ## Building and running
 
@@ -84,14 +84,14 @@ Requires Rust 1.85 or newer, which is the minimum CI builds against.
 cargo build --release
 cargo test --workspace
 
-# Run with built-in defaults: 200x200 lattice, one tumor cell
-./target/release/cellweave --mcs 500
+# A spheroid in a bath, the default: one cell, 200x200, stops at the edge
+./target/release/cellweave --config examples/spheroid.toml
 
-# Or from a config file
-./target/release/cellweave --config sim.toml
+# A tumour cord around a vessel: steady turnover, runs as long as asked
+./target/release/cellweave --config examples/cord.toml --mcs 3000
 ```
 
-Snapshots are written as `output/snapshot_NNNNNN.json`. Two runs of the same configuration produce byte-identical snapshots, and CI checks that they still do.
+Snapshots are written as `output/snapshot_NNNNNN.json`, one per interval, listing every living cell with its kind, volume, protein state and the oxygen it sits in. Two runs of the same configuration produce byte-identical snapshots, and CI checks that they still do, for both geometries.
 
 ## Checks
 

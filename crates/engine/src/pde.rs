@@ -110,40 +110,114 @@ impl ScalarField {
         self.uptake.fill(0.0);
     }
 
-    /// Iterate until the field stops moving, and say how many steps it took.
+    /// Solve for the steady state directly, and say how many sweeps it took.
+    ///
+    /// This does not step forward in time. It sweeps the grid in a fixed order,
+    /// setting each pixel to the value that balances diffusion against decay,
+    /// source and uptake given its neighbours as they stand, pushed a little
+    /// past that value to hurry the slow modes along: successive over
+    /// relaxation, with the result floored at zero since tissue cannot take up
+    /// what is not there. Stepping in time would reach the same state, but the
+    /// slowest mode of a region of size L decays in about L² steps, where a
+    /// sweep like this needs about L.
     ///
     /// Converged means no pixel moved by more than `tolerance` over the last
-    /// step. Started from the previous layout's solution this takes a few dozen
-    /// steps; started cold it can take thousands, which is why `max_steps` is a
-    /// hard limit that turns a field which will not settle into an error rather
-    /// than a silent partial answer.
+    /// sweep. Pick it well below the uptake, since the per sweep change is what
+    /// has not yet been balanced. `max_sweeps` is a hard limit that turns a
+    /// field which will not settle into an error rather than a silent partial
+    /// answer.
+    ///
+    /// The time step is unused and kept so callers that switch between stepping
+    /// and relaxing keep the same shape; a steady state has no time step.
     ///
     /// # Errors
     ///
-    /// Whatever [`DiffusionField::step`] refuses, and [`CellweaveError::Simulation`]
-    /// when `max_steps` pass without convergence.
+    /// [`CellweaveError::Simulation`] when `max_sweeps` pass without convergence.
     pub fn relax(
         &mut self,
-        dt: TimeStep,
+        _dt: TimeStep,
         tolerance: f64,
-        max_steps: usize,
+        max_sweeps: usize,
     ) -> Result<usize, CellweaveError> {
-        for done in 1..=max_steps {
-            self.step(dt)?;
-            // After the swap, `next` holds the previous values.
-            let moved = self
-                .values
-                .iter()
-                .zip(&self.next)
-                .map(|(now, before)| (now - before).abs())
-                .fold(0.0_f64, f64::max);
+        // The optimal factor for a Poisson problem on an N by N grid is close to
+        // 2 / (1 + sin(π / N)); a little under it stays safe with the floor.
+        let n = f64::from(self.width.max(self.height));
+        let omega = (2.0 / (1.0 + (std::f64::consts::PI / n).sin())).min(1.95);
+
+        for done in 1..=max_sweeps {
+            let moved = self.sor_sweep(omega);
             if moved < tolerance {
                 return Ok(done);
             }
         }
         Err(CellweaveError::Simulation(format!(
-            "diffusion did not settle within {max_steps} steps at tolerance {tolerance}"
+            "diffusion did not settle within {max_sweeps} sweeps at tolerance {tolerance}"
         )))
+    }
+
+    /// One in place sweep, returning the largest change made to any pixel.
+    fn sor_sweep(&mut self, omega: f64) -> f64 {
+        let mut moved: f64 = 0.0;
+        for y in 0..self.height {
+            for x in 0..self.width {
+                let i = self.idx(x, y);
+                if self.held[i] {
+                    continue;
+                }
+                // Real neighbours only; a missing one at the wall is a mirror of
+                // this pixel, which the denominator accounts for.
+                let mut sum = 0.0;
+                let mut real = 0.0;
+                if x > 0 {
+                    sum += self.values[self.idx(x - 1, y)];
+                    real += 1.0;
+                }
+                if x + 1 < self.width {
+                    sum += self.values[self.idx(x + 1, y)];
+                    real += 1.0;
+                }
+                if y > 0 {
+                    sum += self.values[self.idx(x, y - 1)];
+                    real += 1.0;
+                }
+                if y + 1 < self.height {
+                    sum += self.values[self.idx(x, y + 1)];
+                    real += 1.0;
+                }
+                let balanced =
+                    (self.d * sum + self.source - self.uptake[i]) / (real * self.d + self.decay);
+                let before = self.values[i];
+                let after = ((1.0 - omega) * before + omega * balanced).max(0.0);
+                self.values[i] = after;
+                moved = moved.max((after - before).abs());
+            }
+        }
+        moved
+    }
+
+    /// Let go of every held pixel, before the sources are declared again.
+    ///
+    /// Holds accumulate, so that a bath and a vessel can coexist; the caller
+    /// releases once per step and declares what holds this time.
+    pub fn release_all(&mut self) {
+        self.held.fill(false);
+    }
+
+    /// Hold every pixel `is_source` names at `value`, regardless of where it is.
+    ///
+    /// This is a source with a fixed place: a vessel, a needle, a bead of agar.
+    /// Unlike [`ScalarField::hold_bath`] nothing has to reach it; it is held
+    /// because it is there.
+    pub fn hold_pixels(&mut self, value: f64, is_source: impl Fn(u32, u32) -> bool) {
+        for y in 0..self.height {
+            for x in 0..self.width {
+                if is_source(x, y) {
+                    let i = self.idx(x, y);
+                    self.held[i] = true;
+                    self.values[i] = value;
+                }
+            }
+        }
     }
 
     /// Hold every pixel a bath can reach at `value`.
@@ -151,6 +225,9 @@ impl ScalarField {
     /// `is_open` answers "can the bath occupy this pixel", which in practice means
     /// "is this pixel empty medium rather than tissue". Starting from the edge of
     /// the box, the bath spreads through open pixels and pins every one it reaches.
+    ///
+    /// Holds accumulate: call [`ScalarField::release_all`] first when the layout
+    /// has changed, or pixels that were bath and are now tissue stay held.
     ///
     /// Reachability is what makes this right rather than merely convenient. A
     /// pocket of medium walled in by cells, which is what a resorbed necrotic core
@@ -163,7 +240,6 @@ impl ScalarField {
     /// conservative reading of an ambiguous case: leaving a pocket unsupplied
     /// costs a little realism, leaking a source into the tissue costs the result.
     pub fn hold_bath(&mut self, value: f64, is_open: impl Fn(u32, u32) -> bool) {
-        self.held.fill(false);
         self.frontier.clear();
 
         let (last_x, last_y) = (self.width - 1, self.height - 1);
@@ -326,7 +402,7 @@ mod tests {
             }
         }
         field.hold_bath(1.0, &outside);
-        field.relax(TimeStep(1.0), 1e-7, 50_000).unwrap();
+        field.relax(TimeStep(1.0), 1e-11, 50_000).unwrap();
         field
     }
 
@@ -345,9 +421,12 @@ mod tests {
         let small = disc_centre(30, 6, 0.004);
         let large = disc_centre(60, 6, 0.004);
 
+        // Two grids mean two relaxation factors and two paths to the same
+        // fixed point, so they agree to the solver's tolerance, not bit for bit.
         assert!(
             (small - large).abs() < 1e-9,
-            "the box changed the answer: {small:.6} against {large:.6}"
+            "the box changed the answer: {small:.12} against {large:.12}, by {:e}",
+            (small - large).abs()
         );
         // Both guards keep the comparison from being vacuous: a disc that never
         // depletes, or one flattened against zero, would agree for the wrong
@@ -536,7 +615,7 @@ mod tests {
         let mut field = bathed_disc(30, 6, 0.004);
         let settled: Vec<f64> = (0..900).map(|i| field.values[i]).collect();
 
-        let more = field.relax(TimeStep(1.0), 1e-7, 50_000).unwrap();
+        let more = field.relax(TimeStep(1.0), 1e-11, 50_000).unwrap();
 
         // Already settled: one step confirms it, and nothing moved.
         assert_eq!(more, 1);
@@ -597,6 +676,81 @@ mod tests {
         assert!(
             (field.concentration_at(15, 15) - 1.0).abs() < 1e-5,
             "with no sink and a bath at 1.0 the centre must return to 1.0"
+        );
+    }
+
+    #[test]
+    fn a_held_vessel_supplies_from_the_inside_out() {
+        // No bath at the edge, a source in the middle, tissue draining all
+        // around it: concentration must fall with distance from the source,
+        // and the far corner, sealed from any bath, must be nearly empty.
+        let mut field = ScalarField::new(60, 60, D, 0.0, 0.0).unwrap();
+        let vessel = |x: u32, y: u32| {
+            let (dx, dy) = (i64::from(x) - 30, i64::from(y) - 30);
+            dx * dx + dy * dy <= 9
+        };
+        for y in 0..60 {
+            for x in 0..60 {
+                if !vessel(x, y) {
+                    field.set_uptake(x, y, 0.002);
+                }
+            }
+        }
+        field.hold_pixels(1.0, vessel);
+        field.relax(TimeStep(1.0), 1e-7, 50_000).unwrap();
+
+        let at = |r: u32| field.concentration_at(30 + r, 30);
+        assert_eq!(at(0), 1.0);
+        assert!(
+            at(5) > at(10) && at(10) > at(15),
+            "not falling with distance"
+        );
+        assert!(
+            field.concentration_at(1, 1) < 0.01,
+            "the far corner should be starved"
+        );
+    }
+
+    #[test]
+    fn releasing_lets_a_former_bath_pixel_move_again() {
+        let mut field = ScalarField::new(20, 20, D, 0.0, 1.0).unwrap();
+        field.hold_bath(1.0, |_, _| true);
+        for y in 0..20 {
+            for x in 0..20 {
+                field.set_uptake(x, y, 0.01);
+            }
+        }
+        field.step(TimeStep(1.0)).unwrap();
+        assert_eq!(
+            field.concentration_at(10, 10),
+            1.0,
+            "held, so it must not move"
+        );
+
+        field.release_all();
+        field.step(TimeStep(1.0)).unwrap();
+
+        assert!(
+            field.concentration_at(10, 10) < 1.0,
+            "released, so the sink acts"
+        );
+    }
+
+    #[test]
+    fn a_bath_and_a_vessel_can_hold_at_once() {
+        let mut field = ScalarField::new(30, 30, D, 0.0, 0.0).unwrap();
+        let tissue = |x: u32, y: u32| (5..25).contains(&x) && (5..25).contains(&y);
+        let vessel = |x: u32, y: u32| x == 15 && y == 15;
+
+        field.hold_bath(1.0, |x, y| !tissue(x, y));
+        field.hold_pixels(0.5, vessel);
+
+        assert_eq!(field.concentration_at(0, 0), 1.0);
+        assert_eq!(field.concentration_at(15, 15), 0.5);
+        assert_eq!(
+            field.concentration_at(10, 10),
+            0.0,
+            "tissue is held by neither"
         );
     }
 }
