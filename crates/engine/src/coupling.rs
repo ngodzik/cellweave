@@ -6,7 +6,7 @@
 //! the cells take up and where the bath can reach go down into the field, and
 //! what each cell sits in comes back up, ready to be handed to its network.
 
-use crate::cpm::CpmLattice;
+use crate::cpm::{CpmLattice, OBSTACLE};
 use crate::pde::ScalarField;
 use cellweave_core::{CellKind, DiffusionField};
 
@@ -25,6 +25,9 @@ pub fn apply_uptake(field: &mut ScalarField, lattice: &CpmLattice, rate: f64) {
     for y in 0..h {
         for x in 0..w {
             let id = lattice.occupant(x, y);
+            if id == 0 || id == OBSTACLE {
+                continue;
+            }
             let alive = lattice
                 .cell_kind(cellweave_core::CellId(id))
                 .is_some_and(consumes);
@@ -33,6 +36,32 @@ pub fn apply_uptake(field: &mut ScalarField, lattice: &CpmLattice, rate: f64) {
             }
         }
     }
+}
+
+/// Make every medium pixel a sink of `rate` as well.
+///
+/// Around a vessel there is no empty liquid; there is stroma, ordinary tissue
+/// that consumes too. Without this the medium beyond the tumour would fill up
+/// from the vessel and hand oxygen back to cells that should be starving. Call
+/// after [`apply_uptake`], which clears the sinks first.
+pub fn apply_background_uptake(field: &mut ScalarField, lattice: &CpmLattice, rate: f64) {
+    let (w, h) = lattice.dims();
+    for y in 0..h {
+        for x in 0..w {
+            if lattice.occupant(x, y) == 0 {
+                field.set_uptake(x, y, rate);
+            }
+        }
+    }
+}
+
+/// Hold every obstacle pixel at `value`, which makes the obstacle a source.
+///
+/// A vessel is an obstacle that emits: cells cannot enter it, and it keeps the
+/// oxygen at its wall at a fixed level. This is the geometry of a tumour cord,
+/// tissue living around a capillary out to the depth diffusion can feed.
+pub fn hold_obstacles_at(field: &mut ScalarField, lattice: &CpmLattice, value: f64) {
+    field.hold_pixels(value, |x, y| lattice.occupant(x, y) == OBSTACLE);
 }
 
 /// Hold the medium the bath can reach at `value`.
@@ -54,8 +83,12 @@ pub fn mean_per_cell(field: &ScalarField, lattice: &CpmLattice) -> Vec<f64> {
     let (w, h) = lattice.dims();
     for y in 0..h {
         for x in 0..w {
-            let id = lattice.occupant(x, y) as usize;
-            if id != 0 && id < n {
+            let id = lattice.occupant(x, y);
+            if id == 0 || id == OBSTACLE {
+                continue;
+            }
+            let id = id as usize;
+            if id < n {
                 sum[id] += field.concentration_at(x, y);
                 count[id] += 1;
             }
@@ -140,5 +173,27 @@ mod tests {
         assert_eq!(o2.len(), lat.cell_count() + 1);
         assert_eq!(o2[0], 0.0);
         assert!(o2[1..].iter().all(|c| *c > 0.0 && *c <= 1.0));
+    }
+
+    #[test]
+    fn a_vessel_feeds_the_cell_beside_it_and_not_the_one_far_away() {
+        let mut lat = CpmLattice::new(80, 80, 10.0).unwrap();
+        lat.add_obstacle_disc(Pos2 { x: 40, y: 40 }, 4);
+        let near = lat.add_cell(CellKind::Tumor, Pos2 { x: 50, y: 40 }, 5);
+        let far = lat.add_cell(CellKind::Tumor, Pos2 { x: 70, y: 40 }, 5);
+
+        let mut field = ScalarField::new(80, 80, 0.2, 0.0, 0.0).unwrap();
+        apply_uptake(&mut field, &lat, 0.003);
+        hold_obstacles_at(&mut field, &lat, 1.0);
+        field.relax(TimeStep(1.0), 1e-7, 50_000).unwrap();
+
+        let o2 = mean_per_cell(&field, &lat);
+        let (n, f) = (o2[near.0 as usize], o2[far.0 as usize]);
+        assert!(
+            n > f + 0.1,
+            "near {n:.3} should read far more than far {f:.3}"
+        );
+        // The obstacle itself has no entry to read.
+        assert_eq!(o2.len(), lat.cell_count() + 1);
     }
 }

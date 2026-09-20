@@ -13,11 +13,13 @@ use anyhow::{Context, Result};
 use cellweave_core::traits::SignalingNetwork;
 use cellweave_core::traits::SimOutput;
 use cellweave_core::{
-    CellId, CellInputs, CellKind, Concentration, DiffusionField, Pos2, SimSnapshot, TimeStep,
+    CellId, CellInputs, CellKind, Concentration, Pos2, SimSnapshot, TimeStep, Volume,
 };
-use cellweave_engine::coupling::{apply_uptake, hold_medium_bath, mean_per_cell};
+use cellweave_engine::coupling::{
+    apply_background_uptake, apply_uptake, hold_medium_bath, hold_obstacles_at, mean_per_cell,
+};
 use cellweave_engine::{CpmLattice, RasErkNetwork, ScalarField};
-use cellweave_io::{JsonOutput, SimConfig};
+use cellweave_io::{JsonOutput, OxygenSource, SimConfig};
 use rand::rngs::StdRng;
 use rand::{RngExt, SeedableRng};
 
@@ -36,21 +38,26 @@ const MAX_CELLS: usize = 2000;
 /// Oxygen diffusion coefficient, in pixels squared per unit time.
 const OXYGEN_DIFFUSION: f64 = 0.2;
 
-/// What one living pixel takes up per unit time, as a fraction of the bath.
+/// The field is relaxed until no pixel moves by more than this fraction of the
+/// uptake per step.
 ///
-/// With the bath at 1.0 this sets how deep a tissue can be before its middle
-/// starves: a bathed disc of radius R sits q R² / (4 D) below the surface at
-/// its centre, so with D = 0.2 the centre reaches the death level near R = 50
-/// pixels, about thirty cells. Not calibrated. A real spheroid keeps a viable
-/// rim several cells thick; this value gives about one, and a lower one would
-/// push the core past the edge of the default grid before it forms.
-const OXYGEN_UPTAKE: f64 = 0.0003;
-
-/// The field is relaxed until no pixel moves by more than this per step.
-const OXYGEN_TOLERANCE: f64 = 1e-4;
+/// Relative on purpose: the per step change is what diffusion has not yet
+/// balanced against the uptake, so a tolerance above the uptake itself would
+/// declare the field settled without having balanced anything.
+const OXYGEN_TOLERANCE: f64 = 0.01;
 
 /// Give up on relaxing the field after this many steps, loudly.
 const OXYGEN_MAX_STEPS: usize = 20_000;
+
+/// Before the first step the field is solved from scratch, and a per-step
+/// tolerance is a poor guard against a slow front creeping out from a small
+/// source: each step moves less than the tolerance while the total drifts for
+/// hundreds of steps. Once, at the start, the field is settled far more
+/// tightly so that every later step is an increment on a true equilibrium.
+const OXYGEN_WARMUP_TOLERANCE: f64 = 1e-8;
+
+/// And it is allowed to take its time doing so.
+const OXYGEN_WARMUP_MAX_STEPS: usize = 2_000_000;
 
 /// Units of network time that pass in one lattice step, taken in sub steps of
 /// one unit each so the RK4 scheme stays well inside its stability limit.
@@ -70,6 +77,12 @@ const DEATH_THRESHOLD: f64 = 0.25;
 
 /// Hypoxia response above which a cell stops dividing while staying alive.
 const QUIESCENCE_THRESHOLD: f64 = 0.45;
+
+/// Pixels a necrotic cell gives up per lattice step until nothing is left.
+///
+/// Dead tissue is cleared, slowly, and its place taken by whatever grows into
+/// it. Without this a tumour is bounded by its box; with it, by turnover.
+const RESORPTION_RATE: u32 = 2;
 
 fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
@@ -100,46 +113,80 @@ fn main() -> Result<()> {
 
 fn run(config: SimConfig) -> Result<()> {
     eprintln!(
-        "cellweave | grid {}×{} | {} MCS | output → {}",
-        config.width, config.height, config.mcs, config.output_dir
+        "cellweave | grid {}×{} | {} MCS | {:?} | output → {}",
+        config.width, config.height, config.mcs, config.oxygen_source, config.output_dir
     );
 
     let mut output = JsonOutput::new(&config.output_dir).context("creating output directory")?;
 
-    // Build the CPM lattice.
     let mut lattice = CpmLattice::new(config.width, config.height, config.temperature)
         .map_err(|e| anyhow::anyhow!("{e}"))?;
-
-    // Seed one tumor cell at the centre.
     let cx = config.width / 2;
     let cy = config.height / 2;
-    let first = lattice.add_cell(CellKind::Tumor, Pos2 { x: cx, y: cy }, 8);
+
+    // Where the oxygen comes from decides where the first cell goes: at the
+    // centre of a bath, or against the wall of a vessel.
+    let first = match config.oxygen_source {
+        OxygenSource::Bath => lattice.add_cell(CellKind::Tumor, Pos2 { x: cx, y: cy }, 8),
+        OxygenSource::Vessel { radius } => {
+            lattice.add_obstacle_disc(Pos2 { x: cx, y: cy }, radius);
+            lattice.add_cell(
+                CellKind::Tumor,
+                Pos2 {
+                    x: cx + radius + 8,
+                    y: cy,
+                },
+                8,
+            )
+        }
+    };
     let newborn_volume = lattice.volume(first).map_or(0, |v| v.0);
 
-    // One ODE network per cell. Identifier `i + 1` names the cell whose network
-    // sits at index `i`, which holds as long as a daughter network is pushed
-    // exactly when a daughter cell is created.
-    let mut networks: Vec<RasErkNetwork> = vec![RasErkNetwork::new(newborn_volume)];
+    // One network per cell, or None once the cell is gone. Identifier `i + 1`
+    // names the cell whose slot is `i`, which holds as long as a daughter slot is
+    // pushed exactly when a daughter cell is created.
+    let mut networks: Vec<Option<RasErkNetwork>> = vec![Some(RasErkNetwork::new(newborn_volume))];
 
-    // Oxygen, full everywhere to start with, bathed wherever no cell sits.
-    let mut oxygen = ScalarField::new(config.width, config.height, OXYGEN_DIFFUSION, 0.0, 1.0)
+    let initial = match config.oxygen_source {
+        OxygenSource::Bath => 1.0,
+        OxygenSource::Vessel { .. } => 0.0,
+    };
+    let mut oxygen = ScalarField::new(config.width, config.height, OXYGEN_DIFFUSION, 0.0, initial)
         .map_err(|e| anyhow::anyhow!("{e}"))?;
 
     let mut rng = StdRng::seed_from_u64(42);
+    let mut born = 1u64;
+    let mut gone = 0u64;
+
+    // Solve the field from scratch once, tightly, so the loop below only ever
+    // has to nudge an equilibrium.
+    declare_sources(&mut oxygen, &lattice, &config);
+    let warmup = oxygen
+        .relax(
+            TimeStep(1.0),
+            OXYGEN_WARMUP_TOLERANCE,
+            OXYGEN_WARMUP_MAX_STEPS,
+        )
+        .map_err(|e| anyhow::anyhow!("settling the initial field: {e}"))?;
+    eprintln!("  initial field settled in {warmup} steps");
 
     for mcs in 0..config.mcs {
         // 1. Downward coupling: the field settles against the current layout of
         //    the cells, and each cell reads the oxygen where it actually sits.
-        apply_uptake(&mut oxygen, &lattice, OXYGEN_UPTAKE);
-        hold_medium_bath(&mut oxygen, &lattice, 1.0);
+        declare_sources(&mut oxygen, &lattice, &config);
         let relax_steps = oxygen
-            .relax(TimeStep(1.0), OXYGEN_TOLERANCE, OXYGEN_MAX_STEPS)
+            .relax(
+                TimeStep(1.0),
+                OXYGEN_TOLERANCE * config.oxygen_uptake,
+                OXYGEN_MAX_STEPS,
+            )
             .map_err(|e| anyhow::anyhow!("at MCS {mcs}: {e}"))?;
         let local_o2 = mean_per_cell(&oxygen, &lattice);
 
         // 2. Advance every living network by NETWORK_TIME_PER_MCS units of its
         //    time. A dead cell's network is frozen where it stopped.
-        for (i, net) in networks.iter_mut().enumerate() {
+        for (i, slot) in networks.iter_mut().enumerate() {
+            let Some(net) = slot else { continue };
             if lattice.cell_kind(cell_of(i)) == Some(CellKind::Necrotic) {
                 continue;
             }
@@ -154,18 +201,26 @@ fn run(config: SimConfig) -> Result<()> {
             }
         }
 
-        // 3. Fate and upward coupling: a cell whose survival collapsed is
-        //    necrotic and holds its shape; every other cell's network decides
-        //    how large it tries to be.
-        for (i, net) in networks.iter().enumerate() {
+        // 3. Fate and upward coupling. A necrotic cell gives up pixels until
+        //    none is left, and is then gone for good; a cell whose survival just
+        //    collapsed becomes necrotic; every other cell's network decides how
+        //    large it tries to be.
+        for (i, slot) in networks.iter_mut().enumerate() {
             let id = cell_of(i);
+            let Some(net) = slot else { continue };
             match lattice.cell_kind(id) {
-                Some(CellKind::Necrotic) => {}
+                Some(CellKind::Necrotic) => {
+                    let volume = lattice.volume(id).map_or(0, |v| v.0);
+                    if volume == 0 {
+                        *slot = None;
+                        gone += 1;
+                    } else {
+                        let target = Volume(volume.saturating_sub(RESORPTION_RATE));
+                        lattice.set_volume_target(id, target, net.mechanics().lambda_volume);
+                    }
+                }
                 Some(_) if net.survival() < DEATH_THRESHOLD => {
                     lattice.set_kind(id, CellKind::Necrotic);
-                    if let Some(v) = lattice.volume(id) {
-                        lattice.set_volume_target(id, v, net.mechanics().lambda_volume);
-                    }
                 }
                 Some(_) => {
                     let m = net.mechanics();
@@ -178,18 +233,16 @@ fn run(config: SimConfig) -> Result<()> {
         // 4. Advance CPM.
         lattice.monte_carlo_step(&mut rng);
 
-        // The bath is defined by what it can reach from the edge of the box. The
-        // moment tissue touches that edge, the box is deciding what the tissue
-        // sees, and everything after this point would be an artefact of its
-        // size. Stop, and say so.
+        // The bath is defined by what it can reach from the edge of the box, and
+        // a cord should never get near it. The moment tissue touches that edge,
+        // the box is deciding what the tissue sees, and everything after this
+        // point would be an artefact of its size. Stop, and say so.
         if touches_the_edge(&lattice) {
-            // The state at contact is the largest tissue this run will ever
-            // hold; write it even off the snapshot interval.
             write_snapshot(&mut output, mcs, &lattice, &networks, &oxygen)?;
             eprintln!(
-                "stopped early: tissue reached the edge of the box at MCS {mcs} with {} cells. \
+                "stopped early: tissue reached the edge of the box at MCS {mcs} with {} living cells. \
                  Results up to here are valid; to go further, use a larger grid.",
-                networks.len()
+                living(&lattice)
             );
             break;
         }
@@ -197,23 +250,21 @@ fn run(config: SimConfig) -> Result<()> {
         // 5. Cells that have grown enough, and are not too short of oxygen to
         //    cycle, split in two.
         if mcs % DIVISION_CHECK_EVERY == 0 && networks.len() < MAX_CELLS {
-            divide_ready_cells(&mut lattice, &mut networks, &mut rng);
+            born += divide_ready_cells(&mut lattice, &mut networks, &mut rng);
         }
 
-        // 6. Save snapshot at requested interval. Daughters born this step have
-        //    not read the field yet; dividing only relabels pixels, so reading it
-        //    again against the new layout is exact.
+        // 6. Save snapshot at requested interval.
         if mcs % config.snapshot_interval == 0 {
             write_snapshot(&mut output, mcs, &lattice, &networks, &oxygen)?;
 
             let necrotic = lattice
                 .cell_records()
-                .filter(|(_, r)| r.kind == CellKind::Necrotic)
+                .filter(|(_, r)| r.kind == CellKind::Necrotic && r.volume.0 > 0)
                 .count();
             eprintln!(
-                "  MCS {mcs:5} | cells {:4} | necrotic {necrotic:4} | centre O2 {:.3} | field settled in {relax_steps:4} steps",
-                networks.len(),
-                oxygen.concentration_at(cx, cy)
+                "  MCS {mcs:5} | living {:4} | necrotic {necrotic:4} | born {born:5} | gone {gone:5} | O2 at first {:.3} | settled {relax_steps:4}",
+                living(&lattice),
+                local_o2.get(first.0 as usize).copied().unwrap_or(0.0)
             );
         }
     }
@@ -223,13 +274,38 @@ fn run(config: SimConfig) -> Result<()> {
     Ok(())
 }
 
-/// The cell whose network sits at index `i`. Identifier 0 is the medium.
+/// Tell the field who consumes and who supplies, from the current layout.
+///
+/// Around a bath, living cells consume and the medium the bath can reach is
+/// held full. Around a vessel there is no empty liquid but stroma, so the
+/// medium consumes too, and the vessel wall is what is held.
+fn declare_sources(oxygen: &mut ScalarField, lattice: &CpmLattice, config: &SimConfig) {
+    apply_uptake(oxygen, lattice, config.oxygen_uptake);
+    oxygen.release_all();
+    match config.oxygen_source {
+        OxygenSource::Bath => hold_medium_bath(oxygen, lattice, 1.0),
+        OxygenSource::Vessel { .. } => {
+            apply_background_uptake(oxygen, lattice, config.oxygen_uptake);
+            hold_obstacles_at(oxygen, lattice, 1.0);
+        }
+    }
+}
+
+/// The cell whose slot is `i`. Identifier 0 is the medium.
 fn cell_of(i: usize) -> CellId {
     CellId(i as u32 + 1)
 }
 
+/// Cells that are alive: not necrotic, and still holding pixels.
+fn living(lattice: &CpmLattice) -> usize {
+    lattice
+        .cell_records()
+        .filter(|(_, r)| r.kind != CellKind::Necrotic && r.volume.0 > 0)
+        .count()
+}
+
 /// Split every tumor cell that has grown past the division threshold and is
-/// still cycling.
+/// still cycling, and say how many daughters were born.
 ///
 /// Hypoxia arrests the cell cycle long before it kills: a cell whose hypoxia
 /// response is high is quiescent, alive and holding its place, but not
@@ -240,12 +316,13 @@ fn cell_of(i: usize) -> CellId {
 /// crowd of identical newborns.
 fn divide_ready_cells(
     lattice: &mut CpmLattice,
-    networks: &mut Vec<RasErkNetwork>,
+    networks: &mut Vec<Option<RasErkNetwork>>,
     rng: &mut StdRng,
-) {
+) -> u64 {
     let ready: Vec<usize> = networks
         .iter()
         .enumerate()
+        .filter_map(|(i, slot)| slot.as_ref().map(|net| (i, net)))
         .filter(|(i, net)| {
             let id = cell_of(*i);
             let threshold = DIVISION_RATIO * f64::from(net.base_target_volume());
@@ -258,6 +335,7 @@ fn divide_ready_cells(
         .map(|(i, _)| i)
         .collect();
 
+    let mut born = 0;
     for i in ready {
         if networks.len() >= MAX_CELLS {
             break;
@@ -266,6 +344,7 @@ fn divide_ready_cells(
         if lattice.divide(cell_of(i), angle).is_some() {
             let daughter = networks[i].clone();
             networks.push(daughter);
+            born += 1;
         }
     }
 
@@ -275,38 +354,47 @@ fn divide_ready_cells(
     assert_eq!(
         networks.len(),
         lattice.cell_count(),
-        "one network per cell: the lattice and the network list have diverged"
+        "one slot per cell: the lattice and the network list have diverged"
     );
+    born
 }
 
 /// Whether any cell occupies a pixel on the edge of the box.
 fn touches_the_edge(lattice: &CpmLattice) -> bool {
     let (w, h) = lattice.dims();
-    (0..w).any(|x| lattice.occupant(x, 0) != 0 || lattice.occupant(x, h - 1) != 0)
-        || (0..h).any(|y| lattice.occupant(0, y) != 0 || lattice.occupant(w - 1, y) != 0)
+    let is_cell = |x: u32, y: u32| {
+        let id = lattice.occupant(x, y);
+        id != 0 && id != cellweave_engine::cpm::OBSTACLE
+    };
+    (0..w).any(|x| is_cell(x, 0) || is_cell(x, h - 1))
+        || (0..h).any(|y| is_cell(0, y) || is_cell(w - 1, y))
 }
 
-/// Record every cell as it stands, with the oxygen it sits in.
+/// Record every cell still holding pixels, with the oxygen it sits in.
 ///
 /// Daughters born this step have not read the field yet; dividing only relabels
-/// pixels, so reading the field again against the current layout is exact.
+/// pixels, so reading the field again against the current layout is exact. A
+/// cell that is gone has nothing left to record.
 fn write_snapshot(
     output: &mut JsonOutput,
     mcs: u64,
     lattice: &CpmLattice,
-    networks: &[RasErkNetwork],
+    networks: &[Option<RasErkNetwork>],
     oxygen: &ScalarField,
 ) -> Result<()> {
     let local_o2 = mean_per_cell(oxygen, lattice);
     let cells = lattice
         .cell_records()
         .zip(networks.iter())
-        .map(|((id, rec), net)| cellweave_core::CellSnapshot {
-            id,
-            kind: rec.kind,
-            volume: rec.volume,
-            proteins: net.state().clone(),
-            oxygen: Concentration(local_o2[id.0 as usize]),
+        .filter_map(|((id, rec), slot)| {
+            let net = slot.as_ref()?;
+            (rec.volume.0 > 0).then(|| cellweave_core::CellSnapshot {
+                id,
+                kind: rec.kind,
+                volume: rec.volume,
+                proteins: net.state().clone(),
+                oxygen: Concentration(local_o2[id.0 as usize]),
+            })
         })
         .collect();
     output

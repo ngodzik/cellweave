@@ -1,0 +1,19 @@
+# A tumour cord: tissue living around a vessel, out to the depth diffusion can
+# feed, dying beyond it and resorbed. Births balance deaths, the cord keeps its
+# thickness, and the run can go on indefinitely.
+#
+# The uptake is a tenth of the spheroid's. A bathed disc is fed from its whole
+# perimeter; a vessel is a small circle whose flux thins out with distance, so
+# the same uptake would give a cord one cell thick.
+
+width = 200
+height = 200
+mcs = 3000
+temperature = 10.0
+snapshot_interval = 50
+output_dir = "output-cord"
+oxygen_uptake = 0.00003
+
+[oxygen_source]
+kind = "vessel"
+radius = 6
