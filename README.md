@@ -144,6 +144,10 @@ An arrow reads "depends on". Cargo refuses the reverse, so a layering mistake is
 
 There is no AI or MCP dependency inside cellweave. External tools connect through the CLI. See [CLAUDE.md](CLAUDE.md) for coding rules.
 
+## The course
+
+[docs/](docs/README.md) explains what the program simulates from the biology up: what each thing is in the body, what cellweave makes of it, which choices were made and why, where in the code it lives, and what is still a placeholder. It is kept in step with the code: a change to the model is not finished until the chapter that describes it says the new thing.
+
 ## License
 
 MIT. See [LICENSE](LICENSE).

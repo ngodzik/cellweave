@@ -10,6 +10,10 @@
 
 **Never hard-wrap prose at a fixed column.** One paragraph is one line, one bullet is one line. Soft wrapping is the job of the renderer and the editor, and a fixed column makes every later edit reflow a whole block for nothing. Fenced blocks, mermaid diagrams and table rows keep their own line structure.
 
+## The course
+
+`docs/` is a course that follows the software, chapter by chapter, from the biology up. A pull request that changes the model, a mechanism, a constant with a stated reason, or a scenario, is not finished until the chapter that describes it says the new thing. Every symbol the course names must exist in the code; check with grep before committing. Define every acronym and protein name at its first appearance in a chapter.
+
 ## Architecture
 
 Separation of concerns is **enforced by the crate dependency graph**, not by convention. The compiler refuses inverted dependencies.
