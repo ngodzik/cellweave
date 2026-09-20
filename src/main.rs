@@ -137,8 +137,8 @@ fn run(config: SimConfig) -> Result<()> {
             .map_err(|e| anyhow::anyhow!("at MCS {mcs}: {e}"))?;
         let local_o2 = mean_per_cell(&oxygen, &lattice);
 
-        // 2. Advance every living network by one unit of time. A dead cell's
-        //    network is frozen where it stopped.
+        // 2. Advance every living network by NETWORK_TIME_PER_MCS units of its
+        //    time. A dead cell's network is frozen where it stopped.
         for (i, net) in networks.iter_mut().enumerate() {
             if lattice.cell_kind(cell_of(i)) == Some(CellKind::Necrotic) {
                 continue;
@@ -183,6 +183,9 @@ fn run(config: SimConfig) -> Result<()> {
         // sees, and everything after this point would be an artefact of its
         // size. Stop, and say so.
         if touches_the_edge(&lattice) {
+            // The state at contact is the largest tissue this run will ever
+            // hold; write it even off the snapshot interval.
+            write_snapshot(&mut output, mcs, &lattice, &networks, &oxygen)?;
             eprintln!(
                 "stopped early: tissue reached the edge of the box at MCS {mcs} with {} cells. \
                  Results up to here are valid; to go further, use a larger grid.",
@@ -201,23 +204,7 @@ fn run(config: SimConfig) -> Result<()> {
         //    not read the field yet; dividing only relabels pixels, so reading it
         //    again against the new layout is exact.
         if mcs % config.snapshot_interval == 0 {
-            let local_o2 = mean_per_cell(&oxygen, &lattice);
-            let cells = lattice
-                .cell_records()
-                .zip(networks.iter())
-                .map(|((id, rec), net)| cellweave_core::CellSnapshot {
-                    id,
-                    kind: rec.kind,
-                    volume: rec.volume,
-                    proteins: net.state().clone(),
-                    oxygen: Concentration(local_o2[id.0 as usize]),
-                })
-                .collect();
-
-            let snapshot = SimSnapshot { mcs, cells };
-            output
-                .write_snapshot(&snapshot)
-                .map_err(|e| anyhow::anyhow!("{e}"))?;
+            write_snapshot(&mut output, mcs, &lattice, &networks, &oxygen)?;
 
             let necrotic = lattice
                 .cell_records()
@@ -297,4 +284,32 @@ fn touches_the_edge(lattice: &CpmLattice) -> bool {
     let (w, h) = lattice.dims();
     (0..w).any(|x| lattice.occupant(x, 0) != 0 || lattice.occupant(x, h - 1) != 0)
         || (0..h).any(|y| lattice.occupant(0, y) != 0 || lattice.occupant(w - 1, y) != 0)
+}
+
+/// Record every cell as it stands, with the oxygen it sits in.
+///
+/// Daughters born this step have not read the field yet; dividing only relabels
+/// pixels, so reading the field again against the current layout is exact.
+fn write_snapshot(
+    output: &mut JsonOutput,
+    mcs: u64,
+    lattice: &CpmLattice,
+    networks: &[RasErkNetwork],
+    oxygen: &ScalarField,
+) -> Result<()> {
+    let local_o2 = mean_per_cell(oxygen, lattice);
+    let cells = lattice
+        .cell_records()
+        .zip(networks.iter())
+        .map(|((id, rec), net)| cellweave_core::CellSnapshot {
+            id,
+            kind: rec.kind,
+            volume: rec.volume,
+            proteins: net.state().clone(),
+            oxygen: Concentration(local_o2[id.0 as usize]),
+        })
+        .collect();
+    output
+        .write_snapshot(&SimSnapshot { mcs, cells })
+        .map_err(|e| anyhow::anyhow!("{e}"))
 }
