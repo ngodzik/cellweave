@@ -178,4 +178,13 @@ fn divide_ready_cells(
             networks.push(daughter);
         }
     }
+
+    // Kept as a hard assertion rather than a comment: were the two to drift, a
+    // network would quietly drive the wrong cell and every result after that
+    // would be wrong without a single test failing.
+    assert_eq!(
+        networks.len(),
+        lattice.cell_count(),
+        "one network per cell: the lattice and the network list have diverged"
+    );
 }
