@@ -331,6 +331,33 @@ impl CpmLattice {
         self.cells.get(id.0 as usize).map(|r| r.kind)
     }
 
+    /// Change a cell's kind, for instance when it dies.
+    ///
+    /// The medium and unknown identifiers are ignored.
+    pub fn set_kind(&mut self, id: CellId, kind: CellKind) {
+        if id.0 == 0 {
+            return;
+        }
+        if let Some(r) = self.cells.get_mut(id.0 as usize) {
+            r.kind = kind;
+        }
+    }
+
+    /// The identifier occupying one pixel, 0 for medium.
+    ///
+    /// Coordinates outside the grid read as medium.
+    pub fn occupant(&self, x: u32, y: u32) -> u32 {
+        if x >= self.width || y >= self.height {
+            return 0;
+        }
+        self.grid[[y as usize, x as usize]]
+    }
+
+    /// Width and height.
+    pub fn dims(&self) -> (u32, u32) {
+        (self.width, self.height)
+    }
+
     /// Apply the volume parameters a cell's signaling network asks for.
     ///
     /// This is the upward half of the coupling: protein state decides how large a

@@ -13,6 +13,22 @@ use cellweave_core::{
 
 const N_PROTEINS: usize = 5;
 
+/// Oxygen, as a fraction of the bath, below which a cell can no longer make
+/// enough energy and starts taking damage.
+///
+/// Necrosis is not a decision the cell takes, it is a failure: below a critical
+/// oxygen level oxidative metabolism stops, ATP falls, and membranes give way.
+/// No survival programme rescues that, which is why the damage term below acts
+/// on BCL2 directly and is not offset by HIF-1α.
+const ANOXIA_THRESHOLD: f64 = 0.15;
+
+/// How fast survival collapses at zero oxygen.
+///
+/// Set so that the steady state of BCL2 crosses the usual death threshold of
+/// 0.25 around 5% of the bath, and stays intact above 10%: at 5%, anoxia is
+/// 0.67 and 0.25 x 0.67 outweighs what ERK and HIF-1α feed in.
+const ANOXIA_DAMAGE: f64 = 0.25;
+
 // Protein indices.
 const RAS: usize = 0;
 const ERK: usize = 1;
@@ -58,6 +74,18 @@ impl RasErkNetwork {
         self.base_target_volume
     }
 
+    /// The survival signal, BCL2. A cell whose survival collapses is necrotic.
+    pub fn survival(&self) -> f64 {
+        self.state.values[BCL2].0
+    }
+
+    /// The hypoxia response, HIF-1α. It rises as oxygen falls, and a cell whose
+    /// response is high has stopped cycling: hypoxia arrests the cell cycle
+    /// well before it kills.
+    pub fn hypoxia_response(&self) -> f64 {
+        self.state.values[HIF1].0
+    }
+
     /// ODE right-hand side: dX/dt = f(X, inputs).
     fn derivatives(x: &[f64; N_PROTEINS], inputs: &CellInputs) -> [f64; N_PROTEINS] {
         let [ras, erk, hif1, vegf, bcl2] = *x;
@@ -76,8 +104,10 @@ impl RasErkNetwork {
         // HIF-1α → VEGF secretion.
         let dvegf = 0.7 * hif1 - 0.3 * vegf;
 
-        // ERK ↑ BCL2, HIF-1α ↑ BCL2 (survival under stress).
-        let dbcl2 = 0.2 * erk + 0.1 * hif1 - 0.15 * (bcl2 - 0.5);
+        // ERK ↑ BCL2, HIF-1α ↑ BCL2 (survival under stress), and below the
+        // anoxia threshold damage pulls it down regardless of either.
+        let anoxia = ((ANOXIA_THRESHOLD - o2) / ANOXIA_THRESHOLD).max(0.0);
+        let dbcl2 = 0.2 * erk + 0.1 * hif1 - 0.15 * (bcl2 - 0.5) - ANOXIA_DAMAGE * anoxia;
 
         [dras, derk, dhif1, dvegf, dbcl2]
     }
@@ -190,5 +220,82 @@ mod tests {
             "HIF-1α should be elevated under hypoxia, got {:.3}",
             hif1
         );
+    }
+
+    /// The binary's inputs, at a given oxygen level.
+    fn at_oxygen(o2: f64) -> CellInputs {
+        CellInputs {
+            o2: Concentration(o2),
+            egf: Concentration(0.2),
+            vegf: Concentration(0.0),
+            drugs: vec![],
+        }
+    }
+
+    fn settled_at(o2: f64) -> RasErkNetwork {
+        let mut net = RasErkNetwork::new(200);
+        for _ in 0..400 {
+            net.step(TimeStep(1.0), &at_oxygen(o2));
+        }
+        net
+    }
+
+    #[test]
+    fn sustained_anoxia_collapses_survival() {
+        // Below the anoxia threshold damage outweighs everything ERK and HIF-1α
+        // feed into survival. At 3% of the bath the cell is dead outright.
+        assert!(settled_at(0.03).survival() < 0.05);
+        // At 5% it has crossed the usual death threshold of 0.25.
+        assert!(settled_at(0.05).survival() < 0.25);
+    }
+
+    #[test]
+    fn hypoxia_short_of_anoxia_leaves_survival_intact() {
+        // Hypoxic, with a strong HIF-1α response, but still making energy: the
+        // cell stops cycling, it does not die.
+        let net = settled_at(0.15);
+        assert!(net.survival() > 0.9, "survival {:.3}", net.survival());
+        assert!(net.hypoxia_response() > 0.4);
+    }
+
+    #[test]
+    fn the_hypoxia_response_rises_as_oxygen_falls() {
+        let levels = [1.0, 0.5, 0.2, 0.05];
+        let responses: Vec<f64> = levels
+            .iter()
+            .map(|&o2| settled_at(o2).hypoxia_response())
+            .collect();
+        assert!(
+            responses.windows(2).all(|w| w[0] < w[1]),
+            "not monotone: {responses:?}"
+        );
+        assert!(responses[0] < 0.05, "no response under full oxygen");
+    }
+
+    #[test]
+    fn the_network_answers_well_within_a_cell_cycle() {
+        // Three clocks have to agree: the field is relaxed to equilibrium every
+        // lattice step, and a cell grows to division in about twenty lattice
+        // steps. The network settles in about fifteen units of its own time, so
+        // the binary gives it eight units per lattice step and it answers in two.
+        // This pins the fifteen: were it to drift toward the cell cycle, a cell's
+        // fate would trail its surroundings by a generation.
+        for o2 in [0.8, 0.02] {
+            let target = settled_at(o2);
+            let mut net = RasErkNetwork::new(200);
+            let mut settled_after = None;
+            for step in 1..=100 {
+                net.step(TimeStep(1.0), &at_oxygen(o2));
+                let worst = (0..N_PROTEINS)
+                    .map(|i| (net.state().values[i].0 - target.state().values[i].0).abs())
+                    .fold(0.0_f64, f64::max);
+                if worst < 0.01 {
+                    settled_after = Some(step);
+                    break;
+                }
+            }
+            let steps = settled_after.expect("the network never settled");
+            assert!(steps < 40, "settled after {steps} steps at oxygen {o2}");
+        }
     }
 }

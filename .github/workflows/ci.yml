@@ -102,6 +102,9 @@ jobs:
       # cannot be argued with, because no result can be attributed to the
       # change that was made rather than to the noise. This is the one property
       # the compiler cannot check and the whole method rests on.
+      # 500 steps is past the point where the tissue reaches the edge of the
+      # default grid, so this also checks that the early stop lands on the same
+      # step both times.
       - name: Run the simulation twice
         run: |
           cargo build --release
