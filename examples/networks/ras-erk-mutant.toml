@@ -1,0 +1,28 @@
+# The RAS/ERK network with one mutation: RAS stuck on.
+#
+# Everything comes from ras-erk.toml. The one node below replaces the one of the
+# same name there, and nothing else changes, so what this file says is exactly
+# what the hypothesis is: RAS no longer waits for EGF, the growth factor outside
+# the cell. It is switched on by nothing.
+#
+# That is what an activating mutation in RAS does, and a mutation of that gene is
+# found in roughly one cancer in three. It is the first hallmark of cancer,
+# sustaining proliferative signalling without a signal.
+#
+# Compare the two under the same seed; the difference between the runs is
+# attributable to these five lines and to nothing else:
+#   ./target/release/cellweave --config examples/cord.toml        --mcs 400
+#   ./target/release/cellweave --config examples/cord-mutant.toml --mcs 400
+
+extends = "ras-erk.toml"
+
+[[nodes]]
+name = "ras"
+initial = 0.05
+terms = [
+  # Where the healthy network is activated by EGF, this is held near full on by
+  # nothing outside at all. The decay is unchanged, so the switch settles high
+  # rather than pinning at one.
+  { kind = "relaxes_to", value = 1.0, rate = 0.5 },
+  { kind = "decays", rate = 0.3 },
+]

@@ -18,7 +18,7 @@ use cellweave_core::{
 use cellweave_engine::coupling::{
     apply_background_uptake, apply_uptake, hold_medium_bath, hold_obstacles_at, mean_per_cell,
 };
-use cellweave_engine::{CpmLattice, RasErkNetwork, ScalarField};
+use cellweave_engine::{CpmLattice, Network, ScalarField};
 use cellweave_io::{JsonOutput, OxygenSource, SimConfig};
 use rand::rngs::StdRng;
 use rand::{RngExt, SeedableRng};
@@ -108,10 +108,10 @@ fn main() -> Result<()> {
         config.mcs = w[1].parse().context("--mcs must be an integer")?;
     }
 
-    run(config)
+    run(config, config_path)
 }
 
-fn run(config: SimConfig) -> Result<()> {
+fn run(config: SimConfig, config_path: Option<&str>) -> Result<()> {
     eprintln!(
         "cellweave | grid {}×{} | {} MCS | {:?} | output → {}",
         config.width, config.height, config.mcs, config.oxygen_source, config.output_dir
@@ -142,10 +142,26 @@ fn run(config: SimConfig) -> Result<()> {
     };
     let newborn_volume = lattice.volume(first).map_or(0, |v| v.0);
 
+    // The hypothesis under test, read from a file rather than compiled in.
+    let spec = config
+        .load_network(config_path)
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    let seed_network =
+        Network::from_spec(&spec, newborn_volume).map_err(|e| anyhow::anyhow!("{e}"))?;
+    if let Some(roles) = &spec.roles {
+        eprintln!(
+            "network | {} nodes | growth {} | survival {} | hypoxia {}",
+            spec.nodes.len(),
+            roles.growth,
+            roles.survival,
+            roles.hypoxia_response
+        );
+    }
+
     // One network per cell, or None once the cell is gone. Identifier `i + 1`
     // names the cell whose slot is `i`, which holds as long as a daughter slot is
     // pushed exactly when a daughter cell is created.
-    let mut networks: Vec<Option<RasErkNetwork>> = vec![Some(RasErkNetwork::new(newborn_volume))];
+    let mut networks: Vec<Option<Network>> = vec![Some(seed_network)];
 
     let initial = match config.oxygen_source {
         OxygenSource::Bath => 1.0,
@@ -316,7 +332,7 @@ fn living(lattice: &CpmLattice) -> usize {
 /// crowd of identical newborns.
 fn divide_ready_cells(
     lattice: &mut CpmLattice,
-    networks: &mut Vec<Option<RasErkNetwork>>,
+    networks: &mut Vec<Option<Network>>,
     rng: &mut StdRng,
 ) -> u64 {
     let ready: Vec<usize> = networks
@@ -325,7 +341,7 @@ fn divide_ready_cells(
         .filter_map(|(i, slot)| slot.as_ref().map(|net| (i, net)))
         .filter(|(i, net)| {
             let id = cell_of(*i);
-            let threshold = DIVISION_RATIO * f64::from(net.base_target_volume());
+            let threshold = DIVISION_RATIO * f64::from(net.reference_volume());
             let big_enough = lattice
                 .volume(id)
                 .is_some_and(|v| f64::from(v.0) >= threshold);
@@ -379,7 +395,7 @@ fn write_snapshot(
     output: &mut JsonOutput,
     mcs: u64,
     lattice: &CpmLattice,
-    networks: &[Option<RasErkNetwork>],
+    networks: &[Option<Network>],
     oxygen: &ScalarField,
 ) -> Result<()> {
     let local_o2 = mean_per_cell(oxygen, lattice);

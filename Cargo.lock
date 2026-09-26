@@ -75,6 +75,7 @@ dependencies = [
  "rand 0.10.3",
  "rayon",
  "thiserror",
+ "toml",
  "tracing",
 ]
 

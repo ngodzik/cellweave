@@ -27,7 +27,9 @@ Chapters build on each other and are meant to be read in order the first time.
 ```mermaid
 flowchart LR
     c1["1. pixels, energy,<br/>Monte Carlo"] --> cpm["crates/engine/src/cpm.rs<br/>CpmLattice"]
-    c2["2. proteins,<br/>signalling"] --> ode["crates/engine/src/ode.rs<br/>RasErkNetwork"]
+    c2["2. proteins,<br/>signalling"] --> net["crates/core/src/network.rs<br/>the hypothesis as written"]
+    c2 --> run["crates/engine/src/network.rs<br/>Network, it made runnable"]
+    c2 --> files["examples/networks/*.toml"]
     c3["3. oxygen"] --> pde["crates/engine/src/pde.rs<br/>ScalarField"]
     c3 --> cpl["crates/engine/src/coupling.rs"]
     c4["4. fates,<br/>division"] --> main["src/main.rs<br/>the loop"]

@@ -44,6 +44,11 @@ jobs:
         env:
           RUSTDOCFLAGS: -D warnings
 
+      # The course in docs/ names symbols in the code. A rename that leaves the
+      # chapter behind is the most common way a course drifts from its program.
+      - name: The course still matches the code
+        run: python3 scripts/check-course-symbols.py
+
   test:
     name: Tests (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -116,8 +121,12 @@ jobs:
           mv output-cord cord-a
           ./target/release/cellweave --config examples/cord.toml --mcs 400
           mv output-cord cord-b
+          ./target/release/cellweave --config examples/cord-mutant.toml --mcs 200
 
       - name: Compare the runs
         run: |
           diff --recursive spheroid-a spheroid-b
           diff --recursive cord-a cord-b
+          # The mutant only has to run: it is here so that a network file with a
+          # different topology is exercised, not just the built-in one.
+          test -s output-cord-mutant/snapshot_000000.json

@@ -19,7 +19,7 @@ The **lattice** (a regular grid, the word comes from garden trellis) is a 200 by
 This is a **Cellular Potts model** (CPM), after the physicist whose spin model it borrows. Every configuration of the grid has an **energy**, called the Hamiltonian, and the model moves toward lower energy. Two terms:
 
 - **Contact energy.** Every pair of neighbouring pixels that belong to different cells is a piece of boundary, and it costs `J(kind of one, kind of the other)`. Boundary against medium costs 16, against a cell of the same kind 2. Lower is stickier. Two pixels of the same cell cost nothing: there is no boundary inside a cell.
-- **Volume constraint.** Each cell has a target volume and a stiffness λ (lambda), and being `v` pixels when it aims at `v_t` costs `λ (v - v_t)²`.
+- **Volume constraint.** Each cell has a target volume and a stiffness λ (lambda), and a cell of v pixels that aims at v_target pays λ (v - v_target)².
 
 ```mermaid
 flowchart LR

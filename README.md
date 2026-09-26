@@ -55,9 +55,10 @@ Features will be added progressively, and this README will follow as they land.
 
 ## What works today
 
-- Builds clean, `cargo clippy -D warnings` passes, 54 tests green
+- Builds clean, `cargo clippy -D warnings` passes, 62 tests green
 - 2D lattice with Monte Carlo spin flips and a volume constraint, with the boundary term pinned by four tests whose values are computable by hand
-- RK4 solver for a small per-cell protein network, whose ERK level sets how large its cell tries to be. This is the upward half of the coupling, protein state driving mechanics
+- **The protein network is a file, not code.** Any number of proteins, any topology, each declared with the terms that move it, drawn from a closed catalogue named after what each means in biology. The file also says which node answers which question the simulation asks a cell, and how growth becomes a demand on the lattice. So stating a different hypothesis is writing a different file, and two files under the same seed differ by exactly what you changed. The RAS/ERK network that used to be literals in the source is now `examples/networks/ras-erk.toml`, compiled in as the default so that the built-in hypothesis and one you write go through the same path; a test pins that the two produce identical trajectories to twelve decimals
+- RK4 integration per cell, whose growth node sets how large its cell tries to be. This is the upward half of the coupling, protein state driving mechanics
 - Cell division: a cell that grows past a threshold splits along a line through its centre of mass, and the daughter inherits a copy of the parent's network. One cell becomes a population
 - The downward half of the coupling: every lattice step, the oxygen field is relaxed to its steady state against the current layout of the cells, living cells take up oxygen where they sit, and each cell reads the mean over its own pixels into its network. Three clocks, field, network and cell cycle, are kept in the order biology has them, and a test pins the network's response time
 - Three fates from that reading: a cell proliferates, or goes quiescent when its hypoxia response is high, or dies when its survival signal collapses below the anoxia threshold. A necrotic cell holds its shape and stops consuming
@@ -72,6 +73,7 @@ Features will be added progressively, and this README will follow as they land.
 Listed plainly, because a green test suite is not the same thing as correct physics.
 
 - **Only oxygen is coupled.** Growth factor is still a hardcoded input the same for every cell, and nothing is secreted, so VEGF is computed and goes nowhere.
+- **No measurements.** A run leaves snapshots and a log line, so reading what happened means squinting at files. Until it reports a handful of numbers per run, does a core appear, at what size, how thick the viable rim, what the turnover rate, nothing outside can compare two hypotheses without reimplementing the geometry.
 - **No parallelism.** `rayon` is declared as a dependency and unused. Solving the field to equilibrium is now the dominant cost, about two hundred sweeps of the grid per lattice step once tissue is turning over, and it is embarrassingly parallel.
 - **No evolution.** Daughters are exact copies. Nothing varies, so nothing is selected.
 - **No calibration, no visualization.** Every constant is a placeholder, and no unit of length or time has been fixed. The uptake rate is now a configuration value, but its two example values were chosen to make each geometry show its structure, not measured against anything.
