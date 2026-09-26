@@ -1,7 +1,8 @@
 //! TOML simulation configuration.
 
-use cellweave_core::CellweaveError;
+use cellweave_core::{CellweaveError, NetworkSpec};
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 
 /// Where the oxygen comes from, which is also what shape the tissue takes.
 #[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
@@ -49,7 +50,18 @@ pub struct SimConfig {
     /// the same depth.
     #[serde(default = "default_oxygen_uptake")]
     pub oxygen_uptake: f64,
+    /// File holding the protein network, relative to the configuration file.
+    ///
+    /// The hypothesis under test lives there, so trying another one is writing
+    /// another file rather than editing and rebuilding the program. Left unset,
+    /// the built-in RAS/ERK network is used, which is the same file compiled in.
+    #[serde(default)]
+    pub network: Option<String>,
 }
+
+/// The RAS/ERK network, compiled in so that the built-in hypothesis and one you
+/// write go through exactly the same path.
+pub const BUILT_IN_NETWORK: &str = include_str!("../../../examples/networks/ras-erk.toml");
 
 fn default_oxygen_uptake() -> f64 {
     0.0003
@@ -62,10 +74,44 @@ impl SimConfig {
     }
 
     /// Load config from a file path.
+    ///
+    /// # Errors
+    ///
+    /// [`CellweaveError::Config`] when the file cannot be read or is not a
+    /// configuration.
     pub fn from_file(path: &str) -> Result<Self, CellweaveError> {
         let s = std::fs::read_to_string(path)
             .map_err(|e| CellweaveError::Config(format!("{path}: {e}")))?;
         Self::from_toml(&s)
+    }
+
+    /// The network this configuration asks for.
+    ///
+    /// `network` is resolved next to the configuration file, so a pair of files
+    /// can be moved together. Left unset, the built-in RAS/ERK network is read
+    /// from the copy compiled into the program.
+    ///
+    /// # Errors
+    ///
+    /// [`CellweaveError::Config`] when the file cannot be read or is not a
+    /// network.
+    pub fn load_network(&self, config_path: Option<&str>) -> Result<NetworkSpec, CellweaveError> {
+        let text = match &self.network {
+            None => BUILT_IN_NETWORK.to_owned(),
+            Some(name) => {
+                let path = match config_path.and_then(|c| Path::new(c).parent()) {
+                    Some(dir) => dir.join(name),
+                    None => Path::new(name).to_path_buf(),
+                };
+                std::fs::read_to_string(&path).map_err(|e| {
+                    CellweaveError::Config(format!("reading the network {}: {e}", path.display()))
+                })?
+            }
+        };
+        toml::from_str(&text).map_err(|e| {
+            let which = self.network.as_deref().unwrap_or("the built-in network");
+            CellweaveError::Config(format!("{which} is not a network: {e}"))
+        })
     }
 }
 
@@ -80,6 +126,7 @@ impl Default for SimConfig {
             output_dir: "output".to_string(),
             oxygen_source: OxygenSource::Bath,
             oxygen_uptake: default_oxygen_uptake(),
+            network: None,
         }
     }
 }
@@ -120,5 +167,54 @@ mod tests {
             cfg.oxygen_uptake, 0.0003,
             "uptake keeps its default when absent"
         );
+    }
+
+    #[test]
+    fn the_built_in_network_is_a_network() {
+        let spec = SimConfig::default().load_network(None).unwrap();
+        assert_eq!(spec.nodes.len(), 5);
+        assert_eq!(spec.roles.survival, "bcl2");
+    }
+
+    #[test]
+    fn a_network_file_is_found_next_to_the_configuration() {
+        let dir = std::env::temp_dir().join(format!("cellweave-net-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("nets")).unwrap();
+        std::fs::write(
+            dir.join("nets").join("tiny.toml"),
+            concat!(
+                "[[nodes]]\nname = \"a\"\ninitial = 0.1\n\n",
+                "[roles]\ngrowth = \"a\"\nsurvival = \"a\"\nhypoxia_response = \"a\"\n\n",
+                "[mechanics]\ngrowth_coefficient = 1.0\nlambda_volume = 1.0\n",
+                "j_medium = 1.0\nj_self_base = 1.0\nj_self_from_growth = 0.0\n",
+            ),
+        )
+        .unwrap();
+        let cfg_path = dir.join("sim.toml");
+        std::fs::write(&cfg_path, "").unwrap();
+
+        let cfg = SimConfig {
+            network: Some("nets/tiny.toml".into()),
+            ..SimConfig::default()
+        };
+        let spec = cfg
+            .load_network(cfg_path.to_str())
+            .expect("resolved next to the configuration");
+
+        assert_eq!(spec.nodes.len(), 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_missing_network_file_is_reported_with_its_path() {
+        let cfg = SimConfig {
+            network: Some("nowhere/at/all.toml".into()),
+            ..SimConfig::default()
+        };
+
+        let Err(CellweaveError::Config(message)) = cfg.load_network(None) else {
+            panic!("a missing network must be refused");
+        };
+        assert!(message.contains("nowhere/at/all.toml"), "{message}");
     }
 }

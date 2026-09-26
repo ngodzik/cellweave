@@ -1,0 +1,18 @@
+# The cord of cord.toml, grown by cells whose RAS is stuck on.
+#
+# Everything is the same but the network. Same grid, same seed, same oxygen, same
+# uptake. The only difference between this run and cord.toml is one line in one
+# network file, which is what makes the comparison mean something.
+
+width = 200
+height = 200
+mcs = 3000
+temperature = 10.0
+snapshot_interval = 50
+output_dir = "output-cord-mutant"
+oxygen_uptake = 0.00003
+network = "networks/ras-erk-mutant.toml"
+
+[oxygen_source]
+kind = "vessel"
+radius = 6

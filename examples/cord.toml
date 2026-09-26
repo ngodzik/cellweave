@@ -13,6 +13,7 @@ temperature = 10.0
 snapshot_interval = 50
 output_dir = "output-cord"
 oxygen_uptake = 0.00003
+network = "networks/ras-erk.toml"
 
 [oxygen_source]
 kind = "vessel"

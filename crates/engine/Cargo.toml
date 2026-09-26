@@ -12,3 +12,7 @@ ndarray.workspace        = true
 rand.workspace           = true
 rayon.workspace          = true
 tracing.workspace        = true
+
+[dev-dependencies]
+# Only the tests parse a network file; the engine is handed a spec already.
+toml.workspace = true

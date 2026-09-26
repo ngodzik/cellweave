@@ -39,7 +39,7 @@ flowchart LR
     HIF ==>|"above 0.45: stops cycling"| F
 ```
 
-The equations, from `ode.rs`, with each term named:
+The equations, from `examples/networks/ras-erk.toml`, with each term named:
 
 | protein | changes as | meaning |
 |---|---|---|
@@ -52,6 +52,49 @@ The equations, from `ode.rs`, with each term named:
 Every `(1 - x)` is saturation: a protein already fully active cannot be activated further. This is why ERK settles near 0.55 even when drowned in EGF.
 
 The last term of BCL2 is the one that kills. `anoxia` is zero above 15% oxygen and rises to 1 at zero oxygen. Below the threshold, damage pulls survival down regardless of what ERK and HIF-1α feed in. That is deliberate: **necrosis is not a decision, it is a failure**. Below a critical oxygen level the cell cannot make enough energy, damage accumulates, and no survival programme rescues it. It is distinct from **apoptosis**, the orderly, programmed death a cell can choose. Only necrosis exists here so far.
+
+### The network is a file, not code
+
+Those rate constants used to be literals in the Rust source. They are now a
+file, and that is the difference between a program that simulates one hypothesis
+and a program that simulates whichever one you hand it. Stating a different
+hypothesis is writing a different file.
+
+Each line of the table above is a **term**, and terms come from a closed
+catalogue, each named after what it means in biology rather than after its
+algebra:
+
+| term | what it computes | what it means |
+|---|---|---|
+| `activated_by` | `rate * source * (1 - self)` | one relay switching on the next, saturating because a protein cannot be more than fully active |
+| `activated_by_absence_of` | `rate * (1 - source) * (1 - self)` | accumulating when something is scarce, which is HIF-1α as oxygen falls |
+| `produced_by` | `rate * source` | made in proportion, without saturating, for something secreted |
+| `decays` | `- rate * self` | first order turnover, which is what gives a node a steady state at all |
+| `relaxes_to` | `- rate * (self - value)` | held near a set point rather than driven to zero |
+| `damaged_below` | `- rate * max(0, (threshold - source) / threshold)` | energy failure, the one term nothing above cancels |
+
+`activated_by` also takes a **Hill** response, `source^n / (k^n + source^n)` in
+place of `source`, where `n` is how sharply it switches and `k` the level at
+which it is half way. With a large `n` a graded signal becomes a decision.
+
+A closed catalogue rather than free-form expressions is a deliberate limit. An
+expression language would be more expressive and would let anyone write
+something that parses and means nothing; a catalogue says exactly which
+mechanisms the model knows about, and every one of them is documented above and
+pinned by a test. A paper whose network does not fit adds an entry, which is a
+change on the record rather than an open hole.
+
+Two more things the file declares. **Roles**: nothing in a network says which of
+its nodes answers the questions the simulation asks a cell, so the file says
+which node is growth, which is survival, which is the hypoxia response. Naming
+them rather than guessing from a node's name is what lets a network use its own
+vocabulary. And **mechanics**: how the growth node becomes a target volume and a
+stiffness for the lattice.
+
+Every name a term reads is resolved when the file is loaded, against the nodes
+and against the two names the environment provides, `oxygen` and `egf`. A term
+reading anything else is an error naming what it read and listing what is known,
+rather than a silent zero in the middle of a run.
 
 ### How the equations are solved
 
@@ -71,17 +114,28 @@ The network settles in about fifteen units of its time. The binary gives it eigh
 
 ## Where in the code
 
-`crates/engine/src/ode.rs`
+`crates/core/src/network.rs` is the hypothesis as written, and computes nothing:
+`Term` is the catalogue above, `NodeSpec` a protein, `Roles` which node answers
+which question, `MechanicsSpec` how growth reaches the lattice, `NetworkSpec` the
+whole thing.
 
-- `RasErkNetwork` holds the five values and the lineage's reference volume.
-- `derivatives` is the table above.
-- `rk4` advances one step; `step` is the public entry.
-- `mechanics` turns ERK into a target volume for the lattice.
-- `survival` is BCL2; `hypoxia_response` is HIF-1α; the binary reads both to decide a fate.
-- `ANOXIA_THRESHOLD` and `ANOXIA_DAMAGE` are the death mechanism, with the derivation of their values in the comments.
+`crates/engine/src/network.rs` is it made runnable. `Network::from_spec` resolves
+every name once, so the hot loop walks indices and never a string. `derivatives`
+is the catalogue evaluated, `rk4` advances one step, `mechanics` turns the growth
+node into a demand on the lattice, and `survival` and `reference_volume` are what
+the binary reads to decide a fate.
+
+`crates/io/src/config.rs` finds the file: `load_network` resolves it next to the
+configuration, or falls back to `BUILT_IN_NETWORK`, which is this same RAS/ERK
+file compiled in so that the built-in hypothesis and one you write go through
+exactly the same path.
+
+`examples/networks/ras-erk.toml` is the network above.
+`examples/networks/ras-erk-mutant.toml` is the same with one line changed, RAS
+switched on by nothing, which is what an activating mutation does.
 
 `crates/core/src/traits.rs` has `SignalingNetwork`, the contract any other network would have to meet. To simulate a different paper's network is to write another implementation, not to touch the engine.
 
 ## Still a placeholder
 
-Every rate constant in the table is a plausible number, not a measured one. The literature has measured values for parts of this pathway, and calibrating against them is future work. What is fixed by the current numbers: ERK saturates near 0.55, the network settles in about fifteen units of its time, survival collapses between 5% and 6% of the bath's oxygen and is intact above 10%. Those are the facts the rest of the model was built on, and they are pinned by tests, so changing a constant that moves them will say so.
+Every rate constant in the file is a plausible number, not a measured one. The literature has measured values for parts of this pathway, and calibrating against them is future work. What is fixed by the current numbers: ERK saturates near 0.55, the network settles in about fifteen units of its time, survival collapses between 5% and 6% of the bath's oxygen and is intact above 10%. Those are the facts the rest of the model was built on, and they are pinned by tests, so changing a constant that moves them will say so.

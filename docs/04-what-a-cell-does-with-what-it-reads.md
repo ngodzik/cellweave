@@ -73,7 +73,7 @@ flowchart LR
 
 `crates/engine/src/cpm.rs`: `divide`, `set_volume_target`, `set_kind`, `cell_kind`.
 
-`crates/engine/src/ode.rs`: `mechanics`, `survival`, `hypoxia_response`, `base_target_volume`.
+`crates/engine/src/network.rs`: `mechanics`, `survival`, `hypoxia_response`, `reference_volume`.
 
 ## Still a placeholder
 
