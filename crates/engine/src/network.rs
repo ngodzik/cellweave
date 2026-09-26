@@ -82,6 +82,21 @@ impl Network {
             return Err(CellweaveError::Config("a network needs a node".into()));
         }
 
+        let roles = spec.roles.as_ref().ok_or_else(|| {
+            CellweaveError::Config(
+                "the network declares no roles, and inherits none: say which node is growth, \
+                 which is survival, and which is the hypoxia response"
+                    .into(),
+            )
+        })?;
+        let mechanics = spec.mechanics.ok_or_else(|| {
+            CellweaveError::Config(
+                "the network declares no mechanics, and inherits none: say how the growth node \
+                 becomes a target volume"
+                    .into(),
+            )
+        })?;
+
         let mut index = std::collections::HashMap::new();
         for (i, node) in spec.nodes.iter().enumerate() {
             if INPUT_NAMES.contains(&node.name.as_str()) {
@@ -187,10 +202,10 @@ impl Network {
         Ok(Self {
             state,
             terms,
-            growth: role(&spec.roles.growth, "growth")?,
-            survival: role(&spec.roles.survival, "survival")?,
-            hypoxia: role(&spec.roles.hypoxia_response, "hypoxia response")?,
-            mechanics: spec.mechanics,
+            growth: role(&roles.growth, "growth")?,
+            survival: role(&roles.survival, "survival")?,
+            hypoxia: role(&roles.hypoxia_response, "hypoxia response")?,
+            mechanics,
             reference_volume,
             x: vec![0.0; spec.nodes.len()],
             mid: vec![0.0; spec.nodes.len()],
@@ -420,18 +435,19 @@ mod tests {
                 initial: 0.0,
                 terms,
             }],
-            roles: Roles {
+            extends: None,
+            roles: Some(Roles {
                 growth: "a".into(),
                 survival: "a".into(),
                 hypoxia_response: "a".into(),
-            },
-            mechanics: MechanicsSpec {
+            }),
+            mechanics: Some(MechanicsSpec {
                 growth_coefficient: 1.0,
                 lambda_volume: 1.0,
                 j_medium: 1.0,
                 j_self_base: 1.0,
                 j_self_from_growth: 0.0,
-            },
+            }),
         }
     }
 
@@ -461,7 +477,7 @@ mod tests {
     #[test]
     fn a_role_naming_something_that_is_not_a_node_is_refused() {
         let mut spec = one_node(vec![]);
-        spec.roles.survival = "bcl2".into();
+        spec.roles.as_mut().unwrap().survival = "bcl2".into();
 
         let refused = Network::from_spec(&spec, 100);
 
@@ -489,11 +505,11 @@ mod tests {
     fn a_node_that_takes_an_input_name_is_refused() {
         let mut spec = one_node(vec![]);
         spec.nodes[0].name = "oxygen".into();
-        spec.roles = Roles {
+        spec.roles = Some(Roles {
             growth: "oxygen".into(),
             survival: "oxygen".into(),
             hypoxia_response: "oxygen".into(),
-        };
+        });
 
         let refused = Network::from_spec(&spec, 100);
 

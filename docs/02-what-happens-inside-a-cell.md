@@ -91,6 +91,36 @@ them rather than guessing from a node's name is what lets a network use its own
 vocabulary. And **mechanics**: how the growth node becomes a target volume and a
 stiffness for the lattice.
 
+A file may also **extend** another and give only what differs:
+
+```toml
+extends = "ras-erk.toml"
+
+[[nodes]]
+name = "ras"
+initial = 0.05
+terms = [
+  { kind = "relaxes_to", value = 1.0, rate = 0.5 },
+  { kind = "decays", rate = 0.3 },
+]
+```
+
+That whole file is the mutant network: RAS switched on by nothing instead of by
+EGF, which is what an activating mutation in RAS does. Everything else comes
+from the file it extends.
+
+Which matters for a reason beyond brevity. A hypothesis should be the lines that
+state it, and a copy of seventy identical lines hides the one that counts. It
+also removes a way to be wrong: adjusting a rate in the healthy network without
+adjusting the copy would leave two runs differing by two things, and the
+comparison would mean nothing.
+
+A node whose name appears in both **replaces** the inherited one whole, rather
+than merging term by term. Replacing is the more predictable of the two: what a
+node is, after the override, is written in one place. A new name is appended,
+and roles and mechanics are inherited when left out. A file that extends itself
+round a loop is refused, with the loop named.
+
 Every name a term reads is resolved when the file is loaded, against the nodes
 and against the two names the environment provides, `oxygen` and `egf`. A term
 reading anything else is an error naming what it read and listing what is known,
@@ -130,9 +160,12 @@ configuration, or falls back to `BUILT_IN_NETWORK`, which is this same RAS/ERK
 file compiled in so that the built-in hypothesis and one you write go through
 exactly the same path.
 
-`examples/networks/ras-erk.toml` is the network above.
-`examples/networks/ras-erk-mutant.toml` is the same with one line changed, RAS
-switched on by nothing, which is what an activating mutation does.
+`crates/core/src/network.rs` also holds `merge_onto`, which is the rule above:
+replace a node of the same name, append a new one, inherit what is left out.
+`crates/io/src/config.rs` resolves the chain of files and refuses a loop.
+
+`examples/networks/ras-erk.toml` is the network above, and
+`examples/networks/ras-erk-mutant.toml` extends it with one node.
 
 `crates/core/src/traits.rs` has `SignalingNetwork`, the contract any other network would have to meet. To simulate a different paper's network is to write another implementation, not to touch the engine.
 

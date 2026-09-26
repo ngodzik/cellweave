@@ -148,13 +148,15 @@ fn run(config: SimConfig, config_path: Option<&str>) -> Result<()> {
         .map_err(|e| anyhow::anyhow!("{e}"))?;
     let seed_network =
         Network::from_spec(&spec, newborn_volume).map_err(|e| anyhow::anyhow!("{e}"))?;
-    eprintln!(
-        "network | {} nodes | growth {} | survival {} | hypoxia {}",
-        spec.nodes.len(),
-        spec.roles.growth,
-        spec.roles.survival,
-        spec.roles.hypoxia_response
-    );
+    if let Some(roles) = &spec.roles {
+        eprintln!(
+            "network | {} nodes | growth {} | survival {} | hypoxia {}",
+            spec.nodes.len(),
+            roles.growth,
+            roles.survival,
+            roles.hypoxia_response
+        );
+    }
 
     // One network per cell, or None once the cell is gone. Identifier `i + 1`
     // names the cell whose slot is `i`, which holds as long as a daughter slot is

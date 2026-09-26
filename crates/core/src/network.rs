@@ -166,12 +166,55 @@ pub struct MechanicsSpec {
 
 /// A whole hypothesis: the nodes, what each node is for, and how the network
 /// reaches the lattice.
+///
+/// A file may `extends` another and give only what differs, which is what keeps
+/// a hypothesis legible: a mutation should be the five lines that state it, not
+/// hidden in a copy of seventy identical ones. See [`NetworkSpec::merge_onto`]
+/// for what "differs" means.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct NetworkSpec {
+    /// File this one starts from, resolved next to this file.
+    #[serde(default)]
+    pub extends: Option<String>,
     /// The proteins, in the order they appear in a snapshot.
+    #[serde(default)]
     pub nodes: Vec<NodeSpec>,
-    /// Which node answers which question.
-    pub roles: Roles,
-    /// How the growth node becomes mechanics.
-    pub mechanics: MechanicsSpec,
+    /// Which node answers which question. Inherited when absent.
+    #[serde(default)]
+    pub roles: Option<Roles>,
+    /// How the growth node becomes mechanics. Inherited when absent.
+    #[serde(default)]
+    pub mechanics: Option<MechanicsSpec>,
+}
+
+impl NetworkSpec {
+    /// Lay this specification over `base`, and return the result.
+    ///
+    /// A node whose name appears in both **replaces** the base's node whole,
+    /// rather than merging term by term. Replacing is the more predictable of
+    /// the two: what a node is, after the override, is written in one place. A
+    /// term by term merge would mean reading both files to know what a single
+    /// node contains, and there would be no way to remove a term.
+    ///
+    /// A node whose name is new is appended, so the order of a snapshot stays
+    /// the base's order followed by whatever was added.
+    ///
+    /// Roles and mechanics are inherited whole when this specification leaves
+    /// them out.
+    #[must_use]
+    pub fn merge_onto(self, base: Self) -> Self {
+        let mut nodes = base.nodes;
+        for node in self.nodes {
+            match nodes.iter_mut().find(|n| n.name == node.name) {
+                Some(existing) => *existing = node,
+                None => nodes.push(node),
+            }
+        }
+        Self {
+            extends: None,
+            nodes,
+            roles: self.roles.or(base.roles),
+            mechanics: self.mechanics.or(base.mechanics),
+        }
+    }
 }

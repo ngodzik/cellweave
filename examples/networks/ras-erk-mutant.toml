@@ -1,71 +1,28 @@
-# The same network with one mutation: RAS stuck on.
+# The RAS/ERK network with one mutation: RAS stuck on.
 #
-# A copy of ras-erk.toml with a single line changed. RAS no longer waits for EGF,
-# the growth factor outside the cell; it is switched on by nothing, which is what
-# an activating mutation in RAS does. A mutation of this gene is found in roughly
-# one cancer in three, and it is the first hallmark of cancer, sustaining
-# proliferative signalling without a signal.
+# Everything comes from ras-erk.toml. The one node below replaces the one of the
+# same name there, and nothing else changes, so what this file says is exactly
+# what the hypothesis is: RAS no longer waits for EGF, the growth factor outside
+# the cell. It is switched on by nothing.
 #
-# This file exists to be compared with ras-erk.toml under the same seed. The
-# difference between the two runs is attributable to this one line and to nothing
-# else, which is the whole reason the network is a file.
+# That is what an activating mutation in RAS does, and a mutation of that gene is
+# found in roughly one cancer in three. It is the first hallmark of cancer,
+# sustaining proliferative signalling without a signal.
 #
-# Run both:
-#   ./target/release/cellweave --config examples/cord.toml --mcs 400
+# Compare the two under the same seed; the difference between the runs is
+# attributable to these five lines and to nothing else:
+#   ./target/release/cellweave --config examples/cord.toml        --mcs 400
 #   ./target/release/cellweave --config examples/cord-mutant.toml --mcs 400
+
+extends = "ras-erk.toml"
 
 [[nodes]]
 name = "ras"
 initial = 0.05
 terms = [
-  # The mutation. Where the healthy network reads `source = "egf"`, this reads a
-  # node that is always fully on, because it reads nothing: a constant drive.
+  # Where the healthy network is activated by EGF, this is held near full on by
+  # nothing outside at all. The decay is unchanged, so the switch settles high
+  # rather than pinning at one.
   { kind = "relaxes_to", value = 1.0, rate = 0.5 },
   { kind = "decays", rate = 0.3 },
 ]
-
-[[nodes]]
-name = "erk"
-initial = 0.05
-terms = [
-  { kind = "activated_by", source = "ras", rate = 0.8 },
-  { kind = "decays", rate = 0.4 },
-]
-
-[[nodes]]
-name = "hif1"
-initial = 0.05
-terms = [
-  { kind = "activated_by_absence_of", source = "oxygen", rate = 0.6 },
-  { kind = "decays", rate = 0.5 },
-]
-
-[[nodes]]
-name = "vegf"
-initial = 0.05
-terms = [
-  { kind = "produced_by", source = "hif1", rate = 0.7 },
-  { kind = "decays", rate = 0.3 },
-]
-
-[[nodes]]
-name = "bcl2"
-initial = 0.70
-terms = [
-  { kind = "produced_by", source = "erk", rate = 0.2 },
-  { kind = "produced_by", source = "hif1", rate = 0.1 },
-  { kind = "relaxes_to", value = 0.5, rate = 0.15 },
-  { kind = "damaged_below", source = "oxygen", threshold = 0.15, rate = 0.25 },
-]
-
-[roles]
-growth = "erk"
-survival = "bcl2"
-hypoxia_response = "hif1"
-
-[mechanics]
-growth_coefficient = 1.5
-lambda_volume = 50.0
-j_medium = 16.0
-j_self_base = 2.0
-j_self_from_growth = 8.0
