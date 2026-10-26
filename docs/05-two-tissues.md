@@ -129,7 +129,25 @@ Three things showed up only when the mechanisms were run together, and each look
 - Continuing a spheroid run after the tissue touched the box left the bath nowhere to be; every cell then read near zero and all 158 died, rim included.
 - Starting the cord's field from zero left a slow front that the solver's tolerance never caught. The first cell drifted from 0.28 to 0.32 over 1400 steps, crossed the quiescence threshold, and the whole population appeared at step 1500. Nothing biological happened at step 1500.
 
+## How a tissue is measured
+
+Both tissues are judged on the same few numbers, which every run writes to `measurements.csv`, one row per step, next to its snapshots:
+
+- **Cycling, quiescent, necrotic**: how many cells are in each fate of chapter 4.
+- **Born, gone**: cells created and cells resorbed since the start. The difference between two rows is the turnover over that window.
+- **Tissue radius**: the radius of a disc with the area the tissue covers, vessel included.
+- **Necrotic radius**: the same for the necrotic cells alone. In a spheroid this is the core.
+- **Viable depth**: how far living tissue reaches from where its oxygen comes in. From a bath, the tissue radius less the necrotic radius, since the living are a ring outside the core. From a vessel, the radius of vessel and living together less the vessel's own, since the living are a sleeve around it.
+
+Every radius is an **equivalent radius**, the radius of a disc of the same area, because a tissue is never a perfect disc and this is the one radius that does not depend on where its boundary wobbles. It is also why the numbers are rough on a tissue far from round: a ragged rim covers more area than a smooth one of the same depth.
+
+Read off a run, these are the numbers this chapter quotes. The cord's viable depth holds between 52 and 55 pixels from step 500 to step 3000, and over its second half it makes 38.5 cells and resorbs 39.0 per hundred steps. The spheroid, when it stops at the edge, has a necrotic radius of 53 pixels and a viable depth of 38.
+
+The run itself ends with the same in three lines, the turnover taken over the second half of the run so that the growth from a single cell does not count.
+
 ## Where in the code
+
+`crates/engine/src/measure.rs`: `Measurements`, and `Simulation::measure`, which reads the lattice and the fates and draws nothing, so measuring a run does not change it. `crates/io/src/output.rs`: `MeasurementLog`, the table.
 
 `crates/core/src/types.rs`: `OxygenSource`, bath or vessel with a radius. `crates/io/src/config.rs`: `oxygen_uptake`, and `SimConfig::scenario`, which turns a configuration into what the engine runs.
 

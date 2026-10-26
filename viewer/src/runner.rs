@@ -10,8 +10,8 @@ use bevy::prelude::*;
 use bevy::tasks::futures::check_ready;
 use bevy::tasks::{AsyncComputeTaskPool, Task};
 use bevy_egui::EguiContexts;
-use cellweave_engine::Simulation;
 use cellweave_engine::simulation::{Configured, Running, StepReport};
+use cellweave_engine::{Measurements, Simulation};
 
 use crate::Experiment;
 
@@ -65,21 +65,6 @@ fn work(job: Work) -> Outcome {
     }
 }
 
-/// The population at one step, for the panel and its plot.
-#[derive(Debug, Clone, Copy)]
-pub struct Census {
-    /// The step it was taken at.
-    pub mcs: u64,
-    /// Alive, cycling or quiescent.
-    pub living: usize,
-    /// Dead and not yet resorbed.
-    pub necrotic: usize,
-    /// Ever born.
-    pub born: u64,
-    /// Resorbed to nothing.
-    pub gone: u64,
-}
-
 /// The simulation, wherever it is, and what the panel asks of it.
 #[derive(Resource)]
 pub struct Runner {
@@ -95,8 +80,8 @@ pub struct Runner {
     pub steps_per_batch: u32,
     /// Why the run stopped, if it did.
     pub stopped: Option<String>,
-    /// One census per batch, oldest first.
-    pub history: Vec<Census>,
+    /// The tissue measured once per batch, oldest first.
+    pub history: Vec<Measurements>,
     /// Steps per second, smoothed.
     pub rate: f64,
 }
@@ -155,8 +140,8 @@ impl Runner {
         std::mem::take(&mut self.fresh)
     }
 
-    /// The latest census, if a step has been taken.
-    pub fn latest(&self) -> Option<&Census> {
+    /// The latest measurements, if a step has been taken.
+    pub fn latest(&self) -> Option<&Measurements> {
         self.history.last()
     }
 }
@@ -213,14 +198,8 @@ pub fn collect(mut runner: ResMut<Runner>) {
 
     match outcome.sim {
         Ok(sim) => {
-            if let Some(last) = outcome.reports.last() {
-                runner.history.push(Census {
-                    mcs: last.mcs,
-                    living: sim.living(),
-                    necrotic: sim.necrotic(),
-                    born: sim.born(),
-                    gone: sim.gone(),
-                });
+            if !outcome.reports.is_empty() {
+                runner.history.push(sim.measure());
             }
             runner.stage = Stage::Idle(sim);
         }

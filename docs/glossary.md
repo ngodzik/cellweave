@@ -32,6 +32,8 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Energy, Hamiltonian, H** (1). The number every configuration of the lattice has, which the Monte Carlo lowers.
 
+**Equivalent radius** (5). The radius of a disc with the same area as a shape. How every radius in a tissue's measurements is taken.
+
 **ERK** (2). Extracellular signal-regulated kinase, the last relay of the growth pathway. Sets the target volume.
 
 **Field** (3). One value per pixel, here the oxygen concentration.
@@ -101,6 +103,8 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 **Turnover** (5). Births balancing deaths in a population of steady size.
 
 **Uptake, u** (3). What a pixel of tissue takes up per unit time. A sink in the field's equation.
+
+**Viable depth** (5). How far living tissue reaches from where its oxygen comes in: from the edge inward in a spheroid, from the wall outward around a vessel.
 
 **VEGF** (2). Vascular endothelial growth factor, the call for new vessels. Computed, unused.
 

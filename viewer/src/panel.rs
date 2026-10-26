@@ -3,6 +3,7 @@
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
 use cellweave_core::OxygenSource;
+use cellweave_engine::Measurements;
 use egui_plot::{Legend, Line, Plot, PlotPoints};
 
 use crate::Experiment;
@@ -70,10 +71,11 @@ fn census(ui: &mut egui::Ui, runner: &Runner) {
             ui.end_row();
         };
         row("MCS", c.mcs.to_string());
-        row("living", c.living.to_string());
+        row("living", format!("{} ({} cycling)", c.living(), c.cycling));
         row("necrotic", c.necrotic.to_string());
-        row("born", c.born.to_string());
-        row("gone", c.gone.to_string());
+        row("born · gone", format!("{} · {}", c.born, c.gone));
+        row("viable depth", format!("{:.1} px", c.viable_depth));
+        row("necrotic radius", format!("{:.1} px", c.necrotic_radius));
         row("speed", format!("{:.0} steps/s", runner.rate));
     });
 }
@@ -145,28 +147,42 @@ fn colouring(ui: &mut egui::Ui, view: &mut View, experiment: &Experiment) {
     }
 }
 
+/// The population, then the shape: how many cells, and how deep the living
+/// reach.
 fn plot(ui: &mut egui::Ui, runner: &Runner) {
-    let series = |pick: fn(&crate::runner::Census) -> usize| -> PlotPoints {
+    let series = |pick: fn(&Measurements) -> f64| -> PlotPoints {
         runner
             .history
             .iter()
-            .map(|c| [c.mcs as f64, pick(c) as f64])
+            .map(|m| [m.mcs as f64, pick(m)])
             .collect()
     };
-    Plot::new("population")
-        .height(120.0)
-        .legend(Legend::default())
-        .allow_drag(false)
-        .allow_zoom(false)
-        .allow_scroll(false)
-        .allow_boxed_zoom(false)
-        .include_y(0.0)
-        .show(ui, |plot| {
-            plot.line(Line::new("living", series(|c| c.living)).color(colour(paint::CYCLING)));
-            plot.line(
-                Line::new("necrotic", series(|c| c.necrotic)).color(egui::Color32::from_gray(150)),
-            );
-        });
+    let frame = |id: &str| {
+        Plot::new(id.to_owned())
+            .height(100.0)
+            .legend(Legend::default())
+            .allow_drag(false)
+            .allow_zoom(false)
+            .allow_scroll(false)
+            .allow_boxed_zoom(false)
+            .include_y(0.0)
+    };
+    frame("population").show(ui, |plot| {
+        plot.line(Line::new("living", series(|m| m.living() as f64)).color(colour(paint::CYCLING)));
+        plot.line(
+            Line::new("necrotic", series(|m| m.necrotic as f64))
+                .color(egui::Color32::from_gray(150)),
+        );
+    });
+    frame("shape").show(ui, |plot| {
+        plot.line(
+            Line::new("viable depth", series(|m| m.viable_depth)).color(colour(paint::QUIESCENT)),
+        );
+        plot.line(
+            Line::new("necrotic radius", series(|m| m.necrotic_radius))
+                .color(egui::Color32::from_gray(150)),
+        );
+    });
 }
 
 /// A small square of colour with its meaning.
