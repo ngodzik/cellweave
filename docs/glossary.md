@@ -74,6 +74,8 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **RAS** (2). The switch at the start of the growth pathway. Stuck on in one cancer in three.
 
+**Red-black** (3). An order for an SOR sweep: the grid coloured like a chessboard, every red pixel updated from its black neighbours, then every black one from the new reds. Each colour can be updated in parallel.
+
 **Relaxation** (3). Iterating a field until it stops moving: its steady state.
 
 **Resorption** (4). Dead tissue being cleared. Two pixels per step here.

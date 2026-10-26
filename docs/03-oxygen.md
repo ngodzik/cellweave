@@ -41,7 +41,9 @@ In both cases the walls of the box let nothing through. That is what takes the b
 
 Because oxygen equilibrates far faster than anything a cell does, the field is not stepped forward by some number of sub steps per lattice step. It is **relaxed**: iterated until it stops moving, every lattice step, so that what a cell reads is the equilibrium for the current layout.
 
-The first way of doing that, stepping in time until the change per step was small, was wrong twice. A tolerance on the per step change is blind to a slow front: each step moves less than the tolerance while the total drifts for hundreds of steps. And once the tolerance was set correctly, well below the uptake, the slowest mode of a region of size L took about L² steps to settle, and a run did not finish. The field is now solved by **successive over-relaxation**, SOR: sweep the grid in a fixed order, set each pixel to the value that balances diffusion against uptake given its neighbours as they stand, and push it a little past that value to hurry the slow modes along. About L sweeps instead of L². Floored at zero, since tissue cannot take up what is not there. And once, before the first step, the field is settled very tightly, so that every later step is an increment on a true equilibrium.
+The first way of doing that, stepping in time until the change per step was small, was wrong twice. A tolerance on the per step change is blind to a slow front: each step moves less than the tolerance while the total drifts for hundreds of steps. And once the tolerance was set correctly, well below the uptake, the slowest mode of a region of size L took about L² steps to settle, and a run did not finish. The field is now solved by **successive over-relaxation**, SOR: sweep the grid, set each pixel to the value that balances diffusion against uptake given its neighbours as they stand, and push it a little past that value to hurry the slow modes along. About L sweeps instead of L². Floored at zero, since tissue cannot take up what is not there. And once, before the first step, the field is settled very tightly, so that every later step is an increment on a true equilibrium.
+
+The sweep goes in **red-black** order. Colour the grid like a chessboard: every neighbour of a red pixel is black. So all the red pixels can be balanced at once from the black ones, then all the black ones from the new red ones, and each half can be split across every core of the machine without any pixel reading a neighbour while it is being written. This is what makes the solve parallel, and it settles in fewer sweeps than the row-by-row order it replaced. Each half reads one copy of the grid and writes another, so which core takes which rows cannot change a value: a run on one thread and a run on twenty are the same run to the last bit, and CI checks it.
 
 ### The three clocks, in the model
 
@@ -71,7 +73,7 @@ The order is the one biology has; the ratios are compressed. The middle row was 
 
 - `ScalarField` holds the values, the sinks, and which pixels are held.
 - `step` is one explicit time step, for what needs time; `check_step` is the stability guard.
-- `relax` is the steady-state solve by SOR; `sor_sweep` is one pass.
+- `relax` is the steady-state solve by SOR; `sor_sweep` is one pass, made of two `half_sweep`s, red then black, each spread over the cores by `rayon`. `ROWS_PER_TASK` is how much of the grid one task takes.
 - `hold_bath` is the flood fill from the border; `hold_pixels` holds a given set; `release_all` forgets both.
 - `set_uptake` and `clear_uptake` are the sinks.
 

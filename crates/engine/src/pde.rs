@@ -19,6 +19,7 @@
 //! no physical meaning.
 
 use cellweave_core::{CellweaveError, DiffusionField, TimeStep};
+use rayon::prelude::*;
 
 /// Scalar 2D diffusion field with no-flux walls.
 pub struct ScalarField {
@@ -41,6 +42,14 @@ pub struct ScalarField {
     /// Scratch: breadth-first frontier for the bath fill.
     frontier: Vec<(u32, u32)>,
 }
+
+/// Rows one parallel task takes at least.
+///
+/// A single row is too little work to hand to another thread, and too many
+/// rows per task leave threads idle on a 200 pixel grid, where a half sweep
+/// is only a few dozen tasks. Measured on the spheroid, four was the fastest of
+/// one, four, eight, sixteen and thirty-two, with eight a close second.
+const ROWS_PER_TASK: usize = 4;
 
 /// Largest `D · dt` an explicit five point stencil stays stable at, on a unit grid.
 const DIFFUSION_LIMIT: f64 = 0.25;
@@ -112,7 +121,7 @@ impl ScalarField {
 
     /// Solve for the steady state directly, and say how many sweeps it took.
     ///
-    /// This does not step forward in time. It sweeps the grid in a fixed order,
+    /// This does not step forward in time. It sweeps the grid in red-black order,
     /// setting each pixel to the value that balances diffusion against decay,
     /// source and uptake given its neighbours as they stand, pushed a little
     /// past that value to hurry the slow modes along: successive over
@@ -155,43 +164,77 @@ impl ScalarField {
         )))
     }
 
-    /// One in place sweep, returning the largest change made to any pixel.
+    /// One sweep in two halves, returning the largest change made to any pixel.
+    ///
+    /// The grid is coloured like a chessboard. Every neighbour of a red pixel is
+    /// black, so all the red pixels can be balanced at once from the black ones
+    /// as they stand, then all the black ones from the new red ones. That is the
+    /// red-black ordering of the same over-relaxation, and it is what lets the
+    /// grid be swept in parallel: no pixel ever reads a neighbour being written.
     fn sor_sweep(&mut self, omega: f64) -> f64 {
-        let mut moved: f64 = 0.0;
-        for y in 0..self.height {
-            for x in 0..self.width {
-                let i = self.idx(x, y);
-                if self.held[i] {
-                    continue;
+        let red = self.half_sweep(omega, 0);
+        let black = self.half_sweep(omega, 1);
+        red.max(black)
+    }
+
+    /// Balance every pixel of one colour, row by row in parallel.
+    ///
+    /// Reads `values` and writes `next`, then swaps them, so each pixel's new
+    /// value is a function of the old grid alone. Which thread computes which
+    /// row cannot change any value, and the largest change is a maximum, which
+    /// does not depend on the order it is taken in: one thread or twenty, the
+    /// field is the same to the last bit.
+    fn half_sweep(&mut self, omega: f64, colour: u32) -> f64 {
+        let (width, height) = (self.width, self.height);
+        let (d, decay, source) = (self.d, self.decay, self.source);
+        let (values, held, uptake) = (&self.values, &self.held, &self.uptake);
+        let at = |x: u32, y: u32| values[y as usize * width as usize + x as usize];
+
+        let moved = self
+            .next
+            .par_chunks_mut(width as usize)
+            .with_min_len(ROWS_PER_TASK)
+            .enumerate()
+            .map(|(y, row)| {
+                let y = y as u32;
+                let mut moved: f64 = 0.0;
+                for (x, out) in (0..width).zip(row.iter_mut()) {
+                    let i = y as usize * width as usize + x as usize;
+                    let before = values[i];
+                    if (x + y) % 2 != colour || held[i] {
+                        *out = before;
+                        continue;
+                    }
+                    // Real neighbours only; a missing one at the wall is a
+                    // mirror of this pixel, which the denominator accounts for.
+                    let mut sum = 0.0;
+                    let mut real = 0.0;
+                    if x > 0 {
+                        sum += at(x - 1, y);
+                        real += 1.0;
+                    }
+                    if x + 1 < width {
+                        sum += at(x + 1, y);
+                        real += 1.0;
+                    }
+                    if y > 0 {
+                        sum += at(x, y - 1);
+                        real += 1.0;
+                    }
+                    if y + 1 < height {
+                        sum += at(x, y + 1);
+                        real += 1.0;
+                    }
+                    let balanced = (d * sum + source - uptake[i]) / (real * d + decay);
+                    let after = ((1.0 - omega) * before + omega * balanced).max(0.0);
+                    *out = after;
+                    moved = moved.max((after - before).abs());
                 }
-                // Real neighbours only; a missing one at the wall is a mirror of
-                // this pixel, which the denominator accounts for.
-                let mut sum = 0.0;
-                let mut real = 0.0;
-                if x > 0 {
-                    sum += self.values[self.idx(x - 1, y)];
-                    real += 1.0;
-                }
-                if x + 1 < self.width {
-                    sum += self.values[self.idx(x + 1, y)];
-                    real += 1.0;
-                }
-                if y > 0 {
-                    sum += self.values[self.idx(x, y - 1)];
-                    real += 1.0;
-                }
-                if y + 1 < self.height {
-                    sum += self.values[self.idx(x, y + 1)];
-                    real += 1.0;
-                }
-                let balanced =
-                    (self.d * sum + self.source - self.uptake[i]) / (real * self.d + self.decay);
-                let before = self.values[i];
-                let after = ((1.0 - omega) * before + omega * balanced).max(0.0);
-                self.values[i] = after;
-                moved = moved.max((after - before).abs());
-            }
-        }
+                moved
+            })
+            .reduce(|| 0.0, f64::max);
+
+        std::mem::swap(&mut self.values, &mut self.next);
         moved
     }
 
@@ -608,6 +651,27 @@ mod tests {
                 assert!(c >= 0.0, "negative concentration at ({x},{y}): {c}");
             }
         }
+    }
+
+    #[test]
+    fn the_number_of_threads_does_not_change_a_single_bit() {
+        // A half sweep reads one grid and writes the other, so which thread
+        // takes which rows cannot change a value. An odd-sized box, so the rows
+        // do not split evenly between tasks.
+        let solve = |threads| {
+            rayon::ThreadPoolBuilder::new()
+                .num_threads(threads)
+                .build()
+                .unwrap()
+                .install(|| bathed_disc(61, 20, 0.0005))
+                .values
+                .iter()
+                .map(|v| v.to_bits())
+                .collect::<Vec<u64>>()
+        };
+        let alone = solve(1);
+        assert_eq!(alone, solve(3));
+        assert_eq!(alone, solve(16));
     }
 
     #[test]
