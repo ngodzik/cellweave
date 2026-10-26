@@ -11,7 +11,7 @@ use bevy::tasks::futures::check_ready;
 use bevy::tasks::{AsyncComputeTaskPool, Task};
 use bevy_egui::EguiContexts;
 use cellweave_engine::simulation::{Configured, Running, StepReport};
-use cellweave_engine::{Measurements, Simulation};
+use cellweave_engine::{CloneRecord, Measurements, Simulation};
 
 use crate::Experiment;
 
@@ -26,6 +26,11 @@ enum Stage {
     /// Lost to an error; only a restart brings it back.
     Failed,
 }
+
+/// Entries of history kept at most. Past this, every other one is dropped,
+/// so a long run keeps its whole span at a coarser grain, and what the panel
+/// draws each frame stays the same size however long the window is open.
+const HISTORY_LIMIT: usize = 2000;
 
 /// What the pool is asked to do.
 enum Work {
@@ -82,6 +87,11 @@ pub struct Runner {
     pub stopped: Option<String>,
     /// The tissue measured once per batch, oldest first.
     pub history: Vec<Measurements>,
+    /// Living cells per clone, once per batch, alongside `history`.
+    pub clone_history: Vec<Vec<usize>>,
+    /// Every clone founded so far, as of the last batch, so the panel can
+    /// name them while the simulation is away in the pool.
+    pub clones: Vec<CloneRecord>,
     /// Steps per second, smoothed.
     pub rate: f64,
 }
@@ -97,6 +107,8 @@ impl Runner {
             steps_per_batch: 2,
             stopped: None,
             history: Vec::new(),
+            clone_history: Vec::new(),
+            clones: Vec::new(),
             rate: 0.0,
         };
         runner.restart(experiment);
@@ -107,6 +119,8 @@ impl Runner {
     /// the pool is dropped, which cancels it.
     pub fn restart(&mut self, experiment: &Experiment) {
         self.history.clear();
+        self.clone_history.clear();
+        self.clones.clear();
         self.rate = 0.0;
         self.fresh = true;
         match Simulation::new(experiment.scenario.clone(), &experiment.spec) {
@@ -140,10 +154,27 @@ impl Runner {
         std::mem::take(&mut self.fresh)
     }
 
+    /// Halve the history, in both series together so they stay aligned.
+    fn thin_history(&mut self) {
+        thin(&mut self.history);
+        thin(&mut self.clone_history);
+    }
+
     /// The latest measurements, if a step has been taken.
     pub fn latest(&self) -> Option<&Measurements> {
         self.history.last()
     }
+}
+
+/// Keep every other entry of a series, and always the latest.
+fn thin<T>(series: &mut Vec<T>) {
+    let last = series.len().saturating_sub(1);
+    let mut i = 0;
+    series.retain(|_| {
+        let keep = i % 2 == 0 || i == last;
+        i += 1;
+        keep
+    });
 }
 
 /// Space pauses, N steps once, R restarts, unless egui is taking the keys.
@@ -200,6 +231,13 @@ pub fn collect(mut runner: ResMut<Runner>) {
         Ok(sim) => {
             if !outcome.reports.is_empty() {
                 runner.history.push(sim.measure());
+                runner.clone_history.push(sim.clone_sizes());
+                if runner.history.len() > HISTORY_LIMIT {
+                    runner.thin_history();
+                }
+                if runner.clones.len() != sim.clones().len() {
+                    runner.clones = sim.clones().to_vec();
+                }
             }
             runner.stage = Stage::Idle(sim);
         }

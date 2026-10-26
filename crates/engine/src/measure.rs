@@ -30,6 +30,8 @@ pub struct Measurements {
     pub born: u64,
     /// Cells resorbed to nothing.
     pub gone: u64,
+    /// Clones with at least one living cell.
+    pub clones: usize,
     /// Equivalent radius of everything the tissue covers, in pixels: living
     /// and necrotic cells, and the vessel they surround if there is one.
     pub tissue_radius: f64,
@@ -119,6 +121,7 @@ impl<S: SimState> Simulation<S> {
             necrotic,
             born: self.born(),
             gone: self.gone(),
+            clones: self.clone_sizes().iter().filter(|&&n| n > 0).count(),
             tissue_radius,
             necrotic_radius,
             viable_depth,
@@ -149,6 +152,7 @@ mod tests {
             oxygen_source,
             oxygen_uptake: 0.0003,
             seed: DEFAULT_SEED,
+            mutation_rate: 0.0,
         }
     }
 

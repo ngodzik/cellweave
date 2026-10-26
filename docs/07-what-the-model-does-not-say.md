@@ -1,4 +1,4 @@
-# 6. What the model does not say
+# 7. What the model does not say
 
 The placeholders, the missing units, and why emergence is the whole point.
 
@@ -29,11 +29,11 @@ What is a placeholder today, gathered from the chapters:
 | field | stroma consumes at the tumour's rate | the medium beyond a cord does not fill up from the vessel |
 | fates | 0.25, 0.45, 1.4; division checked every 20 steps; resorption 2 pixels per step | the three fates are reachable, in the right order, at the right depths |
 | clocks | 8 units of network time per lattice step | the network answers in 2 steps and a cell divides in 20 |
+| evolution | mutation rate 1 in 20; factor between 1/2 and 2; every term equally likely | selection acts within a few thousand steps on changes large enough to alter a fate |
 
 ## What is not there
 
 - **Only oxygen is coupled.** Growth factor is the same hardcoded input for every cell. VEGF is computed and goes nowhere: nothing is secreted into the field.
-- **No evolution.** A daughter is an exact copy of its parent. Nothing varies, so nothing is selected. The cord is ready for it; the mutation is not written.
 - **Only necrosis.** Apoptosis, the programmed death a drug would trigger, does not exist.
 - **Two dimensions.** A tissue here is a monolayer. In three dimensions a sphere starves at a different radius than a disc, and a cell has a dozen neighbours rather than six; the mechanisms are the same, the numbers are not.
 - **One cell type.** Normal tissue is a kind on the lattice with contact energies, and nothing else.

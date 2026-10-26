@@ -137,6 +137,8 @@ jobs:
       # 500 steps is past the point where the tissue reaches the edge of the
       # default grid, so this also checks that the early stop lands on the same
       # step both times. The cord is cut short: it never stops on its own.
+      # The evolving cord has founded its first clones by step 400, so the
+      # pair also checks that mutation draws the same changes both times.
       # The first run of each pair is held to one thread and the second gets
       # every core the runner has, so the comparison also checks that the
       # parallel field solve gives the same answer whatever the thread count.
@@ -151,12 +153,17 @@ jobs:
           mv output-cord cord-a
           ./target/release/cellweave --config examples/cord.toml --mcs 400
           mv output-cord cord-b
+          RAYON_NUM_THREADS=1 ./target/release/cellweave --config examples/cord-evolving.toml --mcs 400
+          mv output-cord-evolving evolving-a
+          ./target/release/cellweave --config examples/cord-evolving.toml --mcs 400
+          mv output-cord-evolving evolving-b
           ./target/release/cellweave --config examples/cord-mutant.toml --mcs 200
 
       - name: Compare the runs
         run: |
           diff --recursive spheroid-a spheroid-b
           diff --recursive cord-a cord-b
+          diff --recursive evolving-a evolving-b
           # The mutant only has to run: it is here so that a network file with a
           # different topology is exercised, not just the built-in one.
           test -s output-cord-mutant/snapshot_000000.json

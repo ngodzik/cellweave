@@ -5,6 +5,8 @@
 //! indices and never a string, and a name that resolves to nothing is an error
 //! at load rather than a silent zero in the middle of a run.
 
+use std::sync::Arc;
+
 use cellweave_core::network::{INPUT_NAMES, Term};
 use cellweave_core::{
     CellInputs, CellMechanics, CellweaveError, Concentration, MechanicsSpec, NetworkSpec,
@@ -44,6 +46,64 @@ enum Compiled {
     },
 }
 
+impl Compiled {
+    /// The rate this term moves its node at, which is what a mutation changes.
+    fn rate_mut(&mut self) -> &mut f64 {
+        match self {
+            Compiled::ActivatedBy { rate, .. }
+            | Compiled::ActivatedByAbsenceOf { rate, .. }
+            | Compiled::ProducedBy { rate, .. }
+            | Compiled::Decays { rate }
+            | Compiled::RelaxesTo { rate, .. }
+            | Compiled::DamagedBelow { rate, .. } => rate,
+        }
+    }
+
+    /// The kind of term, as a network file names it.
+    fn kind(&self) -> &'static str {
+        match self {
+            Compiled::ActivatedBy { .. } => "activated_by",
+            Compiled::ActivatedByAbsenceOf { .. } => "activated_by_absence_of",
+            Compiled::ProducedBy { .. } => "produced_by",
+            Compiled::Decays { .. } => "decays",
+            Compiled::RelaxesTo { .. } => "relaxes_to",
+            Compiled::DamagedBelow { .. } => "damaged_below",
+        }
+    }
+}
+
+/// How far one mutation can move a rate: up to this factor either way.
+///
+/// Large on purpose. A mutation that changes a rate by a percent is invisible
+/// against the noise of the lattice, and selection can only act on what it can
+/// see; doubling or halving one rate is the scale of a gene switched up or
+/// down.
+pub const MUTATION_SPREAD: f64 = 2.0;
+
+/// One heritable change to a network: a single rate scaled.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Mutation {
+    /// The node whose term changed, by name.
+    pub node: String,
+    /// Which of its terms, counting from zero in the order the file lists them.
+    pub term: usize,
+    /// What kind of term that is, as the file names it.
+    pub kind: &'static str,
+    /// What its rate was multiplied by, between `1 / MUTATION_SPREAD` and
+    /// [`MUTATION_SPREAD`].
+    pub factor: f64,
+}
+
+impl std::fmt::Display for Mutation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{} {} #{} x{:.2}",
+            self.node, self.kind, self.term, self.factor
+        )
+    }
+}
+
 /// A protein network, ready to run.
 ///
 /// Cheap to clone, which is what a dividing cell does: a daughter is a copy of
@@ -52,6 +112,8 @@ enum Compiled {
 pub struct Network {
     /// Current value of each node, in the spec's order.
     state: ProteinState,
+    /// Name of each node, same order, shared by every copy.
+    names: Arc<[String]>,
     /// Terms per node, same order.
     terms: Vec<Vec<Compiled>>,
     /// Index of the growth, survival and hypoxia nodes.
@@ -201,6 +263,7 @@ impl Network {
 
         Ok(Self {
             state,
+            names: spec.nodes.iter().map(|n| n.name.clone()).collect(),
             terms,
             growth: role(&roles.growth, "growth")?,
             survival: role(&roles.survival, "survival")?,
@@ -234,6 +297,37 @@ impl Network {
     /// well before it kills.
     pub fn hypoxia_response(&self) -> f64 {
         self.state.values[self.hypoxia].0
+    }
+
+    /// Scale one rate, chosen by `which`, by a factor set by `how`, and say what
+    /// changed. Both are uniform draws in `[0, 1)`, taken by the caller so that
+    /// the network holds no random generator of its own.
+    ///
+    /// Every term of every node is equally likely, and the factor is uniform
+    /// in its logarithm, so a mutation is as likely to halve a rate as to
+    /// double it. Only the rate changes, never the shape of a term: a mutation
+    /// turns a gene up or down, it does not rewire the network.
+    ///
+    /// `None` for a network without a single term, which has nothing a
+    /// mutation could change.
+    pub fn mutate(&mut self, which: f64, how: f64) -> Option<Mutation> {
+        let count: usize = self.terms.iter().map(Vec::len).sum();
+        let mut pick = ((which * count as f64) as usize).min(count.saturating_sub(1));
+        let factor = MUTATION_SPREAD.powf(2.0 * how - 1.0);
+        for (node, terms) in self.terms.iter_mut().enumerate() {
+            if pick < terms.len() {
+                let term = &mut terms[pick];
+                *term.rate_mut() *= factor;
+                return Some(Mutation {
+                    node: self.names[node].clone(),
+                    term: pick,
+                    kind: term.kind(),
+                    factor,
+                });
+            }
+            pick -= terms.len();
+        }
+        None
     }
 
     /// The value of one source, given the current state and the environment.
@@ -703,5 +797,49 @@ mod tests {
         assert!(parent.survival() > 0.9);
         assert!(daughter.survival() < 0.25);
         assert_eq!(parent.reference_volume(), daughter.reference_volume());
+    }
+
+    #[test]
+    fn a_mutation_scales_one_rate_and_the_parent_keeps_its_own() {
+        let parent = ras_erk();
+        let mut daughter = parent.clone();
+        // The last of the eleven terms is BCL2's damage below the anoxia
+        // threshold; a draw near one doubles it.
+        let m = daughter.mutate(0.99, 0.999_999).unwrap();
+        assert_eq!(
+            (m.node.as_str(), m.term, m.kind),
+            ("bcl2", 3, "damaged_below")
+        );
+        assert!((m.factor - MUTATION_SPREAD).abs() < 1e-5);
+
+        let survive = |mut net: Network| {
+            for _ in 0..40 {
+                net.step(TimeStep(1.0), &at(0.05, 0.2));
+            }
+            net.survival()
+        };
+        assert!(
+            survive(daughter) < survive(parent),
+            "doubled damage kills faster in the dark, and only in the daughter"
+        );
+    }
+
+    #[test]
+    fn a_draw_in_the_middle_changes_nothing() {
+        let mut net = ras_erk();
+        let m = net.mutate(0.0, 0.5).unwrap();
+        assert_eq!(
+            (m.node.as_str(), m.term, m.kind),
+            ("ras", 0, "activated_by")
+        );
+        assert_eq!(m.factor, 1.0);
+        for _ in 0..5 {
+            net.step(TimeStep(1.0), &at(0.8, 0.2));
+        }
+        let mut reference = ras_erk();
+        for _ in 0..5 {
+            reference.step(TimeStep(1.0), &at(0.8, 0.2));
+        }
+        assert_eq!(net.state().values, reference.state().values);
     }
 }

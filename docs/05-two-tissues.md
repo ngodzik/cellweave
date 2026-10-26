@@ -119,7 +119,7 @@ A flux balance at the vessel wall predicted about 43 living cells. The first pre
 
 ### Why it matters
 
-This is the tissue an evolving population needs. Every birth is a chance to vary. A lineage that tolerates less oxygen survives further out; if it still divides there, its daughters inherit that, and the cord thickens. Thousands of generations in a stable environment, on a grid the tissue never fills.
+This is the tissue an evolving population needs. Every birth is a chance to vary. A lineage that tolerates less oxygen survives further out; if it still divides there, its daughters inherit that, and the cord thickens. Thousands of generations in a stable environment, on a grid the tissue never fills. Chapter 6 turns mutation on and watches what selection does with it.
 
 ## What both taught that the prototype hid
 
@@ -135,6 +135,7 @@ Both tissues are judged on the same few numbers, which every run writes to `meas
 
 - **Cycling, quiescent, necrotic**: how many cells are in each fate of chapter 4.
 - **Born, gone**: cells created and cells resorbed since the start. The difference between two rows is the turnover over that window.
+- **Clones**: how many clones still have a living cell. One, unless mutation is on (chapter 6).
 - **Tissue radius**: the radius of a disc with the area the tissue covers, vessel included.
 - **Necrotic radius**: the same for the necrotic cells alone. In a spheroid this is the core.
 - **Viable depth**: how far living tissue reaches from where its oxygen comes in. From a bath, the tissue radius less the necrotic radius, since the living are a ring outside the core. From a vessel, the radius of vessel and living together less the vessel's own, since the living are a sleeve around it.

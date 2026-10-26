@@ -8,6 +8,12 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct CellId(pub u32);
 
+/// Identifier of a clone: every cell descended from one founder with no
+/// mutation in between. The first cell founds clone 0, and each mutation
+/// founds the next.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct CloneId(pub u32);
+
 /// Unique identifier for a protein species.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ProteinId(pub String);
@@ -177,4 +183,6 @@ pub struct CellSnapshot {
     pub proteins: ProteinState,
     /// Mean oxygen over the cell's pixels, as a fraction of the bath.
     pub oxygen: Concentration,
+    /// The clone the cell belongs to.
+    pub clone: CloneId,
 }
