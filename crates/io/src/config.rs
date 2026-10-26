@@ -43,6 +43,14 @@ pub struct SimConfig {
     /// exact copy and leaves a run exactly as it was before mutation existed.
     #[serde(default)]
     pub mutation_rate: f64,
+    /// Seed of the run's random generator. Left unset, the default seed, so
+    /// that a configuration names one run unless asked for another.
+    #[serde(default = "default_seed")]
+    pub seed: u64,
+}
+
+fn default_seed() -> u64 {
+    DEFAULT_SEED
 }
 
 /// The RAS/ERK network, compiled in so that the built-in hypothesis and one you
@@ -71,7 +79,7 @@ impl SimConfig {
         Self::from_toml(&s)
     }
 
-    /// The simulation this configuration describes, under the default seed.
+    /// The simulation this configuration describes, under its seed.
     pub fn scenario(&self) -> Scenario {
         Scenario {
             width: self.width,
@@ -79,7 +87,7 @@ impl SimConfig {
             temperature: self.temperature,
             oxygen_source: self.oxygen_source,
             oxygen_uptake: self.oxygen_uptake,
-            seed: DEFAULT_SEED,
+            seed: self.seed,
             mutation_rate: self.mutation_rate,
         }
     }
@@ -166,6 +174,7 @@ impl Default for SimConfig {
             oxygen_uptake: default_oxygen_uptake(),
             network: None,
             mutation_rate: 0.0,
+            seed: DEFAULT_SEED,
         }
     }
 }
@@ -193,6 +202,20 @@ mod tests {
         )
         .unwrap();
         assert_eq!(cfg.oxygen_source, OxygenSource::Bath);
+        assert_eq!(
+            cfg.scenario().seed,
+            DEFAULT_SEED,
+            "a config that names no seed is the run it always was"
+        );
+    }
+
+    #[test]
+    fn a_config_can_name_its_seed() {
+        let cfg = SimConfig::from_toml(
+            "width = 50\nheight = 50\nmcs = 10\ntemperature = 10.0\nsnapshot_interval = 5\noutput_dir = \"o\"\nseed = 7\n",
+        )
+        .unwrap();
+        assert_eq!(cfg.scenario().seed, 7);
     }
 
     #[test]

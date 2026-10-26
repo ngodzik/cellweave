@@ -35,6 +35,25 @@ Over the next three hundred steps the quiescent cells disappear: from 26 at step
 
 Nobody wrote "escape hypoxic arrest". There is no rule about it, no fitness function, no target. It is the one change, among sixty-eight tried, that paid off in a tissue whose limit was hypoxic arrest.
 
+### Across seeds
+
+One history proves little, so the same configuration was run under seeds 1 to 8, with `--seed`, for 3000 steps each. The prediction, written before the runs, was that in at least five of the eight the leading clone would carry a weakened hypoxia response and the quiescent cells would be nearly gone (fewer than five).
+
+That held in four: seeds 2, 3, 5 and 7, each through a different HIF-1α change (switched on more weakly, or decaying faster). Seed 8 found the same kind of mutation but kept fifteen quiescent cells, so the prediction failed, narrowly. The larger finding is that seven of the eight cords left their steady state one way or another, by routes that differ:
+
+| seed | what the leading clone changed | at the end |
+|---|---|---|
+| 1 | ERK decays at 0.54 of its rate, so it stays higher | touched the edge at step 1056, 54 quiescent |
+| 2 | HIF-1α switched on at 0.69 | 42 cycling, 3 quiescent |
+| 3 | HIF-1α switched on at 0.56 | touched the edge at step 2748, 1 quiescent |
+| 4 | BCL2 damaged at 0.52 of its rate below the anoxia threshold | touched the edge at step 2472, 68 quiescent |
+| 5 | HIF-1α decays at 1.97 | 43 cycling, 0 quiescent |
+| 6 | a small change to BCL2 | steady, like the cord without mutation |
+| 7 | HIF-1α decays at 1.49 | touched the edge at step 1482, 0 quiescent |
+| 8 | HIF-1α switched on at 0.73 | 50 cycling, 15 quiescent |
+
+Escaping arrest is the most common route but not the only one: surviving deeper (seed 4) or growing more (seed 1) also breaks the balance. In biology this is **convergent evolution**: the same outcome, a tumour that outgrows its steady state, reached through different changes.
+
 ### Watching it
 
 In the viewer, colour by **clone**. The founder is a muted blue and every mutant a hue of its own, dimmed while arrested, so a clone that escapes arrest is also a clone that lights up. The panel lists the leading clones with the mutation that founded each, and plots every clone's share of the living over time, stacked: a **Muller plot**, where a sweep is a band that widens until it pushes the others out.
@@ -67,4 +86,4 @@ In the viewer, colour by **clone**. The founder is a muted blue and every mutant
 
 ## Still a placeholder
 
-The mutation rate: one in twenty divisions, where a real one is nearer one change per gene in a billion. It compresses years into a few thousand steps, and the order in which things happen is all it preserves. The factor's range, the uniform choice of term, and the absence of any mutation that changes a threshold, a contact energy, or the shape of a cell. And the tissue itself: one geometry, one seed. What seed 42 found is one history; whether escape from arrest is what selection finds every time, or one outcome among several, is a question for many seeds, and it has not been asked yet.
+The mutation rate: one in twenty divisions, where a real one is nearer one change per gene in a billion. It compresses years into a few thousand steps, and the order in which things happen is all it preserves. The factor's range, the uniform choice of term, and the absence of any mutation that changes a threshold, a contact energy, or the shape of a cell. And the tissue itself: one geometry, nine seeds. Nine histories say which routes exist; how often each is taken needs many more, and a statistic over them that the program does not yet compute.
