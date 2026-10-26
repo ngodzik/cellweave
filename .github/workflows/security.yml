@@ -24,3 +24,9 @@ jobs:
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
           command: check
+      # The viewer is a workspace of its own, with its own lock file and its
+      # own deny.toml for the licences Bevy brings.
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check
+          manifest-path: viewer/Cargo.toml
