@@ -1,6 +1,6 @@
 //! TOML simulation configuration.
 
-use cellweave_core::{CellweaveError, NetworkSpec, OxygenSource};
+use cellweave_core::{CellweaveError, NetworkSpec, OxygenSource, Seeding};
 use cellweave_engine::simulation::{DEFAULT_SEED, Scenario};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -47,6 +47,9 @@ pub struct SimConfig {
     /// that a configuration names one run unless asked for another.
     #[serde(default = "default_seed")]
     pub seed: u64,
+    /// What the box holds at the start. Defaults to a single tumour cell.
+    #[serde(default)]
+    pub seeding: Seeding,
 }
 
 fn default_seed() -> u64 {
@@ -89,6 +92,7 @@ impl SimConfig {
             oxygen_uptake: self.oxygen_uptake,
             seed: self.seed,
             mutation_rate: self.mutation_rate,
+            seeding: self.seeding,
         }
     }
 
@@ -175,6 +179,7 @@ impl Default for SimConfig {
             network: None,
             mutation_rate: 0.0,
             seed: DEFAULT_SEED,
+            seeding: Seeding::Single,
         }
     }
 }

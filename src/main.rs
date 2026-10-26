@@ -13,6 +13,7 @@
 #![deny(unsafe_code)]
 
 use anyhow::{Context, Result};
+use cellweave_core::Seeding;
 use cellweave_core::traits::SimOutput;
 use cellweave_engine::{Measurements, Simulation};
 use cellweave_io::{JsonOutput, MeasurementLog, SimConfig, write_clones};
@@ -144,6 +145,7 @@ fn leading_clones<S: cellweave_engine::simulation::SimState>(
         sim.clones().len(),
         order.len()
     );
+    let sheet = matches!(sim.scenario().seeding, Seeding::Sheet { .. });
     for &c in order.iter().take(5) {
         let mut chain = Vec::new();
         let mut at = sim.clones().get(c);
@@ -159,6 +161,8 @@ fn leading_clones<S: cellweave_engine::simulation::SimState>(
         let earlier = chain.len().saturating_sub(SHOWN_MUTATIONS);
         let latest = chain[earlier..].join(", then ");
         let chain = match (chain.is_empty(), earlier) {
+            // In a sheet every cell founded a clone of its own.
+            (true, _) if sheet => "a founder, unmutated".to_owned(),
             (true, _) => "the founder".to_owned(),
             (false, 0) => latest,
             (false, n) => format!("{n} earlier, then {latest}"),
@@ -183,7 +187,7 @@ fn summarise(measured: &[Measurements]) -> Option<String> {
     Some(format!(
         "at MCS {}: {} cycling, {} quiescent, {} necrotic\n  \
          tissue radius {:.1} px, necrotic radius {:.1} px, viable depth {:.1} px\n  \
-         from MCS {}: {:.1} births and {:.1} resorptions per 100 MCS",
+         from MCS {}: {:.1} births and {:.1} cells gone (resorbed or shed) per 100 MCS",
         last.mcs,
         last.cycling,
         last.quiescent,

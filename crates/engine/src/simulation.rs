@@ -13,7 +13,7 @@ use std::marker::PhantomData;
 
 use cellweave_core::{
     CellId, CellInputs, CellKind, CellSnapshot, CellweaveError, CloneId, Concentration,
-    NetworkSpec, OxygenSource, Pos2, SignalingNetwork, SimSnapshot, TimeStep, Volume,
+    NetworkSpec, OxygenSource, Pos2, Seeding, SignalingNetwork, SimSnapshot, TimeStep, Volume,
 };
 use rand::rngs::StdRng;
 use rand::{RngExt, SeedableRng};
@@ -36,13 +36,19 @@ pub const DEFAULT_SEED: u64 = 42;
 /// A cell divides once it reaches this multiple of its lineage's reference volume.
 const DIVISION_RATIO: f64 = 1.4;
 
-/// Monte Carlo steps between two checks for cells ready to divide.
+/// Monte Carlo steps between two checks for cells ready to divide, in a tissue
+/// grown from one cell.
 ///
 /// Dividing scans the whole lattice, so it is not something to attempt on every
-/// step, and a cell needs time to grow back anyway.
+/// step, and a cell needs time to grow back anyway. A sheet checks every step
+/// instead: there a cell reaches the threshold only when a neighbour leaves,
+/// and checking in batches would make the whole layer divide in waves, every
+/// cell freed in twenty steps splitting at once.
 const DIVISION_CHECK_EVERY: u64 = 20;
 
-/// Refuse to go past this many cells, as a guard against runaway growth.
+/// Refuse to go past this many living cells, as a guard against runaway
+/// growth. Counted among the living rather than among every cell ever born,
+/// since a tissue that turns over keeps its size while its births add up.
 const MAX_CELLS: usize = 2000;
 
 /// Oxygen diffusion coefficient, in pixels squared per unit time.
@@ -94,6 +100,14 @@ const QUIESCENCE_THRESHOLD: f64 = 0.45;
 /// it. Without this a tumour is bounded by its box; with it, by turnover.
 const RESORPTION_RATE: u32 = 2;
 
+/// Pixels a differentiated cell gives up per lattice step as it leaves the
+/// layer.
+///
+/// Faster than resorption: leaving is something a living cell does, moving up
+/// out of the basal layer, not debris waiting to be cleared. A cell of a
+/// hundred pixels is gone in about seventeen steps, under a generation.
+const SHEDDING_RATE: u32 = 6;
+
 /// What a simulation is asked to be: the box, its temperature, where the oxygen
 /// comes from, and the seed.
 ///
@@ -115,6 +129,9 @@ pub struct Scenario {
     pub oxygen_uptake: f64,
     /// Seed of the only random generator in the run.
     pub seed: u64,
+    /// What the box holds at the start: one tumour cell, or a sheet of normal
+    /// tissue.
+    pub seeding: Seeding,
     /// Probability that a daughter is born with one rate of its network
     /// changed, founding a clone of its own. Zero keeps every daughter an
     /// exact copy, and draws nothing from the generator for it, so a run
@@ -155,6 +172,8 @@ pub enum Fate {
     Quiescent,
     /// Dead, and giving up its pixels until nothing is left.
     Necrotic,
+    /// Committed to differentiate, and leaving the layer it divided in.
+    Differentiating,
 }
 
 /// What happened in one lattice step.
@@ -207,7 +226,8 @@ impl Simulation<Configured> {
     /// # Errors
     ///
     /// [`CellweaveError::Config`] when the grid dimensions are invalid, the
-    /// network does not compile, or the mutation rate is not a probability.
+    /// network does not compile, the mutation rate is not a probability, or a
+    /// sheet is asked for with oxygen consumed or cells too small to divide.
     pub fn new(scenario: Scenario, spec: &NetworkSpec) -> Result<Self, CellweaveError> {
         if !(0.0..=1.0).contains(&scenario.mutation_rate) {
             return Err(CellweaveError::Config(format!(
@@ -220,24 +240,94 @@ impl Simulation<Configured> {
         let cx = scenario.width / 2;
         let cy = scenario.height / 2;
 
-        let first = match scenario.oxygen_source {
-            OxygenSource::Bath => lattice.add_cell(CellKind::Tumor, Pos2 { x: cx, y: cy }, 8),
-            OxygenSource::Vessel { radius } => {
-                lattice.add_obstacle_disc(Pos2 { x: cx, y: cy }, radius);
-                lattice.add_cell(
+        if let OxygenSource::Vessel { radius } = scenario.oxygen_source {
+            lattice.add_obstacle_disc(Pos2 { x: cx, y: cy }, radius);
+        }
+        let first = match scenario.seeding {
+            Seeding::Single => match scenario.oxygen_source {
+                OxygenSource::Bath => lattice.add_cell(CellKind::Tumor, Pos2 { x: cx, y: cy }, 8),
+                OxygenSource::Vessel { radius } => lattice.add_cell(
                     CellKind::Tumor,
                     Pos2 {
                         x: cx + radius + 8,
                         y: cy,
                     },
                     8,
-                )
+                ),
+            },
+            Seeding::Sheet { side } => {
+                // A sheet leaves no medium for a bath to reach, and a field
+                // that nothing supplies cannot be consumed without starving
+                // everything; it runs with the field off.
+                if scenario.oxygen_uptake != 0.0 {
+                    return Err(CellweaveError::Config(
+                        "a sheet fills the box and leaves no medium to supply oxygen; \
+                         set oxygen_uptake = 0 to run it with the field off"
+                            .into(),
+                    ));
+                }
+                if side < 4 {
+                    return Err(CellweaveError::Config(format!(
+                        "a sheet of cells {side} pixels across is too fine for any of them to divide"
+                    )));
+                }
+                // Every cell of a sheet is measured against the same reference
+                // size, side by side. A cell clipped by the edge of the box
+                // would read as crowded from the first step and be the first
+                // to leave, so the box has to hold a whole number of them.
+                if !scenario.width.is_multiple_of(side) || !scenario.height.is_multiple_of(side) {
+                    return Err(CellweaveError::Config(format!(
+                        "a sheet of cells {side} pixels across does not tile a {}x{} box; \
+                         make both sides a multiple of {side}",
+                        scenario.width, scenario.height
+                    )));
+                }
+                // A vessel would leave blocks with no pixel at all, cells that
+                // exist only to be counted as born and gone.
+                if let OxygenSource::Vessel { .. } = scenario.oxygen_source {
+                    return Err(CellweaveError::Config(
+                        "a sheet is a layer of normal tissue with nothing inside it; \
+                         it cannot be laid around a vessel"
+                            .into(),
+                    ));
+                }
+                let mut first = None;
+                for y in (0..scenario.height).step_by(side as usize) {
+                    for x in (0..scenario.width).step_by(side as usize) {
+                        let id = lattice.add_block(CellKind::Normal, Pos2 { x, y }, side, side);
+                        first.get_or_insert(id);
+                    }
+                }
+                first.unwrap_or(CellId(1))
             }
         };
-        let newborn_volume = lattice.volume(first).map_or(0, |v| v.0);
+        let newborn_volume = match scenario.seeding {
+            Seeding::Single => lattice.volume(first).map_or(0, |v| v.0),
+            Seeding::Sheet { side } => side.checked_mul(side).ok_or_else(|| {
+                CellweaveError::Config(format!(
+                    "a sheet of cells {side} pixels across is too large"
+                ))
+            })?,
+        };
         let seed_network = Network::from_spec(spec, newborn_volume)?;
 
+        // A sheet labels every cell as the founder of its own clone, the way a
+        // lineage tracing experiment marks every cell at the start and follows
+        // what each one's descendants become.
+        let cells = lattice.cell_count();
+        let networks = vec![Some(seed_network); cells];
+        let lineage = (0..cells as u32).map(CloneId).collect();
+        let clones = (0..cells as u32)
+            .map(|c| CloneRecord {
+                id: CloneId(c),
+                ..CloneRecord::founder()
+            })
+            .collect();
+
+        // With nothing consuming, the field is not solved: everywhere sits at
+        // the source's level, and starts there.
         let initial = match scenario.oxygen_source {
+            _ if scenario.oxygen_uptake == 0.0 => 1.0,
             OxygenSource::Bath => 1.0,
             OxygenSource::Vessel { .. } => 0.0,
         };
@@ -253,13 +343,13 @@ impl Simulation<Configured> {
             rng: StdRng::seed_from_u64(scenario.seed),
             scenario,
             lattice,
-            networks: vec![Some(seed_network)],
-            lineage: vec![CloneId(0)],
-            clones: vec![CloneRecord::founder()],
+            networks,
+            lineage,
+            clones,
             oxygen,
             first,
             next_mcs: 0,
-            born: 1,
+            born: cells as u64,
             gone: 0,
             _state: PhantomData,
         })
@@ -273,15 +363,20 @@ impl Simulation<Configured> {
     ///
     /// [`CellweaveError::Simulation`] when the field does not settle.
     pub fn start(mut self) -> Result<(Simulation<Running>, usize), CellweaveError> {
-        self.declare_sources();
-        let sweeps = self
-            .oxygen
-            .relax(
-                TimeStep(1.0),
-                OXYGEN_WARMUP_TOLERANCE,
-                OXYGEN_WARMUP_MAX_STEPS,
-            )
-            .map_err(|e| CellweaveError::Simulation(format!("settling the initial field: {e}")))?;
+        let sweeps = if self.field_is_off() {
+            0
+        } else {
+            self.declare_sources();
+            self.oxygen
+                .relax(
+                    TimeStep(1.0),
+                    OXYGEN_WARMUP_TOLERANCE,
+                    OXYGEN_WARMUP_MAX_STEPS,
+                )
+                .map_err(|e| {
+                    CellweaveError::Simulation(format!("settling the initial field: {e}"))
+                })?
+        };
         let running = Simulation {
             scenario: self.scenario,
             lattice: self.lattice,
@@ -313,28 +408,37 @@ impl Simulation<Running> {
 
         // 1. Downward coupling: the field settles against the current layout of
         //    the cells, and each cell reads the oxygen where it actually sits.
-        self.declare_sources();
-        let relax_steps = self
-            .oxygen
-            .relax(
-                TimeStep(1.0),
-                OXYGEN_TOLERANCE * self.scenario.oxygen_uptake,
-                OXYGEN_MAX_STEPS,
-            )
-            .map_err(|e| CellweaveError::Simulation(format!("at MCS {mcs}: {e}")))?;
+        let relax_steps = if self.field_is_off() {
+            0
+        } else {
+            self.declare_sources();
+            self.oxygen
+                .relax(
+                    TimeStep(1.0),
+                    OXYGEN_TOLERANCE * self.scenario.oxygen_uptake,
+                    OXYGEN_MAX_STEPS,
+                )
+                .map_err(|e| CellweaveError::Simulation(format!("at MCS {mcs}: {e}")))?
+        };
         let local_o2 = mean_per_cell(&self.oxygen, &self.lattice);
 
         // 2. Advance every living network by NETWORK_TIME_PER_MCS units of its
-        //    time. A dead cell's network is frozen where it stopped.
+        //    time. A dead cell's network is frozen where it stopped, and so is
+        //    that of a cell leaving the layer: it has made its last decision.
         for (i, slot) in self.networks.iter_mut().enumerate() {
             let Some(net) = slot else { continue };
-            if self.lattice.cell_kind(cell_of(i)) == Some(CellKind::Necrotic) {
+            let id = cell_of(i);
+            if matches!(
+                self.lattice.cell_kind(id),
+                Some(CellKind::Necrotic | CellKind::Differentiated)
+            ) {
                 continue;
             }
             let inputs = CellInputs {
                 o2: Concentration(local_o2[i + 1]),
                 egf: Concentration(0.2),
                 vegf: Concentration(0.0),
+                crowding: Concentration(crowding(&self.lattice, id, net)),
                 drugs: vec![],
             };
             for _ in 0..NETWORK_TIME_PER_MCS {
@@ -343,26 +447,44 @@ impl Simulation<Running> {
         }
 
         // 3. Fate and upward coupling. A necrotic cell gives up pixels until
-        //    none is left, and is then gone for good; a cell whose survival just
-        //    collapsed becomes necrotic; every other cell's network decides how
-        //    large it tries to be.
+        //    none is left, and is then gone for good, and so does a cell leaving
+        //    the layer, faster; a cell whose survival just collapsed becomes
+        //    necrotic; a cell whose network carries a differentiation node may
+        //    commit to differentiate, with that node's level as its chance this
+        //    step; every other cell's network decides how large it tries to be.
         for (i, slot) in self.networks.iter_mut().enumerate() {
             let id = cell_of(i);
             let Some(net) = slot else { continue };
-            match self.lattice.cell_kind(id) {
-                Some(CellKind::Necrotic) => {
+            let kind = self.lattice.cell_kind(id);
+            match kind {
+                Some(CellKind::Necrotic | CellKind::Differentiated) => {
                     let volume = self.lattice.volume(id).map_or(0, |v| v.0);
                     if volume == 0 {
                         *slot = None;
                         self.gone += 1;
                     } else {
-                        let target = Volume(volume.saturating_sub(RESORPTION_RATE));
+                        let rate = if kind == Some(CellKind::Necrotic) {
+                            RESORPTION_RATE
+                        } else {
+                            SHEDDING_RATE
+                        };
+                        let target = Volume(volume.saturating_sub(rate));
                         self.lattice
                             .set_volume_target(id, target, net.mechanics().lambda_volume);
                     }
                 }
                 Some(_) if net.survival() < DEATH_THRESHOLD => {
                     self.lattice.set_kind(id, CellKind::Necrotic);
+                }
+                // Drawn only for a network that has the role, so a tumour
+                // network takes exactly the draws it took before the role
+                // existed.
+                Some(_)
+                    if net
+                        .differentiation()
+                        .is_some_and(|chance| self.rng.random::<f64>() < chance) =>
+                {
+                    self.lattice.set_kind(id, CellKind::Differentiated);
                 }
                 Some(_) => {
                     let m = net.mechanics();
@@ -380,7 +502,9 @@ impl Simulation<Running> {
             mcs,
             relax_steps,
             first_cell_oxygen: local_o2.get(self.first.0 as usize).copied().unwrap_or(0.0),
-            reached_edge: self.touches_the_edge(),
+            // A sheet touches the edge from the start; the edge only means
+            // something for a tissue grown from one cell inside a supply.
+            reached_edge: self.scenario.seeding == Seeding::Single && self.touches_the_edge(),
         };
         if report.reached_edge {
             return Ok(report);
@@ -388,15 +512,19 @@ impl Simulation<Running> {
 
         // 5. Cells that have grown enough, and are not too short of oxygen to
         //    cycle, split in two.
-        if mcs.is_multiple_of(DIVISION_CHECK_EVERY) && self.networks.len() < MAX_CELLS {
+        let every = match self.scenario.seeding {
+            Seeding::Single => DIVISION_CHECK_EVERY,
+            Seeding::Sheet { .. } => 1,
+        };
+        if mcs.is_multiple_of(every) && self.living() < MAX_CELLS {
             self.born += self.divide_ready_cells(mcs);
         }
 
         Ok(report)
     }
 
-    /// Split every tumor cell that has grown past the division threshold and is
-    /// still cycling, and say how many daughters were born.
+    /// Split every cell, tumour or normal, that has grown past the division
+    /// threshold and is still cycling, and say how many daughters were born.
     ///
     /// Hypoxia arrests the cell cycle long before it kills: a cell whose hypoxia
     /// response is high is quiescent, alive and holding its place, but not
@@ -425,8 +553,9 @@ impl Simulation<Running> {
             .collect();
 
         let mut born = 0;
+        let living = self.living();
         for i in ready {
-            if self.networks.len() >= MAX_CELLS {
+            if living + born as usize >= MAX_CELLS {
                 break;
             }
             let angle = self.rng.random::<f64>() * std::f64::consts::PI;
@@ -504,6 +633,12 @@ impl Simulation<Running> {
 }
 
 impl<S: SimState> Simulation<S> {
+    /// Whether the field is left unsolved: nothing consumes, so everywhere
+    /// sits at the level it started at.
+    fn field_is_off(&self) -> bool {
+        self.scenario.oxygen_uptake == 0.0
+    }
+
     /// Tell the field who consumes and who supplies, from the current layout.
     ///
     /// Around a bath, living cells consume and the medium the bath can reach is
@@ -578,22 +713,29 @@ impl<S: SimState> Simulation<S> {
     /// What a cell is doing, or `None` for the medium, an obstacle, or a cell
     /// that is gone.
     ///
-    /// Only a tumour cell cycles, and only while its hypoxia response is below
-    /// the quiescence threshold.
+    /// A tumour or normal cell cycles while its hypoxia response is below the
+    /// quiescence threshold; a cell committed to differentiate is leaving, and
+    /// a necrotic one is dead.
     pub fn fate(&self, id: CellId) -> Option<Fate> {
         let net = self.network(id)?;
         Some(match self.lattice.cell_kind(id)? {
             CellKind::Necrotic => Fate::Necrotic,
-            CellKind::Tumor if net.hypoxia_response() < QUIESCENCE_THRESHOLD => Fate::Cycling,
+            CellKind::Differentiated => Fate::Differentiating,
+            CellKind::Tumor | CellKind::Normal if net.hypoxia_response() < QUIESCENCE_THRESHOLD => {
+                Fate::Cycling
+            }
             _ => Fate::Quiescent,
         })
     }
 
-    /// Cells that are alive: not necrotic, and still holding pixels.
+    /// Cells alive and in the layer: neither necrotic nor leaving, and still
+    /// holding pixels.
     pub fn living(&self) -> usize {
         self.lattice
             .cell_records()
-            .filter(|(_, r)| r.kind != CellKind::Necrotic && r.volume.0 > 0)
+            .filter(|(_, r)| {
+                !matches!(r.kind, CellKind::Necrotic | CellKind::Differentiated) && r.volume.0 > 0
+            })
             .count()
     }
 
@@ -610,10 +752,23 @@ impl<S: SimState> Simulation<S> {
         self.born
     }
 
-    /// Cells resorbed to nothing.
+    /// Cells that have left the tissue for good: resorbed to nothing after
+    /// dying, or shed after differentiating.
     pub fn gone(&self) -> u64 {
         self.gone
     }
+}
+
+/// How squeezed a cell is: how far below its lineage's reference volume it
+/// sits, as a fraction of it. Zero for a cell at or above that size.
+///
+/// What a cell can sense of its neighbours' pressure is its own spread: a cell
+/// pressed small by the tissue around it has less room than it was born to,
+/// and that is the signal contact inhibition in an epithelium runs on.
+fn crowding(lattice: &CpmLattice, id: CellId, net: &Network) -> f64 {
+    let volume = lattice.volume(id).map_or(0, |v| v.0);
+    let reference = f64::from(net.reference_volume().max(1));
+    (1.0 - f64::from(volume) / reference).clamp(0.0, 1.0)
 }
 
 /// The cell whose slot is `i`. Identifier 0 is the medium.
@@ -639,6 +794,7 @@ mod tests {
             oxygen_uptake: 0.0003,
             seed: DEFAULT_SEED,
             mutation_rate: 0.0,
+            seeding: Seeding::Single,
         }
     }
 

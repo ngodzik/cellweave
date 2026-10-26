@@ -30,8 +30,13 @@ const VESSEL_GLOW: f32 = 0.35;
 const MEDIUM_GLOW: LinearRgba = LinearRgba::rgb(0.0, 0.004, 0.012);
 
 /// A newborn's flash, and how long it takes to fade, in seconds.
-const BIRTH: LinearRgba = LinearRgba::rgb(0.30, 0.45, 0.42);
-const BIRTH_FADE: f32 = 0.22;
+const BIRTH: LinearRgba = LinearRgba::rgb(0.20, 0.30, 0.28);
+const BIRTH_FADE: f32 = 0.15;
+/// However long a flash lasts in seconds, it lasts no more than this many
+/// simulation steps. A tissue turning over fast at a high step rate would
+/// otherwise have a fifth of its cells flashing at once, and a flash that is
+/// everywhere marks nothing.
+const FLASH_STEPS: f32 = 3.0;
 /// A death's flare, and how long it takes to go out, in seconds.
 const DEATH: LinearRgba = LinearRgba::rgb(0.45, 0.07, 0.015);
 const DEATH_FADE: f32 = 0.35;
@@ -177,7 +182,7 @@ pub fn retarget(runner: Res<Runner>, view: Res<View>, glow: Option<ResMut<Glow>>
 fn steady(sim: &Simulation<Running>, id: CellId, view: View, fate: Option<Fate>) -> LinearRgba {
     let strength = match fate {
         Some(Fate::Cycling) => CYCLING_GLOW,
-        Some(Fate::Quiescent) => QUIESCENT_GLOW,
+        Some(Fate::Quiescent | Fate::Differentiating) => QUIESCENT_GLOW,
         Some(Fate::Necrotic) | None => return LinearRgba::BLACK,
     };
     paint::cell_colour(sim, id, view) * strength
@@ -187,6 +192,7 @@ fn steady(sim: &Simulation<Running>, id: CellId, view: View, fate: Option<Fate>)
 /// still changing.
 pub fn animate(
     time: Res<Time>,
+    runner: Res<Runner>,
     glow: Option<ResMut<Glow>>,
     mut images: ResMut<Assets<Image>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -197,7 +203,9 @@ pub fn animate(
     }
     let glow = &mut *glow;
     let dt = time.delta_secs();
-    let (birth_k, death_k) = ((-dt / BIRTH_FADE).exp(), (-dt / DEATH_FADE).exp());
+    let per_step = FLASH_STEPS / (runner.rate as f32).max(1.0);
+    let (birth_fade, death_fade) = (BIRTH_FADE.min(per_step), DEATH_FADE.min(per_step));
+    let (birth_k, death_k) = ((-dt / birth_fade).exp(), (-dt / death_fade).exp());
     let mut still = false;
     for b in &mut glow.birth {
         *b *= birth_k;

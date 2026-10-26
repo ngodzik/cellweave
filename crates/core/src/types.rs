@@ -75,9 +75,29 @@ pub enum CellKind {
     Normal,
     /// Dead cell due to hypoxia or apoptosis.
     Necrotic,
+    /// A cell that has committed to differentiate and is leaving the layer it
+    /// divided in: in an epithelium, moving up out of the basal layer.
+    Differentiated,
 }
 
 // ── Geometry ──────────────────────────────────────────────────────────────────
+
+/// What the box holds at the start.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "kind")]
+pub enum Seeding {
+    /// One cell, placed where the oxygen source says: a tumour grown from a
+    /// single cell.
+    #[default]
+    Single,
+    /// The whole box tiled with square cells of normal tissue, each the
+    /// founder of its own clone: an epithelium whose cells are all labelled at
+    /// the start, as in a lineage tracing experiment.
+    Sheet {
+        /// Side of each square cell, in pixels.
+        side: u32,
+    },
+}
 
 /// Where the oxygen comes from, which is also what shape the tissue takes.
 #[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
@@ -128,6 +148,9 @@ pub struct CellInputs {
     pub egf: Concentration,
     /// Local VEGF concentration (secreted by neighbors).
     pub vegf: Concentration,
+    /// How squeezed the cell is by its neighbours, from zero (at or above
+    /// its lineage's reference size) to one (no room at all).
+    pub crowding: Concentration,
     /// Local drug concentrations keyed by field index.
     pub drugs: Vec<Concentration>,
 }
@@ -139,6 +162,7 @@ impl CellInputs {
             o2: Concentration(0.0),
             egf: Concentration(0.0),
             vegf: Concentration(0.0),
+            crowding: Concentration(0.0),
             drugs: vec![Concentration(0.0); n_drugs],
         }
     }

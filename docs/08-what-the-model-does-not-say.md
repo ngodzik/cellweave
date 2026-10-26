@@ -1,4 +1,4 @@
-# 7. What the model does not say
+# 8. What the model does not say
 
 The placeholders, the missing units, and why emergence is the whole point.
 
@@ -30,13 +30,14 @@ What is a placeholder today, gathered from the chapters:
 | fates | 0.25, 0.45, 1.4; division checked every 20 steps; resorption 2 pixels per step | the three fates are reachable, in the right order, at the right depths |
 | clocks | 8 units of network time per lattice step | the network answers in 2 steps and a cell divides in 20 |
 | evolution | mutation rate 1 in 20; factor between 1/2 and 2; every term equally likely | selection acts within a few thousand steps on changes large enough to alter a fate |
+| epithelium | NOTCH near 0.01 per step, raised by crowding half way at 60% of reference size; shedding 6 pixels per step; cells 10 pixels across; mutation rate 1 in 100 | the layer turns over in a few hundred steps and holds its size on a 200 pixel grid |
 
 ## What is not there
 
-- **Only oxygen is coupled.** Growth factor is the same hardcoded input for every cell. VEGF is computed and goes nowhere: nothing is secreted into the field.
+- **Only oxygen and crowding are coupled.** Growth factor is the same hardcoded input for every cell. VEGF is computed and goes nowhere: nothing is secreted into the field.
 - **Only necrosis.** Apoptosis, the programmed death a drug would trigger, does not exist.
 - **Two dimensions.** A tissue here is a monolayer. In three dimensions a sphere starves at a different radius than a disc, and a cell has a dozen neighbours rather than six; the mechanisms are the same, the numbers are not.
-- **One cell type.** Normal tissue is a kind on the lattice with contact energies, and nothing else.
+- **Tumour and normal tissue never meet.** Normal tissue exists as a sheet that renews itself (chapter 7), and a tumour grows from one cell in a box of its own. Nothing yet puts a tumour inside an epithelium, which is where most cancers start.
 - **Only the field is parallel.** The Monte Carlo step, which moves the pixels, runs on one core. It draws its proposals from one random sequence, and splitting it would change which run a seed names.
 - **No picture on disk.** Snapshots record every cell's state and the oxygen it reads, not the grid. The viewer draws the grid live, but saves nothing; the two pictures in chapter 5 came from a debugging dump that is not in the code.
 

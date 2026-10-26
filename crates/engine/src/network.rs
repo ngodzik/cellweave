@@ -18,6 +18,7 @@ use cellweave_core::{
 enum Source {
     Oxygen,
     Egf,
+    Crowding,
     Node(usize),
 }
 
@@ -116,10 +117,12 @@ pub struct Network {
     names: Arc<[String]>,
     /// Terms per node, same order.
     terms: Vec<Vec<Compiled>>,
-    /// Index of the growth, survival and hypoxia nodes.
+    /// Index of the growth, survival and hypoxia nodes, and of the
+    /// differentiation node when the network has one.
     growth: usize,
     survival: usize,
     hypoxia: usize,
+    differentiation: Option<usize>,
     /// How the growth node becomes mechanics.
     mechanics: MechanicsSpec,
     /// Volume this lineage divides against.
@@ -179,6 +182,7 @@ impl Network {
             match name {
                 "oxygen" => Ok(Source::Oxygen),
                 "egf" => Ok(Source::Egf),
+                "crowding" => Ok(Source::Crowding),
                 other => index.get(other).copied().map(Source::Node).ok_or_else(|| {
                     let mut known: Vec<&str> = INPUT_NAMES.to_vec();
                     known.extend(spec.nodes.iter().map(|n| n.name.as_str()));
@@ -268,6 +272,11 @@ impl Network {
             growth: role(&roles.growth, "growth")?,
             survival: role(&roles.survival, "survival")?,
             hypoxia: role(&roles.hypoxia_response, "hypoxia response")?,
+            differentiation: roles
+                .differentiation
+                .as_deref()
+                .map(|name| role(name, "differentiation"))
+                .transpose()?,
             mechanics,
             reference_volume,
             x: vec![0.0; spec.nodes.len()],
@@ -330,11 +339,19 @@ impl Network {
         None
     }
 
+    /// The node the specification named as differentiation, or `None` when it
+    /// named none. Its level is the chance per step that the cell commits to
+    /// differentiate.
+    pub fn differentiation(&self) -> Option<f64> {
+        self.differentiation.map(|i| self.state.values[i].0)
+    }
+
     /// The value of one source, given the current state and the environment.
     fn read(state: &[f64], inputs: &CellInputs, source: Source) -> f64 {
         match source {
             Source::Oxygen => inputs.o2.0.clamp(0.0, 1.0),
             Source::Egf => inputs.egf.0,
+            Source::Crowding => inputs.crowding.0.clamp(0.0, 1.0),
             Source::Node(i) => state[i],
         }
     }
@@ -459,6 +476,7 @@ mod tests {
             o2: Concentration(o2),
             egf: Concentration(egf),
             vegf: Concentration(0.0),
+            crowding: Concentration(0.0),
             drugs: vec![],
         }
     }
@@ -534,6 +552,7 @@ mod tests {
                 growth: "a".into(),
                 survival: "a".into(),
                 hypoxia_response: "a".into(),
+                differentiation: None,
             }),
             mechanics: Some(MechanicsSpec {
                 growth_coefficient: 1.0,
@@ -603,6 +622,7 @@ mod tests {
             growth: "oxygen".into(),
             survival: "oxygen".into(),
             hypoxia_response: "oxygen".into(),
+            differentiation: None,
         });
 
         let refused = Network::from_spec(&spec, 100);
@@ -841,5 +861,44 @@ mod tests {
             reference.step(TimeStep(1.0), &at(0.8, 0.2));
         }
         assert_eq!(net.state().values, reference.state().values);
+    }
+
+    #[test]
+    fn a_crowded_cell_reads_its_crowding_and_answers_with_its_differentiation_node() {
+        let mut spec = one_node(vec![
+            Term::ActivatedBy {
+                source: "crowding".into(),
+                rate: 1.0,
+                hill: None,
+            },
+            Term::Decays { rate: 1.0 },
+        ]);
+        if let Some(roles) = spec.roles.as_mut() {
+            roles.differentiation = Some("a".into());
+        }
+        let mut net = Network::from_spec(&spec, 100).unwrap();
+        let squeezed = CellInputs {
+            crowding: Concentration(0.6),
+            ..at(1.0, 0.0)
+        };
+        for _ in 0..40 {
+            net.step(TimeStep(1.0), &squeezed);
+        }
+        // Steady state of k c (1 - a) = a: a = c / (1 + c).
+        let level = net.differentiation().unwrap();
+        assert!((level - 0.6 / 1.6).abs() < 1e-6, "{level}");
+
+        if let Some(roles) = spec.roles.as_mut() {
+            roles.differentiation = Some("nowhere".into());
+        }
+        assert!(
+            Network::from_spec(&spec, 100).is_err(),
+            "a role naming no node"
+        );
+        assert_eq!(
+            ras_erk().differentiation(),
+            None,
+            "a tumour network has none"
+        );
     }
 }

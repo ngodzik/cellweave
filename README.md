@@ -55,7 +55,7 @@ Features will be added progressively, and this README will follow as they land.
 
 ## What works today
 
-- Builds clean, `cargo clippy -D warnings` passes, 84 tests green
+- Builds clean, `cargo clippy -D warnings` passes, 92 tests green
 - 2D lattice with Monte Carlo spin flips and a volume constraint, with the boundary term pinned by four tests whose values are computable by hand
 - **The protein network is a file, not code.** Any number of proteins, any topology, each declared with the terms that move it, drawn from a closed catalogue named after what each means in biology. The file also says which node answers which question the simulation asks a cell, and how growth becomes a demand on the lattice. So stating a different hypothesis is writing a different file, and two files under the same seed differ by exactly what you changed. The RAS/ERK network that used to be literals in the source is now `examples/networks/ras-erk.toml`, compiled in as the default so that the built-in hypothesis and one you write go through the same path; a test pins that the two produce identical trajectories to twelve decimals
 - RK4 integration per cell, whose growth node sets how large its cell tries to be. This is the upward half of the coupling, protein state driving mechanics
@@ -67,6 +67,7 @@ Features will be added progressively, and this README will follow as they land.
 - A diffusion field solved to its steady state every lattice step by projected successive over-relaxation in red-black order, spread over every core, since oxygen equilibrates far faster than anything a cell does. Time stepping is kept for what needs it and refuses a step the explicit scheme cannot take. The field reproduces the closed-form profile of a bathed disc
 - TOML configuration, JSON snapshot output per saved step
 - **Daughters can differ from their parents.** With a mutation rate set, a daughter may be born with one rate of its network scaled by up to two either way, founding a clone. Nothing says which change is good. In the evolving cord, selection finds by itself a clone whose hypoxia response is weaker, its cells stop arresting where oxygen runs low, the quiescent ring vanishes and the cord grows out of its steady state. Every clone, its parent and its mutation are written to `clones.json`
+- **Normal tissue that renews itself.** A sheet of epithelium fills the box, every cell the founder of its own clone as in a lineage tracing experiment. Cells read how crowded they are, and a NOTCH node turns crowding into a chance per step of differentiating and leaving the layer, while their neighbours grow into the room and divide. Nothing counts cells, and the layer holds about 300 of them while renewing itself many times over. Without mutation clones are lost by chance alone (neutral drift, 393 clones down to 11 in 2700 steps); with mutation, clones that turn the growth pathway up press their neighbours out and sweep the layer one after another, without it ever changing size. That growth mutants win where sequencing of the real oesophagus finds NOTCH1 and TP53 mutants winning is a disagreement the model now states plainly, in chapter 7 of the course
 - **A run measures itself.** Every step writes a row of `measurements.csv`: cells in each fate, born and resorbed, and the shape of the tissue as equivalent radii, how large the necrotic area is and how deep living tissue reaches from its oxygen supply. The run ends with a summary of the same, so two hypotheses are compared on numbers rather than by squinting at snapshots
 - A viewer, in a workspace of its own, that runs the same loop under the same seed and draws the tissue as it grows, in relief: each cell a dome coloured by its fate, a protein, the oxygen it sits in or its clone, births flashing and deaths flaring, with the population and the shape of the tissue plotted alongside. See [Watching a run](#watching-a-run)
 - CLI entry point, a thin driver over `Simulation`, the loop itself, which lives in the engine so that anything else that runs a simulation runs the same one
@@ -75,7 +76,7 @@ Features will be added progressively, and this README will follow as they land.
 
 Listed plainly, because a green test suite is not the same thing as correct physics.
 
-- **Only oxygen is coupled.** Growth factor is still a hardcoded input the same for every cell, and nothing is secreted, so VEGF is computed and goes nowhere.
+- **Only oxygen and crowding are coupled.** Growth factor is still a hardcoded input the same for every cell, and nothing is secreted, so VEGF is computed and goes nowhere. Tumour and normal tissue never meet: a tumour grows from one cell in a box of its own, and the epithelium is a box of its own too.
 - **Only the field is parallel.** Solving it was the dominant cost and now runs on every core, the same to the last bit whatever their number: the cord runs about six times faster on a twenty-thread machine. The Monte Carlo step, which moves the pixels, still runs on one, because it draws from a single random sequence and splitting it would change which run a seed names.
 - **Evolution is crude.** A mutation scales one rate, never a threshold, a contact energy or the shape of the network, and its rate is a placeholder millions of times too high. Nine seeds have been run: seven out of eight further ones outgrew the steady state, most often by escaping hypoxic arrest, sometimes by surviving deeper or growing more. How often each route is taken needs many more seeds, and a statistic over them the program does not compute yet.
 - **No calibration.** Every constant is a placeholder, and no unit of length or time has been fixed. The uptake rate is now a configuration value, but its two example values were chosen to make each geometry show its structure, not measured against anything.
@@ -97,11 +98,15 @@ cargo test --workspace
 # The same cord with mutation: clones compete, and one escapes hypoxic arrest
 ./target/release/cellweave --config examples/cord-evolving.toml
 
+# A sheet of normal epithelium that renews itself, and the same sheet ageing
+./target/release/cellweave --config examples/epithelium.toml
+./target/release/cellweave --config examples/epithelium-mutating.toml
+
 # The same configuration under another seed, written somewhere else
 ./target/release/cellweave --config examples/cord-evolving.toml --seed 3 --output runs/seed-3
 ```
 
-Snapshots are written as `output/snapshot_NNNNNN.json`, one per interval, listing every living cell with its kind, volume, protein state and the oxygen it sits in. Next to them, `measurements.csv` holds one row per step of the numbers a tissue is judged on (chapter 5 of the course says what each means). Two runs of the same configuration produce byte-identical output, and CI checks that they still do, for both geometries.
+Snapshots are written as `output/snapshot_NNNNNN.json`, one per interval, listing every living cell with its kind, volume, protein state and the oxygen it sits in. Next to them, `measurements.csv` holds one row per step of the numbers a tissue is judged on (chapter 5 of the course says what each means). Two runs of the same configuration produce byte-identical output, and CI checks that they still do, on the spheroid, the cord, the evolving cord and the ageing epithelium.
 
 ## Watching a run
 
@@ -111,11 +116,12 @@ The viewer draws the tissue live, in a window, with [Bevy](https://bevyengine.or
 cd viewer
 cargo run --release -- --config ../examples/cord.toml
 cargo run --release -- --config ../examples/cord-evolving.toml --view clone
+cargo run --release -- --config ../examples/epithelium-mutating.toml --view clone
 ```
 
 On Linux it needs the Wayland and xkbcommon development headers (`libwayland-dev` and `libxkbcommon-dev` on Debian and Ubuntu).
 
-It runs the same `Simulation` as the command line, under the same seed, so step 300 in the window is step 300 in the snapshots. Each cell is filled by what it is doing, cycling, quiescent or necrotic, by the level of one protein, by the oxygen it sits in, or by its clone, and outlined where it meets another. In the clone view the panel names the leading clones and stacks every clone's share over time, so a sweep is a band that widens. The panel counts the population and plots it, and plots the viable depth and the necrotic radius from the same measurements the command line writes. The tissue is a surface in relief, every cell a dome and every membrane a groove, lit from the side so each cell throws a shadow on its neighbour. Living cells glow from within; a cell just born flashes, a cell just dead flares red and goes out, so what happened between two frames is still visible. The surface eases from one step to the next rather than jumping. Space pauses, N takes one step, R restarts, H flattens the relief and raises it again, A sets the camera turning on its own, and the mouse turns and zooms it.
+It runs the same `Simulation` as the command line, under the same seed, so step 300 in the window is step 300 in the snapshots. Each cell is filled by what it is doing, cycling, quiescent, necrotic or leaving the layer, by the level of one protein, by the oxygen it sits in, or by its clone, and outlined where it meets another. In the clone view the panel names the leading clones and stacks every clone's share over time, so a sweep is a band that widens. The panel counts the population and plots it, and plots the viable depth and the necrotic radius from the same measurements the command line writes. The tissue is a surface in relief, every cell a dome and every membrane a groove, lit from the side so each cell throws a shadow on its neighbour. Living cells glow from within; a cell just born flashes, a cell just dead flares red and goes out, so what happened between two frames is still visible. The surface eases from one step to the next rather than jumping. Space pauses, N takes one step, R restarts, H flattens the relief and raises it again, A sets the camera turning on its own, and the mouse turns and zooms it.
 
 ## Checks
 

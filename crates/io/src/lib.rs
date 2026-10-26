@@ -5,6 +5,6 @@
 pub mod config;
 pub mod output;
 
-pub use cellweave_core::OxygenSource;
+pub use cellweave_core::{OxygenSource, Seeding};
 pub use config::SimConfig;
 pub use output::{JsonOutput, MeasurementLog, write_clones};

@@ -1,0 +1,26 @@
+# The epithelium of epithelium.toml, ageing: daughters may carry a mutation.
+#
+# One division in a hundred gives a daughter one rate of its network scaled
+# by up to two either way, and the daughter founds a clone of its own. Most
+# changes do nothing here: with the field off, oxygen is full everywhere and
+# the hypoxia response and survival have nothing to answer. What can matter is
+# what changes NOTCH, which sets how readily a cell leaves the layer, and what
+# changes ERK, which sets how large a cell tries to be and so how hard it
+# presses on its neighbours.
+#
+# One in a hundred is far above a real mutation rate. It is there to show in
+# a few thousand steps what a lifetime does to the lining of an oesophagus.
+
+width = 200
+height = 200
+mcs = 6000
+temperature = 10.0
+snapshot_interval = 100
+output_dir = "output-epithelium-mutating"
+oxygen_uptake = 0.0
+mutation_rate = 0.01
+network = "networks/epithelium.toml"
+
+[seeding]
+kind = "sheet"
+side = 10

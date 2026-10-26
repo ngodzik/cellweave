@@ -2,7 +2,7 @@
 
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
-use cellweave_core::{CloneId, OxygenSource};
+use cellweave_core::{CloneId, OxygenSource, Seeding};
 use cellweave_engine::Measurements;
 use egui_plot::{Legend, Line, Plot, PlotPoints, Polygon};
 
@@ -23,18 +23,19 @@ pub fn draw(
         .default_width(300.0)
         .resizable(false)
         .show(ctx, |ui| {
+            let sheet = matches!(experiment.scenario.seeding, Seeding::Sheet { .. });
             describe(ui, &experiment);
             ui.separator();
-            census(ui, &runner);
+            census(ui, &runner, sheet);
             ui.separator();
             controls(ui, &mut runner, &experiment);
             ui.separator();
             colouring(ui, &mut view, &experiment);
             ui.separator();
             if *view == View::Clone {
-                clones(ui, &runner);
+                clones(ui, &runner, experiment.scenario.seeding);
             } else {
-                plot(ui, &runner);
+                plot(ui, &runner, sheet);
             }
             if let Some(why) = &runner.stopped {
                 ui.separator();
@@ -50,18 +51,27 @@ pub fn draw(
 
 fn describe(ui: &mut egui::Ui, experiment: &Experiment) {
     let s = &experiment.scenario;
-    let source = match s.oxygen_source {
-        OxygenSource::Bath => "a bath around the tissue".to_owned(),
-        OxygenSource::Vessel { radius } => format!("a vessel of radius {radius}"),
+    let what = match (s.seeding, s.oxygen_source) {
+        (Seeding::Sheet { .. }, _) => {
+            "a sheet of normal tissue, every cell labelled at the start".to_owned()
+        }
+        (Seeding::Single, OxygenSource::Bath) => {
+            "one cell, oxygen from a bath around the tissue".to_owned()
+        }
+        (Seeding::Single, OxygenSource::Vessel { radius }) => {
+            format!("one cell, oxygen from a vessel of radius {radius}")
+        }
     };
     ui.strong(&experiment.label);
     ui.label(format!(
-        "{}×{} pixels, oxygen from {source}, seed {}",
+        "{}×{} pixels, {what}, seed {}",
         s.width, s.height, s.seed
     ));
 }
 
-fn census(ui: &mut egui::Ui, runner: &Runner) {
+/// The population as it stands. A sheet has no core and no supply to
+/// measure depth from, so its shape is left out.
+fn census(ui: &mut egui::Ui, runner: &Runner, sheet: bool) {
     let Some(c) = runner.latest() else {
         ui.label(if runner.settling() {
             "Solving the oxygen field for the first time…"
@@ -79,9 +89,16 @@ fn census(ui: &mut egui::Ui, runner: &Runner) {
         row("MCS", c.mcs.to_string());
         row("living", format!("{} ({} cycling)", c.living(), c.cycling));
         row("necrotic", c.necrotic.to_string());
+        if c.differentiating > 0 {
+            row("leaving", c.differentiating.to_string());
+        }
         row("born · gone", format!("{} · {}", c.born, c.gone));
-        row("viable depth", format!("{:.1} px", c.viable_depth));
-        row("necrotic radius", format!("{:.1} px", c.necrotic_radius));
+        if sheet {
+            row("clones", c.clones.to_string());
+        } else {
+            row("viable depth", format!("{:.1} px", c.viable_depth));
+            row("necrotic radius", format!("{:.1} px", c.necrotic_radius));
+        }
         row("speed", format!("{:.0} steps/s", runner.rate));
     });
 }
@@ -123,6 +140,7 @@ fn colouring(ui: &mut egui::Ui, view: &mut View, experiment: &Experiment) {
                 swatch(ui, paint::CYCLING, "cycling");
                 swatch(ui, paint::QUIESCENT, "quiescent");
                 swatch(ui, paint::NECROTIC, "necrotic");
+                swatch(ui, paint::DIFFERENTIATING, "leaving");
                 swatch(ui, paint::VESSEL, "vessel");
             });
         }
@@ -147,7 +165,13 @@ fn colouring(ui: &mut egui::Ui, view: &mut View, experiment: &Experiment) {
         View::Oxygen => gradient(ui),
         View::Clone => {
             ui.horizontal_wrapped(|ui| {
-                swatch(ui, paint::clone_colour(CloneId(0)), "founder");
+                if experiment.scenario.seeding == Seeding::Single {
+                    swatch(
+                        ui,
+                        paint::clone_colour(CloneId(0), Seeding::Single),
+                        "founder",
+                    );
+                }
                 ui.label("· a mutant per hue · dim: arrested");
             });
         }
@@ -162,7 +186,7 @@ fn colouring(ui: &mut egui::Ui, view: &mut View, experiment: &Experiment) {
 
 /// The population, then the shape: how many cells, and how deep the living
 /// reach.
-fn plot(ui: &mut egui::Ui, runner: &Runner) {
+fn plot(ui: &mut egui::Ui, runner: &Runner, sheet: bool) {
     let series = |pick: fn(&Measurements) -> f64| -> PlotPoints {
         runner
             .history
@@ -187,6 +211,16 @@ fn plot(ui: &mut egui::Ui, runner: &Runner) {
                 .color(egui::Color32::from_gray(150)),
         );
     });
+    if sheet {
+        // In a sheet the shape never changes; what does is how many clones
+        // are left, which neutral drift alone keeps bringing down.
+        frame("clones").show(ui, |plot| {
+            plot.line(
+                Line::new("clones", series(|m| m.clones as f64)).color(colour(paint::QUIESCENT)),
+            );
+        });
+        return;
+    }
     frame("shape").show(ui, |plot| {
         plot.line(
             Line::new("viable depth", series(|m| m.viable_depth)).color(colour(paint::QUIESCENT)),
@@ -210,7 +244,7 @@ const MULLER_COLUMNS: usize = 200;
 /// The plot stacks each clone's share of the living cells over time, the
 /// founder at the bottom, so a mutant that spreads is a band that widens and
 /// pushes the others out: what is called a Muller plot.
-fn clones(ui: &mut egui::Ui, runner: &Runner) {
+fn clones(ui: &mut egui::Ui, runner: &Runner, seeding: Seeding) {
     let Some(sizes) = runner.clone_history.last() else {
         return;
     };
@@ -225,14 +259,17 @@ fn clones(ui: &mut egui::Ui, runner: &Runner) {
     egui::Grid::new("clones").num_columns(3).show(ui, |ui| {
         for &c in order.iter().take(6) {
             let (rect, _) = ui.allocate_exact_size(egui::vec2(12.0, 12.0), egui::Sense::hover());
-            ui.painter()
-                .rect_filled(rect, 2.0, colour(paint::clone_colour(CloneId(c as u32))));
+            ui.painter().rect_filled(
+                rect,
+                2.0,
+                colour(paint::clone_colour(CloneId(c as u32), seeding)),
+            );
             ui.monospace(format!("{:3.0}%", 100.0 * sizes[c] as f64 / living as f64));
             let what = runner
                 .clones
                 .get(c)
                 .and_then(|r| r.mutation.as_ref())
-                .map_or("the founder".to_owned(), |m| {
+                .map_or("a founder, unmutated".to_owned(), |m| {
                     format!("{} {} ×{:.2}", m.node, m.kind, m.factor)
                 });
             ui.label(what);
@@ -283,7 +320,7 @@ fn clones(ui: &mut egui::Ui, runner: &Runner) {
                     .zip(&times)
                     .map(|(b, (_, row))| b + row[c])
                     .collect();
-                let fill = colour(paint::clone_colour(CloneId(c as u32)));
+                let fill = colour(paint::clone_colour(CloneId(c as u32), seeding));
                 for k in 1..times.len() {
                     let (t0, t1) = (times[k - 1].0, times[k].0);
                     let quad = vec![
