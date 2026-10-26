@@ -9,6 +9,8 @@ use cellweave_engine::Scenario;
 const TURN: f32 = 0.005;
 /// Fraction of the distance covered per line scrolled.
 const ZOOM: f32 = 0.1;
+/// Radians per second the camera turns on its own, when asked to.
+const SPIN: f32 = 0.12;
 /// Never quite flat on the tissue, never past straight overhead.
 const LOWEST: f32 = 0.15;
 const HIGHEST: f32 = 1.55;
@@ -25,6 +27,8 @@ pub struct Orbit {
     /// Bounds on the distance, from the size of the box.
     nearest: f32,
     farthest: f32,
+    /// Turning on its own.
+    pub spinning: bool,
 }
 
 impl Orbit {
@@ -34,10 +38,11 @@ impl Orbit {
         let size = scenario.width.max(scenario.height) as f32;
         Self {
             yaw: 0.0,
-            pitch: 0.95,
-            distance: size * 1.5,
+            pitch: 0.8,
+            distance: size * 1.3,
             nearest: size * 0.1,
             farthest: size * 4.0,
+            spinning: false,
         }
     }
 
@@ -68,6 +73,8 @@ pub fn steer(
 
     let mut moved = false;
     if buttons.pressed(MouseButton::Left) && motion.delta != Vec2::ZERO {
+        // Taking hold of the camera stops it turning on its own.
+        orbit.spinning = false;
         orbit.yaw -= motion.delta.x * TURN;
         orbit.pitch = (orbit.pitch + motion.delta.y * TURN).clamp(LOWEST, HIGHEST);
         moved = true;
@@ -83,6 +90,27 @@ pub fn steer(
     }
 
     if moved {
+        for mut transform in &mut camera {
+            *transform = orbit.transform();
+        }
+    }
+    Ok(())
+}
+
+/// A toggles a slow turn around the tissue; while on, the camera circles at
+/// [`SPIN`] radians a second.
+pub fn spin(
+    time: Res<Time>,
+    keys: Res<ButtonInput<KeyCode>>,
+    mut orbit: ResMut<Orbit>,
+    mut contexts: EguiContexts,
+    mut camera: Query<&mut Transform, With<Camera3d>>,
+) -> Result {
+    if !contexts.ctx_mut()?.egui_wants_keyboard_input() && keys.just_pressed(KeyCode::KeyA) {
+        orbit.spinning = !orbit.spinning;
+    }
+    if orbit.spinning {
+        orbit.yaw += SPIN * time.delta_secs();
         for mut transform in &mut camera {
             *transform = orbit.transform();
         }

@@ -8,21 +8,28 @@
 //!
 //! It runs the same [`cellweave_engine::Simulation`] the command line runs,
 //! under the same seed, so what it shows at a given step is what the command
-//! line writes at that step. The tissue is drawn as a plane in HDR, each cell
-//! lit from within by what it is doing, so that the structure a run produces,
-//! a starving core or a cord around its vessel, is visible at a glance.
+//! line writes at that step. The tissue is drawn as a surface in relief, in
+//! HDR: each cell a dome coloured by what it is doing, lit from the side so
+//! its shape casts a shadow, and glowing from within while it lives. Births
+//! flash and deaths flare, so the structure a run produces, a starving core
+//! or a cord around its vessel, is visible at a glance and so is its motion.
 //!
-//! Space pauses, R restarts, the mouse turns and zooms the camera.
+//! Space pauses, R restarts, H flattens the relief, A turns the camera on
+//! its own, and the mouse turns and zooms it.
 
 #![deny(unsafe_code)]
 
+mod glow;
 mod orbit;
 mod paint;
 mod panel;
+mod relief;
 mod runner;
 
 use anyhow::{Result, anyhow};
+use bevy::camera::visibility::NoFrustumCulling;
 use bevy::core_pipeline::tonemapping::Tonemapping;
+use bevy::light::CascadeShadowConfigBuilder;
 use bevy::post_process::bloom::Bloom;
 use bevy::prelude::*;
 use bevy_egui::{EguiPlugin, EguiPrimaryContextPass};
@@ -92,8 +99,14 @@ fn main() -> Result<()> {
                 // Between the two: the simulation is back from the pool and
                 // not yet sent off again, the one moment it can be read.
                 paint::repaint,
+                glow::retarget,
+                relief::retarget,
                 runner::dispatch,
                 orbit::steer,
+                orbit::spin,
+                relief::toggle,
+                relief::animate,
+                glow::animate,
             )
                 .chain(),
         )
@@ -102,7 +115,11 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-/// The camera, and the plane the tissue is painted on.
+/// How bright the lamp is, in lux. Bright enough for the relief to read,
+/// dim enough that the glow of a living cell still shows against it.
+const LAMP: f32 = 450.0;
+
+/// The camera, the lamp, and the surface the tissue is drawn on.
 fn setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -129,25 +146,67 @@ fn setup(
     ));
 
     let (w, h) = (experiment.scenario.width, experiment.scenario.height);
-    let canvas = images.add(paint::canvas(w, h));
-    // Lit only from within: black under any light, its colour all emission,
-    // so that brightness is what the painter says it is and not where a lamp
-    // happens to be.
-    let material = materials.add(StandardMaterial {
-        base_color: Color::BLACK,
-        emissive: LinearRgba::rgb(paint::GLOW, paint::GLOW, paint::GLOW),
-        emissive_texture: Some(canvas.clone()),
-        perceptual_roughness: 1.0,
-        reflectance: 0.0,
+    let size = w.max(h) as f32;
+
+    // Low and to one side, so every dome throws a shadow across its
+    // neighbour and the relief reads from any angle.
+    commands.spawn((
+        DirectionalLight {
+            illuminance: LAMP,
+            shadow_maps_enabled: true,
+            color: Color::srgb(1.0, 0.95, 0.88),
+            ..default()
+        },
+        CascadeShadowConfigBuilder {
+            num_cascades: 2,
+            maximum_distance: size * 4.0,
+            first_cascade_far_bound: size * 1.6,
+            ..default()
+        }
+        .build(),
+        Transform::from_xyz(-size, size * 0.4, size * 0.25).looking_at(Vec3::ZERO, Vec3::Y),
+    ));
+    commands.insert_resource(GlobalAmbientLight {
+        color: Color::srgb(0.45, 0.55, 1.0),
+        brightness: 40.0,
         ..default()
     });
+
+    let canvas = images.add(paint::canvas(w, h));
+    let glow = images.add(glow::image(w, h));
+    let material = materials.add(StandardMaterial {
+        base_color_texture: Some(canvas.clone()),
+        emissive: LinearRgba::rgb(paint::GLOW, paint::GLOW, paint::GLOW),
+        emissive_texture: Some(glow.clone()),
+        perceptual_roughness: 0.75,
+        reflectance: 0.15,
+        ..default()
+    });
+    let surface = meshes.add(relief::surface(w, h));
     commands.spawn((
-        Mesh3d(meshes.add(Plane3d::default().mesh().size(w as f32, h as f32))),
+        Mesh3d(surface.clone()),
         MeshMaterial3d(material.clone()),
         Transform::IDENTITY,
+        // The surface rises and falls every frame; the bounds it was spawned
+        // with would cull it at the wrong moment.
+        NoFrustumCulling,
     ));
+    // A slab under the tissue, so it reads as a dish with an edge rather
+    // than a sheet floating in the dark.
+    commands.spawn((
+        Mesh3d(meshes.add(Cuboid::new(w as f32 + 6.0, 4.0, h as f32 + 6.0))),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: Color::srgb(0.02, 0.025, 0.04),
+            perceptual_roughness: 0.3,
+            ..default()
+        })),
+        Transform::from_xyz(0.0, -2.05, 0.0),
+    ));
+
     commands.insert_resource(paint::Canvas {
         image: canvas,
-        material,
+        material: material.clone(),
     });
+    commands.insert_resource(glow::Glow::new(glow, material, w, h));
+    commands.insert_resource(relief::Relief::new(surface, w, h));
 }
