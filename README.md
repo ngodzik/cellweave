@@ -55,7 +55,7 @@ Features will be added progressively, and this README will follow as they land.
 
 ## What works today
 
-- Builds clean, `cargo clippy -D warnings` passes, 62 tests green
+- Builds clean, `cargo clippy -D warnings` passes, 72 tests green
 - 2D lattice with Monte Carlo spin flips and a volume constraint, with the boundary term pinned by four tests whose values are computable by hand
 - **The protein network is a file, not code.** Any number of proteins, any topology, each declared with the terms that move it, drawn from a closed catalogue named after what each means in biology. The file also says which node answers which question the simulation asks a cell, and how growth becomes a demand on the lattice. So stating a different hypothesis is writing a different file, and two files under the same seed differ by exactly what you changed. The RAS/ERK network that used to be literals in the source is now `examples/networks/ras-erk.toml`, compiled in as the default so that the built-in hypothesis and one you write go through the same path; a test pins that the two produce identical trajectories to twelve decimals
 - RK4 integration per cell, whose growth node sets how large its cell tries to be. This is the upward half of the coupling, protein state driving mechanics
@@ -66,7 +66,7 @@ Features will be added progressively, and this README will follow as they land.
 - Dead cells are resorbed, giving up their pixels over a few dozen steps until nothing is left. In the cord that makes births balance deaths: about forty living cells, one born every three steps, the same one dying, for as long as the run lasts, without ever nearing the edge of the box. That steady turnover is what an evolving population needs, and what a growing spheroid cannot offer
 - A diffusion field solved to its steady state every lattice step by projected successive over-relaxation, since oxygen equilibrates far faster than anything a cell does. Time stepping is kept for what needs it and refuses a step the explicit scheme cannot take. The field reproduces the closed-form profile of a bathed disc
 - TOML configuration, JSON snapshot output per saved step
-- CLI entry point
+- CLI entry point, a thin driver over `Simulation`, the loop itself, which lives in the engine so that anything else that runs a simulation runs the same one
 
 ## What does not work yet
 
@@ -80,7 +80,7 @@ Listed plainly, because a green test suite is not the same thing as correct phys
 
 ## Building and running
 
-Requires Rust 1.85 or newer, which is the minimum CI builds against.
+Requires Rust 1.97 or newer, which is the minimum CI builds against.
 
 ```bash
 cargo build --release
@@ -115,7 +115,7 @@ flowchart LR
 
     push --> lint["lint<br/>fmt, clippy, docs"]
     push --> test["test<br/>Linux, macOS, Windows"]
-    push --> msrv["msrv<br/>Rust 1.85"]
+    push --> msrv["msrv<br/>Rust 1.97"]
     push --> det["determinism<br/>two runs, one seed"]
     push --> deny["cargo-deny<br/>advisories, licences, sources"]
     cron --> deny

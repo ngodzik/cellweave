@@ -55,7 +55,7 @@ flowchart LR
 
 **Thresholds are constants; where they land is not.** 0.25 on survival, 0.45 on the hypoxia response, 1.4 on volume. These are the places where a continuous signal becomes a discrete decision, and there is no way around a number there. What is not a number is where in space each fate lands: that comes out of the balance between diffusion and uptake, and it is the point of the model.
 
-**Quiescence on HIF-1α, not on oxygen directly.** It would be simpler to say "below such oxygen, stop dividing". Saying it through the hypoxia response keeps the rule at the level of protein state, which is where the project wants every behaviour to come from, and it means a network with a different hypoxia response would quiesce differently without touching the binary.
+**Quiescence on HIF-1α, not on oxygen directly.** It would be simpler to say "below such oxygen, stop dividing". Saying it through the hypoxia response keeps the rule at the level of protein state, which is where the project wants every behaviour to come from, and it means a network with a different hypoxia response would quiesce differently without touching the engine.
 
 **The grid is the truth about volume.** `divide` counts the parent's pixels from the grid and rewrites both records from that count, so any earlier drift in the bookkeeping is corrected rather than carried. A test checks that records still match the grid after dividing, stepping, dividing again and stepping again.
 
@@ -65,11 +65,11 @@ flowchart LR
 
 ## Where in the code
 
-`src/main.rs`, the loop, steps 1 to 6 in the comments: relax the field, read, step the networks, decide fates and set targets, Monte Carlo, divide, snapshot.
+`crates/engine/src/simulation.rs`, the loop: `Simulation::step`, steps 1 to 5 in the comments: relax the field, read, step the networks, decide fates and set targets, Monte Carlo, divide. The command line and the viewer both run this one loop, so neither can drift from the other.
 
 - `divide_ready_cells` is the division rule and the assertion.
 - `DIVISION_RATIO`, `DIVISION_CHECK_EVERY`, `DEATH_THRESHOLD`, `QUIESCENCE_THRESHOLD`, `RESORPTION_RATE` are the constants, each with the reason for its value.
-- `living` and `write_snapshot` are what gets counted and recorded.
+- `living`, `necrotic` and `snapshot` are what gets counted and recorded; `src/main.rs` writes the snapshot to disk.
 
 `crates/engine/src/cpm.rs`: `divide`, `set_volume_target`, `set_kind`, `cell_kind`.
 

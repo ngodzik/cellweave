@@ -32,9 +32,9 @@ flowchart LR
     c2 --> files["examples/networks/*.toml"]
     c3["3. oxygen"] --> pde["crates/engine/src/pde.rs<br/>ScalarField"]
     c3 --> cpl["crates/engine/src/coupling.rs"]
-    c4["4. fates,<br/>division"] --> main["src/main.rs<br/>the loop"]
+    c4["4. fates,<br/>division"] --> sim["crates/engine/src/simulation.rs<br/>Simulation, the loop"]
     c4 --> cpm
-    c5["5. two tissues"] --> cfg["crates/io/src/config.rs<br/>OxygenSource"]
+    c5["5. two tissues"] --> cfg["crates/core/src/types.rs<br/>OxygenSource"]
     c5 --> ex["examples/*.toml"]
 ```
 

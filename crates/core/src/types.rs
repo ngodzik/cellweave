@@ -71,6 +71,28 @@ pub enum CellKind {
     Necrotic,
 }
 
+// ── Geometry ──────────────────────────────────────────────────────────────────
+
+/// Where the oxygen comes from, which is also what shape the tissue takes.
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "kind")]
+pub enum OxygenSource {
+    /// A bath at the edge of the box, held against the surface of the tissue.
+    /// One cell is seeded at the centre and grows into a spheroid, which
+    /// starves from the inside once large enough. The run stops when the
+    /// tissue touches the edge of the box.
+    #[default]
+    Bath,
+    /// A vessel at the centre, held at full oxygen, that cells cannot enter.
+    /// One cell is seeded against its wall and the tissue grows around it out
+    /// to the depth diffusion can feed: a tumour cord. With dead cells resorbed,
+    /// the cord keeps a steady thickness and turns over indefinitely.
+    Vessel {
+        /// Radius of the vessel, in pixels.
+        radius: u32,
+    },
+}
+
 // ── Protein state ─────────────────────────────────────────────────────────────
 
 /// Snapshot of all protein concentrations inside one cell.
