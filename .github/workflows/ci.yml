@@ -110,14 +110,17 @@ jobs:
       # 500 steps is past the point where the tissue reaches the edge of the
       # default grid, so this also checks that the early stop lands on the same
       # step both times. The cord is cut short: it never stops on its own.
+      # The first run of each pair is held to one thread and the second gets
+      # every core the runner has, so the comparison also checks that the
+      # parallel field solve gives the same answer whatever the thread count.
       - name: Run each scenario twice
         run: |
           cargo build --release
-          ./target/release/cellweave --config examples/spheroid.toml
+          RAYON_NUM_THREADS=1 ./target/release/cellweave --config examples/spheroid.toml
           mv output spheroid-a
           ./target/release/cellweave --config examples/spheroid.toml
           mv output spheroid-b
-          ./target/release/cellweave --config examples/cord.toml --mcs 400
+          RAYON_NUM_THREADS=1 ./target/release/cellweave --config examples/cord.toml --mcs 400
           mv output-cord cord-a
           ./target/release/cellweave --config examples/cord.toml --mcs 400
           mv output-cord cord-b
