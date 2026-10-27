@@ -4,6 +4,7 @@
 //!
 //! ```text
 //! cellweave [--config <path>] [--mcs <n>] [--seed <n>] [--output <dir>]
+//!           [--suppress <clone>,<clone>...] [--attribute]
 //! cellweave --version
 //! ```
 //!
@@ -11,6 +12,8 @@
 //! configuration, runs it, and writes what it sees.
 
 #![deny(unsafe_code)]
+
+mod attribute;
 
 use anyhow::{Context, Result};
 use cellweave_core::Seeding;
@@ -48,6 +51,32 @@ fn main() -> Result<()> {
     }
     if let Some(w) = args.windows(2).find(|w| w[0] == "--output") {
         config.output_dir = w[1].clone();
+    }
+    // --suppress: clones whose founding mutation this run draws but does not
+    // make, to see what would have happened without them.
+    if let Some(w) = args.windows(2).find(|w| w[0] == "--suppress") {
+        config.suppress = w[1]
+            .split(',')
+            .map(|c| c.trim().parse())
+            .collect::<Result<_, _>>()
+            .context("--suppress takes clone numbers separated by commas")?;
+    }
+
+    if args.iter().any(|a| a == "--attribute") {
+        let spec = config.load_network(config_path)?;
+        eprintln!(
+            "attributing the outcome of {} MCS to the mutations of its leading clone, \
+             one run per mutation",
+            config.mcs
+        );
+        let table = attribute::attribute(
+            &config.scenario(),
+            &spec,
+            config.mcs,
+            std::path::Path::new(&config.output_dir),
+        )?;
+        eprint!("{table}");
+        return Ok(());
     }
 
     run(config, config_path)

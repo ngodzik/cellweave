@@ -149,6 +149,15 @@ pub struct Scenario {
     /// stress field unsolved and every cell reading zero, so a run without
     /// exposure is the run it was before exposure existed.
     pub exposure: Option<Exposure>,
+    /// Clones whose founding mutation is, in this run, drawn but not made.
+    ///
+    /// Everything else happens as it would have: the same numbers are drawn,
+    /// the clone is founded with the same identifier and the same parent, and
+    /// its cells are the cells they would have been. Only their network is
+    /// their parent's, unchanged. Until that difference makes a difference,
+    /// the run is the run without the suppression, bit for bit; a mutation
+    /// that never makes one leaves it so to the end.
+    pub suppress: Vec<CloneId>,
     /// Probability that a daughter is born with one rate of its network
     /// changed, founding a clone of its own. Zero keeps every daughter an
     /// exact copy, and draws nothing from the generator for it, so a run
@@ -655,13 +664,22 @@ impl Simulation<Running> {
                 let rate = self.scenario.mutation_rate;
                 if rate > 0.0 && self.rng.random::<f64>() < rate {
                     let (which, how) = (self.rng.random::<f64>(), self.rng.random::<f64>());
-                    if let Some(mutation) = daughter.as_mut().and_then(|n| n.mutate(which, how)) {
-                        let founded = CloneId(self.clones.len() as u32);
+                    let founded = CloneId(self.clones.len() as u32);
+                    let suppressed = self.scenario.suppress.contains(&founded);
+                    // A suppressed mutation is made on a copy, to know what it
+                    // would have been, and the copy is thrown away.
+                    let made = if suppressed {
+                        daughter.clone().and_then(|mut n| n.mutate(which, how))
+                    } else {
+                        daughter.as_mut().and_then(|n| n.mutate(which, how))
+                    };
+                    if let Some(mutation) = made {
                         self.clones.push(CloneRecord {
                             id: founded,
                             parent: Some(clone),
                             founded_at: mcs,
                             mutation: Some(mutation),
+                            suppressed,
                         });
                         clone = founded;
                     }
@@ -931,6 +949,7 @@ mod tests {
             oxygen_uptake: 0.0003,
             seed: DEFAULT_SEED,
             mutation_rate: 0.0,
+            suppress: Vec::new(),
             seeding: Seeding::Single,
             exposure: None,
         }
@@ -1040,5 +1059,85 @@ mod tests {
             };
             assert!(Simulation::new(scenario, &spec()).is_err(), "{rate}");
         }
+    }
+
+    /// Every step's measurements, and who holds each pixel at the end.
+    fn history(
+        scenario: Scenario,
+        steps: u32,
+    ) -> (Vec<crate::Measurements>, Vec<u32>, Vec<CloneRecord>) {
+        let (mut sim, _) = Simulation::new(scenario, &spec()).unwrap().start().unwrap();
+        let mut measured = Vec::new();
+        for _ in 0..steps {
+            sim.step().unwrap();
+            measured.push(sim.measure());
+        }
+        let (w, h) = sim.lattice().dims();
+        let grid = (0..h)
+            .flat_map(|y| (0..w).map(move |x| (x, y)))
+            .map(|(x, y)| sim.lattice().occupant(x, y))
+            .collect();
+        (measured, grid, sim.clones().to_vec())
+    }
+
+    fn mutating() -> Scenario {
+        Scenario {
+            mutation_rate: 1.0,
+            ..scenario(OxygenSource::Bath)
+        }
+    }
+
+    #[test]
+    fn a_suppressed_mutation_still_founds_its_clone() {
+        let (_, _, real) = history(mutating(), 100);
+        let target = real[3].id;
+        let (_, _, without) = history(
+            Scenario {
+                suppress: vec![target],
+                ..mutating()
+            },
+            100,
+        );
+        let kept = &without[target.0 as usize];
+        assert!(kept.suppressed);
+        assert_eq!(kept.parent, real[3].parent);
+        assert_eq!(kept.founded_at, real[3].founded_at);
+        assert_eq!(kept.mutation, real[3].mutation, "what it would have been");
+        assert!(without.iter().filter(|c| c.suppressed).count() == 1);
+    }
+
+    #[test]
+    fn two_histories_are_one_until_the_suppressed_mutation() {
+        let (real, _, clones) = history(mutating(), 100);
+        let target = clones.last().unwrap();
+        let (without, _, _) = history(
+            Scenario {
+                suppress: vec![target.id],
+                ..mutating()
+            },
+            100,
+        );
+        let before = target.founded_at as usize;
+        assert_eq!(real[..=before], without[..=before]);
+    }
+
+    #[test]
+    fn a_neutral_mutation_leaves_the_history_identical_to_the_last_bit() {
+        // VEGF is read by nothing in the shipped network, so a change to how
+        // it is made or lost cannot reach a fate.
+        let (real, grid, clones) = history(mutating(), 100);
+        let neutral = clones
+            .iter()
+            .find(|c| c.mutation.as_ref().is_some_and(|m| m.node == "vegf"))
+            .expect("one of the clones changed VEGF");
+        let (without, other_grid, _) = history(
+            Scenario {
+                suppress: vec![neutral.id],
+                ..mutating()
+            },
+            100,
+        );
+        assert_eq!(real, without);
+        assert_eq!(grid, other_grid);
     }
 }

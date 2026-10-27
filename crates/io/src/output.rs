@@ -119,7 +119,7 @@ pub fn write_clones(
     let list: Vec<serde_json::Value> = clones
         .iter()
         .map(|c| {
-            serde_json::json!({
+            let mut entry = serde_json::json!({
                 "id": c.id.0,
                 "parent": c.parent.map(|p| p.0),
                 "founded_at": c.founded_at,
@@ -130,7 +130,13 @@ pub fn write_clones(
                     "factor": m.factor,
                 })),
                 "living": sizes.get(c.id.0 as usize).copied().unwrap_or(0),
-            })
+            });
+            // Said only of a clone that was suppressed, so that a run which
+            // suppresses nothing writes what it always wrote.
+            if c.suppressed {
+                entry["suppressed"] = serde_json::Value::Bool(true);
+            }
+            entry
         })
         .collect();
     let json = serde_json::to_string_pretty(&list)
