@@ -40,6 +40,13 @@ const FLASH_STEPS: f32 = 3.0;
 /// A death's flare, and how long it takes to go out, in seconds.
 const DEATH: LinearRgba = LinearRgba::rgb(0.45, 0.07, 0.015);
 const DEATH_FADE: f32 = 0.35;
+/// A cell starting apoptosis flares violet instead, the colour it breaks up
+/// in, so the two deaths read apart.
+const APOPTOSIS: LinearRgba = LinearRgba::rgb(0.32, 0.06, 0.42);
+
+/// What the medium gives off where the lethal stress is: a violet haze
+/// spreading from its source while exposure is on.
+const STRESS_HAZE: LinearRgba = LinearRgba::rgb(0.035, 0.0, 0.05);
 
 /// The emission image and what it is drawn from.
 #[derive(Resource)]
@@ -60,6 +67,8 @@ pub struct Glow {
     birth: Vec<f32>,
     /// Per cell identifier: how bright its death flare still is, from one.
     death: Vec<f32>,
+    /// Per cell identifier: how bright its apoptosis flare still is.
+    dying: Vec<f32>,
     /// Per cell identifier: its fate in the last state drawn.
     fates: Vec<Option<Fate>>,
     /// The generation last drawn, and the view it was drawn in.
@@ -86,6 +95,7 @@ impl Glow {
             steady: vec![LinearRgba::BLACK; n],
             birth: Vec::new(),
             death: Vec::new(),
+            dying: Vec::new(),
             fates: Vec::new(),
             seen: None,
             fading: false,
@@ -128,6 +138,7 @@ pub fn retarget(runner: Res<Runner>, view: Res<View>, glow: Option<ResMut<Glow>>
     if restarted {
         glow.birth.clear();
         glow.death.clear();
+        glow.dying.clear();
         glow.fates.clear();
     }
     let fates: Vec<Option<Fate>> = (0..cells as u32).map(|id| sim.fate(CellId(id))).collect();
@@ -140,6 +151,7 @@ pub fn retarget(runner: Res<Runner>, view: Res<View>, glow: Option<ResMut<Glow>>
     };
     glow.birth.resize(cells, 0.0);
     glow.death.resize(cells, 0.0);
+    glow.dying.resize(cells, 0.0);
     for id in known..cells {
         glow.birth[id] = 1.0;
     }
@@ -151,6 +163,9 @@ pub fn retarget(runner: Res<Runner>, view: Res<View>, glow: Option<ResMut<Glow>>
         if was_alive && *fate == Some(Fate::Necrotic) {
             glow.death[id] = 1.0;
         }
+        if was_alive && *fate == Some(Fate::Apoptotic) {
+            glow.dying[id] = 1.0;
+        }
     }
     glow.fates = fates;
 
@@ -158,6 +173,7 @@ pub fn retarget(runner: Res<Runner>, view: Res<View>, glow: Option<ResMut<Glow>>
         .map(|id| steady(sim, CellId(id), *view, glow.fates[id as usize]))
         .collect();
     let oxygen = sim.oxygen();
+    let stress = sim.stress();
     let (w, h) = lattice.dims();
     for y in 0..h {
         for x in 0..w {
@@ -166,8 +182,17 @@ pub fn retarget(runner: Res<Runner>, view: Res<View>, glow: Option<ResMut<Glow>>
             glow.occupant[at] = id;
             glow.edges[at] = paint::membrane(lattice, x, y);
             glow.steady[at] = match id {
-                0 => MEDIUM_GLOW * oxygen.concentration_at(x, y) as f32,
+                0 => {
+                    let s = stress.map_or(0.0, |f| f.concentration_at(x, y)) as f32;
+                    MEDIUM_GLOW * oxygen.concentration_at(x, y) as f32 + STRESS_HAZE * s
+                }
                 OBSTACLE => paint::VESSEL * VESSEL_GLOW,
+                // Coloured by the stress, a cell glows with what it sits in,
+                // pixel by pixel, rather than with what it is doing.
+                _ if *view == View::Stress => {
+                    let s = stress.map_or(0.0, |f| f.concentration_at(x, y)) as f32;
+                    paint::ramp(s) * CYCLING_GLOW
+                }
                 _ => per_cell
                     .get(id as usize)
                     .copied()
@@ -183,7 +208,7 @@ fn steady(sim: &Simulation<Running>, id: CellId, view: View, fate: Option<Fate>)
     let strength = match fate {
         Some(Fate::Cycling) => CYCLING_GLOW,
         Some(Fate::Quiescent | Fate::Differentiating) => QUIESCENT_GLOW,
-        Some(Fate::Necrotic) | None => return LinearRgba::BLACK,
+        Some(Fate::Necrotic | Fate::Apoptotic) | None => return LinearRgba::BLACK,
     };
     paint::cell_colour(sim, id, view) * strength
 }
@@ -214,7 +239,7 @@ pub fn animate(
         }
         still |= *b > 0.0;
     }
-    for d in &mut glow.death {
+    for d in glow.death.iter_mut().chain(glow.dying.iter_mut()) {
         *d *= death_k;
         if *d < 0.01 {
             *d = 0.0;
@@ -233,7 +258,8 @@ pub fn animate(
         let id = id as usize;
         let flash = glow.birth.get(id).copied().unwrap_or(0.0);
         let flare = glow.death.get(id).copied().unwrap_or(0.0);
-        let colour = paint::bytes(base + BIRTH * flash + DEATH * flare);
+        let dying = glow.dying.get(id).copied().unwrap_or(0.0);
+        let colour = paint::bytes(base + BIRTH * flash + DEATH * flare + APOPTOSIS * dying);
         let at = at as u32;
         let xy = (at % glow.width, at / glow.width);
         paint::block(data, glow.width, xy, colour, dark, glow.edges[at as usize]);

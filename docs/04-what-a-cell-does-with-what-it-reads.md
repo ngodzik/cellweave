@@ -78,4 +78,4 @@ flowchart LR
 
 ## Still a placeholder
 
-All three thresholds, the growth coefficient 1.5, the division ratio 1.4, the check every twenty steps, and the resorption rate. Growth is fast: a cell doubles in about twenty steps at full oxygen, and with the clocks as they are that is a compressed but consistent day. Only one kind of death exists; apoptosis, the programmed kind that a cell starts itself, is not here. Unless the configuration sets a mutation rate, a daughter is an exact copy, and there is nothing for selection to act on; chapter 6 is what happens when it does.
+All three thresholds, the growth coefficient 1.5, the division ratio 1.4, the check every twenty steps, and the resorption rate. Growth is fast: a cell doubles in about twenty steps at full oxygen, and with the clocks as they are that is a compressed but consistent day. Apoptosis, the programmed kind of death that a cell starts itself, is chapter 8's. Unless the configuration sets a mutation rate, a daughter is an exact copy, and there is nothing for selection to act on; chapter 6 is what happens when it does.

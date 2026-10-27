@@ -1,0 +1,40 @@
+# The RAS/ERK network, with a response to a lethal stress.
+#
+# Everything comes from ras-erk.toml, plus two nodes. P53 is the protein that
+# rises when a cell is damaged and decides whether the damage is survivable;
+# here it rises with the stress the cell reads. Caspase stands for the
+# enzymes that carry out apoptosis, the cell's own programmed death; it is
+# switched on sharply once p53 is high, and its level is read as the cell's
+# chance, per lattice step, of starting apoptosis.
+#
+# The stress itself stands for nothing in particular: an agent that comes in
+# where oxygen does, is taken up by the cells it reaches, and damages them.
+#
+# Every rate is a placeholder. What they fix: a cell reading the full level of
+# the source settles at p53 of one half and starts apoptosis with a chance of
+# about three in ten per step; at a fifth of that level, about one in sixty.
+
+extends = "ras-erk.toml"
+
+[[nodes]]
+name = "p53"
+initial = 0.0
+terms = [
+  { kind = "activated_by", source = "stress", rate = 0.5 },
+  { kind = "decays", rate = 0.5 },
+]
+
+[[nodes]]
+name = "caspase"
+initial = 0.0
+terms = [
+  # A switch rather than a slope: half way at p53 of 0.4.
+  { kind = "activated_by", source = "p53", rate = 0.3, hill = { n = 4.0, k = 0.4 } },
+  { kind = "decays", rate = 0.5 },
+]
+
+[roles]
+growth = "erk"
+survival = "bcl2"
+hypoxia_response = "hif1"
+apoptosis = "caspase"

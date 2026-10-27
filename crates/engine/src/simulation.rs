@@ -12,7 +12,7 @@
 use std::marker::PhantomData;
 
 use cellweave_core::{
-    CellId, CellInputs, CellKind, CellSnapshot, CellweaveError, CloneId, Concentration,
+    CellId, CellInputs, CellKind, CellSnapshot, CellweaveError, CloneId, Concentration, Exposure,
     NetworkSpec, OxygenSource, Pos2, Seeding, SignalingNetwork, SimSnapshot, TimeStep, Volume,
 };
 use rand::rngs::StdRng;
@@ -108,6 +108,19 @@ const RESORPTION_RATE: u32 = 2;
 /// hundred pixels is gone in about seventeen steps, under a generation.
 const SHEDDING_RATE: u32 = 6;
 
+/// Pixels an apoptotic cell gives up per lattice step as it breaks up.
+///
+/// Faster still than shedding: apoptosis packs a cell into fragments that
+/// its neighbours clear within hours, where necrotic debris lingers for days.
+/// A cell of two hundred pixels is gone in about twenty-five steps.
+const FRAGMENTATION_RATE: u32 = 8;
+
+/// The lethal stress diffuses like oxygen. How far it reaches into the tissue
+/// is set by how much the cells take up, which the exposure states, so one
+/// diffusion coefficient for both keeps the comparison between the two fields
+/// a comparison of their uptakes alone.
+const STRESS_DIFFUSION: f64 = OXYGEN_DIFFUSION;
+
 /// What a simulation is asked to be: the box, its temperature, where the oxygen
 /// comes from, and the seed.
 ///
@@ -132,6 +145,10 @@ pub struct Scenario {
     /// What the box holds at the start: one tumour cell, or a sheet of normal
     /// tissue.
     pub seeding: Seeding,
+    /// The lethal stress the tissue is exposed to, if any. `None` leaves the
+    /// stress field unsolved and every cell reading zero, so a run without
+    /// exposure is the run it was before exposure existed.
+    pub exposure: Option<Exposure>,
     /// Probability that a daughter is born with one rate of its network
     /// changed, founding a clone of its own. Zero keeps every daughter an
     /// exact copy, and draws nothing from the generator for it, so a run
@@ -174,6 +191,8 @@ pub enum Fate {
     Necrotic,
     /// Committed to differentiate, and leaving the layer it divided in.
     Differentiating,
+    /// Started its own programmed death, and breaking up.
+    Apoptotic,
 }
 
 /// What happened in one lattice step.
@@ -185,6 +204,9 @@ pub struct StepReport {
     pub relax_steps: usize,
     /// Mean oxygen the first cell read at the start of this step.
     pub first_cell_oxygen: f64,
+    /// Level of the lethal stress held at its source during this step: the
+    /// exposure's intensity while it is on, zero otherwise or without one.
+    pub exposure: f64,
     /// The tissue touched the edge of the box during this step.
     ///
     /// The bath is defined by what it can reach from the edge, so from here on
@@ -208,6 +230,11 @@ pub struct Simulation<S: SimState> {
     /// Every clone ever founded, by identifier.
     clones: Vec<CloneRecord>,
     oxygen: ScalarField,
+    /// The lethal stress, when the scenario exposes the tissue to one.
+    stress: Option<ScalarField>,
+    /// Level the stress field was last solved for, so that a change of level
+    /// is solved from scratch, tightly, like the oxygen at the start.
+    stress_level: f64,
     rng: StdRng,
     first: CellId,
     /// Index of the next step to take.
@@ -338,6 +365,45 @@ impl Simulation<Configured> {
             0.0,
             initial,
         )?;
+        let stress = match scenario.exposure {
+            None => None,
+            Some(e) => {
+                // A field nothing takes up never settles, and fills the box
+                // to the source's level whatever it is.
+                if !(e.intensity.is_finite() && e.intensity >= 0.0) {
+                    return Err(CellweaveError::Config(format!(
+                        "the exposure's intensity is {}; it must be zero or more",
+                        e.intensity
+                    )));
+                }
+                if !(e.uptake.is_finite() && e.uptake > 0.0) {
+                    return Err(CellweaveError::Config(format!(
+                        "the exposure's uptake is {}; the cells must take some of it up, \
+                         or it fills the box whatever its source",
+                        e.uptake
+                    )));
+                }
+                if let cellweave_core::Schedule::Periodic { on: 0, .. } = e.schedule {
+                    return Err(CellweaveError::Config(
+                        "a periodic exposure that is on for zero steps is never on".into(),
+                    ));
+                }
+                if scenario.oxygen_uptake == 0.0 {
+                    return Err(CellweaveError::Config(
+                        "an exposure comes in where oxygen does, and this scenario has the \
+                         field off; it has no source to come in from"
+                            .into(),
+                    ));
+                }
+                Some(ScalarField::new(
+                    scenario.width,
+                    scenario.height,
+                    STRESS_DIFFUSION,
+                    0.0,
+                    0.0,
+                )?)
+            }
+        };
 
         Ok(Self {
             rng: StdRng::seed_from_u64(scenario.seed),
@@ -347,6 +413,8 @@ impl Simulation<Configured> {
             lineage,
             clones,
             oxygen,
+            stress,
+            stress_level: 0.0,
             first,
             next_mcs: 0,
             born: cells as u64,
@@ -384,6 +452,8 @@ impl Simulation<Configured> {
             lineage: self.lineage,
             clones: self.clones,
             oxygen: self.oxygen,
+            stress: self.stress,
+            stress_level: self.stress_level,
             rng: self.rng,
             first: self.first,
             next_mcs: self.next_mcs,
@@ -421,16 +491,22 @@ impl Simulation<Running> {
                 .map_err(|e| CellweaveError::Simulation(format!("at MCS {mcs}: {e}")))?
         };
         let local_o2 = mean_per_cell(&self.oxygen, &self.lattice);
+        let exposure = self.settle_stress(mcs)?;
+        let local_stress = self
+            .stress
+            .as_ref()
+            .map(|field| mean_per_cell(field, &self.lattice));
 
         // 2. Advance every living network by NETWORK_TIME_PER_MCS units of its
         //    time. A dead cell's network is frozen where it stopped, and so is
-        //    that of a cell leaving the layer: it has made its last decision.
+        //    that of a cell leaving the layer or breaking up: it has made its
+        //    last decision.
         for (i, slot) in self.networks.iter_mut().enumerate() {
             let Some(net) = slot else { continue };
             let id = cell_of(i);
             if matches!(
                 self.lattice.cell_kind(id),
-                Some(CellKind::Necrotic | CellKind::Differentiated)
+                Some(CellKind::Necrotic | CellKind::Differentiated | CellKind::Apoptotic)
             ) {
                 continue;
             }
@@ -439,6 +515,7 @@ impl Simulation<Running> {
                 egf: Concentration(0.2),
                 vegf: Concentration(0.0),
                 crowding: Concentration(crowding(&self.lattice, id, net)),
+                stress: Concentration(local_stress.as_ref().map_or(0.0, |s| s[i + 1])),
             };
             for _ in 0..NETWORK_TIME_PER_MCS {
                 net.step(TimeStep(1.0), &inputs);
@@ -447,25 +524,29 @@ impl Simulation<Running> {
 
         // 3. Fate and upward coupling. A necrotic cell gives up pixels until
         //    none is left, and is then gone for good, and so does a cell leaving
-        //    the layer, faster; a cell whose survival just collapsed becomes
-        //    necrotic; a cell whose network carries a differentiation node may
-        //    commit to differentiate, with that node's level as its chance this
-        //    step; every other cell's network decides how large it tries to be.
+        //    the layer or breaking up in apoptosis, faster; a cell whose
+        //    survival just collapsed becomes necrotic; a cell whose network
+        //    carries an apoptosis node may start apoptosis, and one whose network
+        //    carries a differentiation node may commit to differentiate, each
+        //    with that node's level as its chance this step; every other cell's
+        //    network decides how large it tries to be.
         for (i, slot) in self.networks.iter_mut().enumerate() {
             let id = cell_of(i);
             let Some(net) = slot else { continue };
             let kind = self.lattice.cell_kind(id);
             match kind {
-                Some(CellKind::Necrotic | CellKind::Differentiated) => {
+                Some(
+                    leaving @ (CellKind::Necrotic | CellKind::Differentiated | CellKind::Apoptotic),
+                ) => {
                     let volume = self.lattice.volume(id).map_or(0, |v| v.0);
                     if volume == 0 {
                         *slot = None;
                         self.gone += 1;
                     } else {
-                        let rate = if kind == Some(CellKind::Necrotic) {
-                            RESORPTION_RATE
-                        } else {
-                            SHEDDING_RATE
+                        let rate = match leaving {
+                            CellKind::Necrotic => RESORPTION_RATE,
+                            CellKind::Apoptotic => FRAGMENTATION_RATE,
+                            _ => SHEDDING_RATE,
                         };
                         let target = Volume(volume.saturating_sub(rate));
                         self.lattice
@@ -475,9 +556,16 @@ impl Simulation<Running> {
                 Some(_) if net.survival() < DEATH_THRESHOLD => {
                     self.lattice.set_kind(id, CellKind::Necrotic);
                 }
-                // Drawn only for a network that has the role, so a tumour
-                // network takes exactly the draws it took before the role
-                // existed.
+                // Each drawn only for a network that has the role, so a
+                // network without it takes exactly the draws it took before
+                // the role existed.
+                Some(_)
+                    if net
+                        .apoptosis()
+                        .is_some_and(|chance| self.rng.random::<f64>() < chance) =>
+                {
+                    self.lattice.set_kind(id, CellKind::Apoptotic);
+                }
                 Some(_)
                     if net
                         .differentiation()
@@ -501,6 +589,7 @@ impl Simulation<Running> {
             mcs,
             relax_steps,
             first_cell_oxygen: local_o2.get(self.first.0 as usize).copied().unwrap_or(0.0),
+            exposure,
             // A sheet touches the edge from the start; the edge only means
             // something for a tissue grown from one cell inside a supply.
             reached_edge: self.scenario.seeding == Seeding::Single && self.touches_the_edge(),
@@ -632,6 +721,45 @@ impl Simulation<Running> {
 }
 
 impl<S: SimState> Simulation<S> {
+    /// Solve the stress field for step `mcs`, and say what level its source
+    /// held. Without an exposure there is no field and the level is zero.
+    ///
+    /// While exposure is off the field is zero everywhere: nothing supplies
+    /// it, and everything that takes it up has had it. When the level changes,
+    /// switching on or off, the field is solved again from scratch and
+    /// tightly, for the reason the oxygen is at the start: a per-step
+    /// tolerance lets a slow front creep on unnoticed.
+    fn settle_stress(&mut self, mcs: u64) -> Result<f64, CellweaveError> {
+        let (Some(exposure), Some(field)) = (self.scenario.exposure, self.stress.as_mut()) else {
+            return Ok(0.0);
+        };
+        let level = exposure.level_at(mcs);
+        if level == 0.0 {
+            field.fill(0.0);
+            self.stress_level = 0.0;
+            return Ok(0.0);
+        }
+        apply_uptake(field, &self.lattice, exposure.uptake);
+        field.release_all();
+        match self.scenario.oxygen_source {
+            OxygenSource::Bath => hold_medium_bath(field, &self.lattice, level),
+            OxygenSource::Vessel { .. } => {
+                apply_background_uptake(field, &self.lattice, exposure.uptake);
+                hold_obstacles_at(field, &self.lattice, level);
+            }
+        }
+        let (tolerance, max_sweeps) = if level == self.stress_level {
+            (OXYGEN_TOLERANCE * exposure.uptake, OXYGEN_MAX_STEPS)
+        } else {
+            (OXYGEN_WARMUP_TOLERANCE, OXYGEN_WARMUP_MAX_STEPS)
+        };
+        field
+            .relax(TimeStep(1.0), tolerance, max_sweeps)
+            .map_err(|e| CellweaveError::Simulation(format!("stress at MCS {mcs}: {e}")))?;
+        self.stress_level = level;
+        Ok(level)
+    }
+
     /// Whether the field is left unsolved: nothing consumes, so everywhere
     /// sits at the level it started at.
     fn field_is_off(&self) -> bool {
@@ -684,6 +812,12 @@ impl<S: SimState> Simulation<S> {
         &self.lattice
     }
 
+    /// The lethal stress field, as it was last settled, or `None` when the
+    /// scenario exposes the tissue to nothing.
+    pub fn stress(&self) -> Option<&ScalarField> {
+        self.stress.as_ref()
+    }
+
     /// The oxygen field, as it was last settled.
     pub fn oxygen(&self) -> &ScalarField {
         &self.oxygen
@@ -713,13 +847,14 @@ impl<S: SimState> Simulation<S> {
     /// that is gone.
     ///
     /// A tumour or normal cell cycles while its hypoxia response is below the
-    /// quiescence threshold; a cell committed to differentiate is leaving, and
-    /// a necrotic one is dead.
+    /// quiescence threshold; a cell committed to differentiate is leaving, an
+    /// apoptotic one is breaking up, and a necrotic one is dead.
     pub fn fate(&self, id: CellId) -> Option<Fate> {
         let net = self.network(id)?;
         Some(match self.lattice.cell_kind(id)? {
             CellKind::Necrotic => Fate::Necrotic,
             CellKind::Differentiated => Fate::Differentiating,
+            CellKind::Apoptotic => Fate::Apoptotic,
             CellKind::Tumor | CellKind::Normal if net.hypoxia_response() < QUIESCENCE_THRESHOLD => {
                 Fate::Cycling
             }
@@ -727,13 +862,16 @@ impl<S: SimState> Simulation<S> {
         })
     }
 
-    /// Cells alive and in the layer: neither necrotic nor leaving, and still
-    /// holding pixels.
+    /// Cells alive and in the layer: neither necrotic, nor leaving, nor
+    /// breaking up, and still holding pixels.
     pub fn living(&self) -> usize {
         self.lattice
             .cell_records()
             .filter(|(_, r)| {
-                !matches!(r.kind, CellKind::Necrotic | CellKind::Differentiated) && r.volume.0 > 0
+                !matches!(
+                    r.kind,
+                    CellKind::Necrotic | CellKind::Differentiated | CellKind::Apoptotic
+                ) && r.volume.0 > 0
             })
             .count()
     }
@@ -794,6 +932,7 @@ mod tests {
             seed: DEFAULT_SEED,
             mutation_rate: 0.0,
             seeding: Seeding::Single,
+            exposure: None,
         }
     }
 

@@ -28,6 +28,11 @@ pub struct Measurements {
     pub necrotic: usize,
     /// Cells committed to differentiate and leaving the layer.
     pub differentiating: usize,
+    /// Cells in apoptosis, breaking up.
+    pub apoptotic: usize,
+    /// Level of the lethal stress held at its source at this step, zero
+    /// without an exposure or while it is off.
+    pub exposure: f64,
     /// Cells ever born, the first one included, or the whole first sheet.
     pub born: u64,
     /// Cells that have left for good: resorbed to nothing after dying, or
@@ -75,7 +80,8 @@ impl<S: SimState> Simulation<S> {
     /// random number and moves nothing, so measuring a run does not change it.
     pub fn measure(&self) -> Measurements {
         let lattice = self.lattice();
-        let (mut cycling, mut quiescent, mut necrotic, mut differentiating) = (0, 0, 0, 0);
+        let (mut cycling, mut quiescent, mut necrotic) = (0, 0, 0);
+        let (mut differentiating, mut apoptotic) = (0, 0);
         let (mut living_area, mut necrotic_area, mut leaving_area) = (0u64, 0u64, 0u64);
         for (id, record) in lattice.cell_records() {
             if record.volume.0 == 0 {
@@ -97,6 +103,10 @@ impl<S: SimState> Simulation<S> {
                 }
                 Some(Fate::Differentiating) => {
                     differentiating += 1;
+                    leaving_area += area;
+                }
+                Some(Fate::Apoptotic) => {
+                    apoptotic += 1;
                     leaving_area += area;
                 }
                 None => {}
@@ -130,6 +140,11 @@ impl<S: SimState> Simulation<S> {
             quiescent,
             necrotic,
             differentiating,
+            apoptotic,
+            exposure: self
+                .scenario()
+                .exposure
+                .map_or(0.0, |e| e.level_at(self.last_mcs())),
             born: self.born(),
             gone: self.gone(),
             clones: self.clone_sizes().iter().filter(|&&n| n > 0).count(),
@@ -165,6 +180,7 @@ mod tests {
             seed: DEFAULT_SEED,
             mutation_rate: 0.0,
             seeding: Default::default(),
+            exposure: None,
         }
     }
 

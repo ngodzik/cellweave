@@ -6,7 +6,7 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Anoxia** (2). Oxygen so low the cell cannot make energy. Below 15% of the source's level in cellweave, damage to survival begins.
 
-**Apoptosis** (2, 4). Programmed, orderly cell death that a cell can trigger itself. Not modelled.
+**Apoptosis** (2, 4, 8). Programmed, orderly cell death that a cell starts itself: it packs itself into fragments its neighbours clear. Here a chance per step set by the network's apoptosis node.
 
 **Basal layer** (7). The bottom layer of an epithelium, the only one that divides. Cells leave it upwards when they differentiate.
 
@@ -15,6 +15,8 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 **BCL2** (2). B-cell lymphoma 2, a survival protein. When it falls below 0.25 the cell is necrotic.
 
 **Capillary** (3). The finest blood vessel, where oxygen leaves the blood. No cell in the body is further than 100 to 200 micrometres from one.
+
+**Caspase** (8). The enzymes that carry out apoptosis, cutting the cell's own proteins apart. Here one node, switched on sharply by p53.
 
 **Cell competition** (7). Cells eliminating their neighbours by outdoing them. Here cells with higher ERK press their neighbours small, and the squeezed ones differentiate and leave.
 
@@ -34,7 +36,7 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Crowding** (7). How squeezed a cell is: how far below its reference size it sits, as a fraction of it. An input every network can read, like oxygen.
 
-**Determinism** (1, 8). The same seed gives the same simulation, byte for byte. Checked on every push.
+**Determinism** (1, 9). The same seed gives the same simulation, byte for byte. Checked on every push.
 
 **Differentiation** (7). A cell giving up dividing to become a specialised cell. In an epithelium, a basal cell that commits leaves the layer. Here, a chance per step set by the network's differentiation node.
 
@@ -46,7 +48,7 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **EGF** (2). Epidermal growth factor, the growth signal. A hardcoded input for every cell today.
 
-**Emergence** (6, 7, 8). Behaviour that follows from the model without any rule naming it. The necrotic core, the compact cell, the cord's thickness.
+**Emergence** (6, 7, 9). Behaviour that follows from the model without any rule naming it. The necrotic core, the compact cell, the cord's thickness.
 
 **Energy, Hamiltonian, H** (1). The number every configuration of the lattice has, which the Monte Carlo lowers.
 
@@ -55,6 +57,8 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 **Equivalent radius** (5). The radius of a disc with the same area as a shape. How every radius in a tissue's measurements is taken.
 
 **ERK** (2). Extracellular signal-regulated kinase, the last relay of the growth pathway. Sets the target volume.
+
+**Exposure** (8). When and how strongly the lethal stress is held at its source: an intensity, a start, and a schedule, continuous or periodic.
 
 **Field** (3). One value per pixel, here the oxygen concentration.
 
@@ -73,6 +77,8 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 **Kinase** (2). An enzyme that activates another protein by attaching a phosphate group.
 
 **Lattice** (1). A regular grid, the word from garden trellis. Here 200 by 200 pixels.
+
+**Lethal stress** (8). An abstract agent that comes in where oxygen does, is taken up by the cells it reaches, and raises what the network says it raises. Stands for nothing in particular.
 
 **Lineage reference volume** (4). The size a lineage divides at, inherited unchanged. How a cell type keeps its size across generations.
 
@@ -100,6 +106,8 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **ODE** (2). Ordinary differential equation: rates of change in time only. The network is five of them.
 
+**p53** (8). The protein that rises when a cell is damaged and decides between repair and apoptosis. Here switched on by the stress.
+
 **PDE** (3). Partial differential equation: rates of change in time and space. Oxygen is one.
 
 **Pixel** (1). One square of the lattice, about a micrometre, carrying one identity and one oxygen value.
@@ -112,6 +120,8 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Red-black** (3). An order for an SOR sweep: the grid coloured like a chessboard, every red pixel updated from its black neighbours, then every black one from the new reds. Each colour can be updated in parallel.
 
+**Refuge** (8). Where a stress does not reach: here the hypoxic, quiescent edge of the cord, the cells it is used up before reaching.
+
 **Relaxation** (3). Iterating a field until it stops moving: its steady state.
 
 **Resorption** (4). Dead tissue being cleared. Two pixels per step here.
@@ -122,7 +132,7 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Selection** (6). Variants leaving more descendants because of what they do where they are. Nobody chooses the winner.
 
-**Snapshot** (4, 8). A file listing every living cell's state and the oxygen it reads, one per interval.
+**Snapshot** (4, 9). A file listing every living cell's state and the oxygen it reads, one per interval.
 
 **SOR** (3). Successive over-relaxation, the sweep that solves for a steady state in about L passes rather than L².
 

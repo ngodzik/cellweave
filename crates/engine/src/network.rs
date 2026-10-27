@@ -19,6 +19,7 @@ enum Source {
     Oxygen,
     Egf,
     Crowding,
+    Stress,
     Node(usize),
 }
 
@@ -118,11 +119,12 @@ pub struct Network {
     /// Terms per node, same order.
     terms: Vec<Vec<Compiled>>,
     /// Index of the growth, survival and hypoxia nodes, and of the
-    /// differentiation node when the network has one.
+    /// differentiation and apoptosis nodes when the network has them.
     growth: usize,
     survival: usize,
     hypoxia: usize,
     differentiation: Option<usize>,
+    apoptosis: Option<usize>,
     /// How the growth node becomes mechanics.
     mechanics: MechanicsSpec,
     /// Volume this lineage divides against.
@@ -183,6 +185,7 @@ impl Network {
                 "oxygen" => Ok(Source::Oxygen),
                 "egf" => Ok(Source::Egf),
                 "crowding" => Ok(Source::Crowding),
+                "stress" => Ok(Source::Stress),
                 other => index.get(other).copied().map(Source::Node).ok_or_else(|| {
                     let mut known: Vec<&str> = INPUT_NAMES.to_vec();
                     known.extend(spec.nodes.iter().map(|n| n.name.as_str()));
@@ -277,6 +280,11 @@ impl Network {
                 .as_deref()
                 .map(|name| role(name, "differentiation"))
                 .transpose()?,
+            apoptosis: roles
+                .apoptosis
+                .as_deref()
+                .map(|name| role(name, "apoptosis"))
+                .transpose()?,
             mechanics,
             reference_volume,
             x: vec![0.0; spec.nodes.len()],
@@ -346,12 +354,20 @@ impl Network {
         self.differentiation.map(|i| self.state.values[i].0)
     }
 
+    /// The node the specification named as apoptosis, or `None` when it named
+    /// none. Its level is the chance per step that the cell starts its own
+    /// programmed death.
+    pub fn apoptosis(&self) -> Option<f64> {
+        self.apoptosis.map(|i| self.state.values[i].0)
+    }
+
     /// The value of one source, given the current state and the environment.
     fn read(state: &[f64], inputs: &CellInputs, source: Source) -> f64 {
         match source {
             Source::Oxygen => inputs.o2.0.clamp(0.0, 1.0),
             Source::Egf => inputs.egf.0,
             Source::Crowding => inputs.crowding.0.clamp(0.0, 1.0),
+            Source::Stress => inputs.stress.0.max(0.0),
             Source::Node(i) => state[i],
         }
     }
@@ -477,6 +493,7 @@ mod tests {
             egf: Concentration(egf),
             vegf: Concentration(0.0),
             crowding: Concentration(0.0),
+            stress: Concentration(0.0),
         }
     }
 
@@ -552,6 +569,7 @@ mod tests {
                 survival: "a".into(),
                 hypoxia_response: "a".into(),
                 differentiation: None,
+                apoptosis: None,
             }),
             mechanics: Some(MechanicsSpec {
                 growth_coefficient: 1.0,
@@ -622,6 +640,7 @@ mod tests {
             survival: "oxygen".into(),
             hypoxia_response: "oxygen".into(),
             differentiation: None,
+            apoptosis: None,
         });
 
         let refused = Network::from_spec(&spec, 100);

@@ -102,14 +102,19 @@ fn run(config: SimConfig, config_path: Option<&str>) -> Result<()> {
         if step.mcs.is_multiple_of(config.snapshot_interval) {
             output.write_snapshot(&sim.snapshot())?;
             eprintln!(
-                "  MCS {:5} | living {:4} | necrotic {:4} | born {:5} | gone {:5} | O2 at first {:.3} | settled {:4}",
+                "  MCS {:5} | living {:4} | necrotic {:4} | born {:5} | gone {:5} | O2 at first {:.3} | settled {:4}{}",
                 step.mcs,
                 sim.living(),
                 sim.necrotic(),
                 sim.born(),
                 sim.gone(),
                 step.first_cell_oxygen,
-                step.relax_steps
+                step.relax_steps,
+                if step.exposure > 0.0 {
+                    format!(" | stress {:.2}", step.exposure)
+                } else {
+                    String::new()
+                }
             );
         }
     }
@@ -185,13 +190,14 @@ fn summarise(measured: &[Measurements]) -> Option<String> {
     let span = (last.mcs - first.mcs).max(1) as f64;
     let per_hundred = |n: u64| 100.0 * n as f64 / span;
     Some(format!(
-        "at MCS {}: {} cycling, {} quiescent, {} necrotic\n  \
+        "at MCS {}: {} cycling, {} quiescent, {} necrotic, {} apoptotic\n  \
          tissue radius {:.1} px, necrotic radius {:.1} px, viable depth {:.1} px\n  \
-         from MCS {}: {:.1} births and {:.1} cells gone (resorbed or shed) per 100 MCS",
+         from MCS {}: {:.1} births and {:.1} cells gone per 100 MCS",
         last.mcs,
         last.cycling,
         last.quiescent,
         last.necrotic,
+        last.apoptotic,
         last.tissue_radius,
         last.necrotic_radius,
         last.viable_depth,

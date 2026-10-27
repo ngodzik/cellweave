@@ -35,6 +35,9 @@ pub const NECROTIC: LinearRgba = LinearRgba::rgb(0.08, 0.05, 0.10);
 /// A cell committed to differentiate, on its way out of the layer: pale, a
 /// cell that has stopped being a progenitor.
 pub const DIFFERENTIATING: LinearRgba = LinearRgba::rgb(0.55, 0.45, 0.28);
+/// A cell in apoptosis, breaking up: violet, the colour of nothing else on
+/// the canvas, so that where the stress is killing reads at a glance.
+pub const APOPTOTIC: LinearRgba = LinearRgba::rgb(0.50, 0.14, 0.62);
 /// The vessel wall, held at full oxygen. The brightest thing in the picture,
 /// because everything else lives off it.
 pub const VESSEL: LinearRgba = LinearRgba::rgb(1.0, 0.08, 0.04);
@@ -57,6 +60,8 @@ pub enum View {
     Oxygen,
     /// The clone each cell belongs to: which mutation it descends from.
     Clone,
+    /// The lethal stress each pixel sits in, cells included.
+    Stress,
 }
 
 /// The texture the tissue is painted into, and the material that shows it.
@@ -120,6 +125,7 @@ pub fn repaint(
 fn paint(sim: &Simulation<Running>, view: View, out: &mut [u8]) {
     let lattice = sim.lattice();
     let oxygen = sim.oxygen();
+    let stress = |x: u32, y: u32| sim.stress().map_or(0.0, |f| f.concentration_at(x, y)) as f32;
     let (w, h) = lattice.dims();
 
     // Each cell's colour, worked out once rather than once per pixel.
@@ -133,6 +139,7 @@ fn paint(sim: &Simulation<Running>, view: View, out: &mut [u8]) {
             let id = lattice.occupant(x, y);
             let fill = match id {
                 OBSTACLE => vessel,
+                _ if view == View::Stress => bytes(ramp(stress(x, y))),
                 0 => bytes(MEDIUM_EMPTY.mix(&MEDIUM_FULL, oxygen.concentration_at(x, y) as f32)),
                 _ if view == View::Oxygen => bytes(ramp(oxygen.concentration_at(x, y) as f32)),
                 _ => cells.get(id as usize).copied().unwrap_or(vessel),
@@ -218,7 +225,10 @@ pub fn cell_colour(sim: &Simulation<Running>, id: CellId, view: View) -> LinearR
             // A clone keeps its hue whatever its cells are doing; an arrested
             // or departing cell is a dimmer shade of it, so a clone that
             // escapes arrest is also a clone that lights up.
-            if matches!(fate, Fate::Quiescent | Fate::Differentiating) {
+            if matches!(
+                fate,
+                Fate::Quiescent | Fate::Differentiating | Fate::Apoptotic
+            ) {
                 colour * 0.35
             } else {
                 colour
@@ -227,6 +237,7 @@ pub fn cell_colour(sim: &Simulation<Running>, id: CellId, view: View) -> LinearR
         (_, Fate::Cycling) => CYCLING,
         (_, Fate::Quiescent) => QUIESCENT,
         (_, Fate::Differentiating) => DIFFERENTIATING,
+        (_, Fate::Apoptotic) => APOPTOTIC,
     };
     base * jitter
 }

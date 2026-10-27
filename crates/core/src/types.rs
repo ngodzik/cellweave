@@ -59,9 +59,64 @@ pub enum CellKind {
     /// A cell that has committed to differentiate and is leaving the layer it
     /// divided in: in an epithelium, moving up out of the basal layer.
     Differentiated,
+    /// A cell that has started its own programmed death, apoptosis, and is
+    /// breaking up into fragments its neighbours clear.
+    Apoptotic,
 }
 
 // ── Geometry ──────────────────────────────────────────────────────────────────
+
+/// A lethal stress the tissue is exposed to: an abstract agent that comes in
+/// from wherever oxygen does, spreads between the cells, is taken up by them,
+/// and raises in each cell whatever its network says it raises.
+///
+/// It stands for nothing in particular. What the model can say about it is
+/// how a population that varies, in a space where the stress does not reach
+/// everyone equally, responds to being exposed to it.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct Exposure {
+    /// Level held at the source while exposure is on, as a fraction of the
+    /// most the network files are written for.
+    pub intensity: f64,
+    /// What one living pixel takes up per unit time, as a fraction of the
+    /// level at the source. The higher, the shorter the distance the stress
+    /// reaches into the tissue.
+    pub uptake: f64,
+    /// First lattice step of exposure.
+    pub start: u64,
+    /// When exposure is on, from `start` on.
+    pub schedule: Schedule,
+}
+
+/// When an exposure is on.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "kind")]
+pub enum Schedule {
+    /// On at every step from the start.
+    Continuous,
+    /// On for `on` steps, off for `off`, over and over.
+    Periodic {
+        /// Steps on, in each cycle.
+        on: u64,
+        /// Steps off, in each cycle.
+        off: u64,
+    },
+}
+
+impl Exposure {
+    /// The level held at the source at lattice step `mcs`: the intensity
+    /// while exposure is on, zero otherwise.
+    pub fn level_at(&self, mcs: u64) -> f64 {
+        if mcs < self.start {
+            return 0.0;
+        }
+        let on = match self.schedule {
+            Schedule::Continuous => true,
+            Schedule::Periodic { on, off } => (mcs - self.start) % (on + off).max(1) < on,
+        };
+        if on { self.intensity } else { 0.0 }
+    }
+}
 
 /// What the box holds at the start.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -132,6 +187,9 @@ pub struct CellInputs {
     /// How squeezed the cell is by its neighbours, from zero (at or above
     /// its lineage's reference size) to one (no room at all).
     pub crowding: Concentration,
+    /// Local level of the lethal stress, as a fraction of what the source
+    /// holds while exposure is on. Zero when there is no exposure.
+    pub stress: Concentration,
 }
 
 // ── CPM parameters derived from ODE state ────────────────────────────────────

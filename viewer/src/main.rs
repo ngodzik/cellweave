@@ -3,7 +3,7 @@
 //! Usage:
 //!
 //! ```text
-//! cellweave-viewer [--config <path>] [--view fate|oxygen|clone]
+//! cellweave-viewer [--config <path>] [--view fate|oxygen|clone|stress]
 //! ```
 //!
 //! It runs the same [`cellweave_engine::Simulation`] the command line runs,
@@ -66,7 +66,12 @@ fn main() -> Result<()> {
             "fate" => paint::View::Fate,
             "oxygen" => paint::View::Oxygen,
             "clone" => paint::View::Clone,
-            other => return Err(anyhow!("--view {other}: expected fate, oxygen or clone")),
+            "stress" => paint::View::Stress,
+            other => {
+                return Err(anyhow!(
+                    "--view {other}: expected fate, oxygen, clone or stress"
+                ));
+            }
         },
     };
     let spec = config.load_network(config_path)?;

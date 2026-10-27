@@ -24,9 +24,10 @@ pub fn draw(
         .resizable(false)
         .show(ctx, |ui| {
             let sheet = matches!(experiment.scenario.seeding, Seeding::Sheet { .. });
+            let exposed = experiment.scenario.exposure.is_some();
             describe(ui, &experiment);
             ui.separator();
-            census(ui, &runner, sheet);
+            census(ui, &runner, sheet, exposed);
             ui.separator();
             controls(ui, &mut runner, &experiment);
             ui.separator();
@@ -71,7 +72,7 @@ fn describe(ui: &mut egui::Ui, experiment: &Experiment) {
 
 /// The population as it stands. A sheet has no core and no supply to
 /// measure depth from, so its shape is left out.
-fn census(ui: &mut egui::Ui, runner: &Runner, sheet: bool) {
+fn census(ui: &mut egui::Ui, runner: &Runner, sheet: bool, exposed: bool) {
     let Some(c) = runner.latest() else {
         ui.label(if runner.settling() {
             "Solving the oxygen field for the first time…"
@@ -91,6 +92,17 @@ fn census(ui: &mut egui::Ui, runner: &Runner, sheet: bool) {
         row("necrotic", c.necrotic.to_string());
         if c.differentiating > 0 {
             row("leaving", c.differentiating.to_string());
+        }
+        if exposed {
+            row("apoptotic", c.apoptotic.to_string());
+            row(
+                "stress",
+                if c.exposure > 0.0 {
+                    format!("on, {:.2}", c.exposure)
+                } else {
+                    "off".to_owned()
+                },
+            );
         }
         row("born · gone", format!("{} · {}", c.born, c.gone));
         if sheet {
@@ -127,6 +139,9 @@ fn colouring(ui: &mut egui::Ui, view: &mut View, experiment: &Experiment) {
         ui.selectable_value(&mut chosen, View::Fate, "fate");
         ui.selectable_value(&mut chosen, View::Oxygen, "oxygen");
         ui.selectable_value(&mut chosen, View::Clone, "clone");
+        if experiment.scenario.exposure.is_some() {
+            ui.selectable_value(&mut chosen, View::Stress, "stress");
+        }
         let protein = match chosen {
             View::Protein(i) => i,
             _ => 0,
@@ -140,7 +155,12 @@ fn colouring(ui: &mut egui::Ui, view: &mut View, experiment: &Experiment) {
                 swatch(ui, paint::CYCLING, "cycling");
                 swatch(ui, paint::QUIESCENT, "quiescent");
                 swatch(ui, paint::NECROTIC, "necrotic");
-                swatch(ui, paint::DIFFERENTIATING, "leaving");
+                if experiment.scenario.seeding != Seeding::Single {
+                    swatch(ui, paint::DIFFERENTIATING, "leaving");
+                }
+                if experiment.scenario.exposure.is_some() {
+                    swatch(ui, paint::APOPTOTIC, "apoptotic");
+                }
                 swatch(ui, paint::VESSEL, "vessel");
             });
         }
@@ -162,7 +182,7 @@ fn colouring(ui: &mut egui::Ui, view: &mut View, experiment: &Experiment) {
             chosen = View::Protein(index);
             gradient(ui);
         }
-        View::Oxygen => gradient(ui),
+        View::Oxygen | View::Stress => gradient(ui),
         View::Clone => {
             ui.horizontal_wrapped(|ui| {
                 if experiment.scenario.seeding == Seeding::Single {
@@ -204,7 +224,34 @@ fn plot(ui: &mut egui::Ui, runner: &Runner, sheet: bool) {
             .allow_boxed_zoom(false)
             .include_y(0.0)
     };
+    // Shade the steps the stress was on, behind the population, so a fall
+    // and a recovery can be read against what caused them.
+    let top = runner
+        .history
+        .iter()
+        .map(|m| m.living().max(m.necrotic))
+        .max()
+        .unwrap_or(0) as f64;
+    let stride = stride_of(&runner.history);
+    let mut exposed: Vec<(f64, f64)> = Vec::new();
+    for m in runner.history.iter().filter(|m| m.exposure > 0.0) {
+        let t = m.mcs as f64;
+        match exposed.last_mut() {
+            Some((_, end)) if t - *end <= stride => *end = t,
+            _ => exposed.push((t, t)),
+        }
+    }
     frame("population").show(ui, |plot| {
+        for &(start, end) in &exposed {
+            let band = vec![[start, 0.0], [end, 0.0], [end, top], [start, top]];
+            plot.polygon(
+                // Unnamed, so it stays out of the legend: the shading is
+                // explained by the stress row of the census above.
+                Polygon::new("", PlotPoints::from(band))
+                    .fill_color(egui::Color32::from_rgba_unmultiplied(150, 50, 200, 70))
+                    .stroke(egui::Stroke::NONE),
+            );
+        }
         plot.line(Line::new("living", series(|m| m.living() as f64)).color(colour(paint::CYCLING)));
         plot.line(
             Line::new("necrotic", series(|m| m.necrotic as f64))
@@ -340,6 +387,16 @@ fn clones(ui: &mut egui::Ui, runner: &Runner, seeding: Seeding) {
                 below = above;
             }
         });
+}
+
+/// The largest gap between two consecutive entries of the history, in steps,
+/// so that steps on either side of a gap the thinning made still read as one
+/// stretch of exposure.
+fn stride_of(history: &[Measurements]) -> f64 {
+    history
+        .windows(2)
+        .map(|w| (w[1].mcs - w[0].mcs) as f64)
+        .fold(1.0, f64::max)
 }
 
 /// A small square of colour with its meaning.
