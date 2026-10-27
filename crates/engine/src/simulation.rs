@@ -439,7 +439,6 @@ impl Simulation<Running> {
                 egf: Concentration(0.2),
                 vegf: Concentration(0.0),
                 crowding: Concentration(crowding(&self.lattice, id, net)),
-                drugs: vec![],
             };
             for _ in 0..NETWORK_TIME_PER_MCS {
                 net.step(TimeStep(1.0), &inputs);

@@ -14,14 +14,6 @@ pub struct CellId(pub u32);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct CloneId(pub u32);
 
-/// Unique identifier for a protein species.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct ProteinId(pub String);
-
-/// Unique identifier for an extracellular field (O2, VEGF, drug, …).
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct FieldId(pub String);
-
 // ── Physical quantities ───────────────────────────────────────────────────────
 
 /// Protein concentration (arbitrary units, normalized 0-1 unless stated).
@@ -49,17 +41,6 @@ pub struct Pos2 {
     pub x: u32,
     /// Vertical coordinate.
     pub y: u32,
-}
-
-/// 3D lattice position.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct Pos3 {
-    /// X coordinate.
-    pub x: u32,
-    /// Y coordinate.
-    pub y: u32,
-    /// Z coordinate (depth).
-    pub z: u32,
 }
 
 // ── Cell types ────────────────────────────────────────────────────────────────
@@ -151,21 +132,6 @@ pub struct CellInputs {
     /// How squeezed the cell is by its neighbours, from zero (at or above
     /// its lineage's reference size) to one (no room at all).
     pub crowding: Concentration,
-    /// Local drug concentrations keyed by field index.
-    pub drugs: Vec<Concentration>,
-}
-
-impl CellInputs {
-    /// Zero inputs, cell in isolation.
-    pub fn zero(n_drugs: usize) -> Self {
-        Self {
-            o2: Concentration(0.0),
-            egf: Concentration(0.0),
-            vegf: Concentration(0.0),
-            crowding: Concentration(0.0),
-            drugs: vec![Concentration(0.0); n_drugs],
-        }
-    }
 }
 
 // ── CPM parameters derived from ODE state ────────────────────────────────────

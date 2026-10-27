@@ -14,7 +14,7 @@ So the program takes a hypothesis stated at the scale of molecules inside one ce
 
 ## Why
 
-Going from data to a therapeutic target today is largely statistical association: this gene correlates with that outcome. What sits between the two, and is hard to get at, is the mechanism. A simulation is one way to state a mechanism precisely enough that it can be wrong.
+Going from data to an explanation today is largely statistical association: this gene correlates with that outcome. What sits between the two, and is hard to get at, is the mechanism. A simulation is one way to state a mechanism precisely enough that it can be wrong.
 
 It also does something an experiment cannot. It runs the counterfactual: the same population, the same random seed, one parameter changed, so the difference between the two runs is attributable to that parameter and to nothing else. And it can be searched, which means asking not only whether a hypothesis holds but which interventions on it produce a tissue that behaves differently.
 
@@ -32,7 +32,7 @@ The loop is the whole point. Cells change the environment that then decides thei
 
 ```mermaid
 flowchart TD
-    PDE["Around the cells<br/>oxygen now, signals and drugs later<br/>reaction diffusion, finite differences"]
+    PDE["Around the cells<br/>oxygen now, other signals later<br/>reaction diffusion, finite differences"]
     ODE["Inside each cell<br/>protein concentrations<br/>RK4, one system per cell"]
     CPM["The cells themselves<br/>shape, adhesion, volume<br/>Cellular Potts, Metropolis"]
 

@@ -61,7 +61,7 @@ The rim always has oxygen, so it always proliferates, so the ball always grows o
 
 ### In the body
 
-Cut a lung cancer thin and look at it under a microscope, as was first done in the 1950s, and the living tissue is arranged in sleeves around each blood vessel, with necrosis filling the space between the sleeves. Each sleeve is a **tumour cord**: alive out to the distance oxygen diffuses from the vessel, dead beyond. This is the founding observation of tumour hypoxia. It is why "necrotic beyond about 150 micrometres from a vessel" is a number every oncologist knows, and it is a steady state: cells are born near the vessel, pushed outward, and die at the edge, indefinitely.
+Cut a lung cancer thin and look at it under a microscope, as was first done in the 1950s, and the living tissue is arranged in sleeves around each blood vessel, with necrosis filling the space between the sleeves. Each sleeve is a **tumour cord**: alive out to the distance oxygen diffuses from the vessel, dead beyond. This is the founding observation of tumour hypoxia. It is why "necrotic beyond about 150 micrometres from a vessel" is the best known number of tumour hypoxia, and it is a steady state: cells are born near the vessel, pushed outward, and die at the edge, indefinitely.
 
 ### In cellweave
 
