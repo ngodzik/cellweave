@@ -35,7 +35,7 @@ bevy = { version = "0.20.0", default-features = false, features = [
 # bevy_egui 0.43 is the release for Bevy 0.20 and egui 0.36, which egui_plot
 # 0.37 is built on.
 bevy_egui = { version = "0.43.1", default-features = false, features = ["render", "default_fonts"] }
-egui_plot = "0.37.0"
+egui_plot = "0.38.0"
 
 # The simulation is the hot loop, and it is a dependency here: optimise every
 # dependency even in a debug build, or a debug viewer runs at a crawl.
