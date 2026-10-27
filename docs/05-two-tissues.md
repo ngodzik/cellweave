@@ -131,11 +131,11 @@ Three things showed up only when the mechanisms were run together, and each look
 
 ## Where in the code
 
-`crates/io/src/config.rs`: `OxygenSource`, bath or vessel with a radius, and `oxygen_uptake`.
+`crates/core/src/types.rs`: `OxygenSource`, bath or vessel with a radius. `crates/io/src/config.rs`: `oxygen_uptake`, and `SimConfig::scenario`, which turns a configuration into what the engine runs.
 
 `examples/spheroid.toml` and `examples/cord.toml`: the two configurations, run twice each by CI and compared byte for byte.
 
-`src/main.rs`: `declare_sources` is where the geometry decides who consumes and who supplies; `touches_the_edge` is the stop.
+`crates/engine/src/simulation.rs`: `declare_sources` is where the geometry decides who consumes and who supplies; `touches_the_edge` is the stop.
 
 The experiment log in loomkeeper holds the two experiments with their hypotheses written before the runs, and the corrections made along the way.
 

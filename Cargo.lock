@@ -52,7 +52,6 @@ dependencies = [
  "cellweave-core",
  "cellweave-engine",
  "cellweave-io",
- "rand 0.10.3",
  "tracing",
  "tracing-subscriber",
 ]
