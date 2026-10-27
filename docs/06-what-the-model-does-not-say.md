@@ -38,7 +38,7 @@ What is a placeholder today, gathered from the chapters:
 - **Two dimensions.** A tissue here is a monolayer. In three dimensions a sphere starves at a different radius than a disc, and a cell has a dozen neighbours rather than six; the mechanisms are the same, the numbers are not.
 - **One cell type.** Normal tissue is a kind on the lattice with contact energies, and nothing else.
 - **Only the field is parallel.** The Monte Carlo step, which moves the pixels, runs on one core. It draws its proposals from one random sequence, and splitting it would change which run a seed names.
-- **No picture.** Snapshots record every cell's state and the oxygen it reads, not the grid. The two pictures in chapter 5 came from a debugging dump that is not in the code.
+- **No picture on disk.** Snapshots record every cell's state and the oxygen it reads, not the grid. The viewer draws the grid live, but saves nothing; the two pictures in chapter 5 came from a debugging dump that is not in the code.
 
 ## What a result from this model is
 

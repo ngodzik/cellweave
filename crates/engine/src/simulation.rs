@@ -136,6 +136,21 @@ mod sealed {
     impl Sealed for super::Running {}
 }
 
+/// What a cell is doing, as the loop decides it.
+///
+/// The one place the classification lives, so that what divides in the loop
+/// and what anything outside it shows as dividing cannot disagree.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Fate {
+    /// Alive, and divides once it has grown large enough.
+    Cycling,
+    /// Alive and holding its place, but not dividing: hypoxia has arrested its
+    /// cell cycle.
+    Quiescent,
+    /// Dead, and giving up its pixels until nothing is left.
+    Necrotic,
+}
+
 /// What happened in one lattice step.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct StepReport {
@@ -371,7 +386,6 @@ impl Simulation<Running> {
     /// and its parameters, which is what makes the population a lineage rather
     /// than a crowd of identical newborns.
     fn divide_ready_cells(&mut self) -> u64 {
-        let lattice = &self.lattice;
         let ready: Vec<usize> = self
             .networks
             .iter()
@@ -380,11 +394,11 @@ impl Simulation<Running> {
             .filter(|(i, net)| {
                 let id = cell_of(*i);
                 let threshold = DIVISION_RATIO * f64::from(net.reference_volume());
-                let big_enough = lattice
+                let big_enough = self
+                    .lattice
                     .volume(id)
                     .is_some_and(|v| f64::from(v.0) >= threshold);
-                let cycling = net.hypoxia_response() < QUIESCENCE_THRESHOLD;
-                big_enough && cycling && lattice.cell_kind(id) == Some(CellKind::Tumor)
+                big_enough && self.fate(id) == Some(Fate::Cycling)
             })
             .map(|(i, _)| i)
             .collect();
@@ -496,6 +510,20 @@ impl<S: SimState> Simulation<S> {
         self.networks.get(slot)?.as_ref()
     }
 
+    /// What a cell is doing, or `None` for the medium, an obstacle, or a cell
+    /// that is gone.
+    ///
+    /// Only a tumour cell cycles, and only while its hypoxia response is below
+    /// the quiescence threshold.
+    pub fn fate(&self, id: CellId) -> Option<Fate> {
+        let net = self.network(id)?;
+        Some(match self.lattice.cell_kind(id)? {
+            CellKind::Necrotic => Fate::Necrotic,
+            CellKind::Tumor if net.hypoxia_response() < QUIESCENCE_THRESHOLD => Fate::Cycling,
+            _ => Fate::Quiescent,
+        })
+    }
+
     /// Cells that are alive: not necrotic, and still holding pixels.
     pub fn living(&self) -> usize {
         self.lattice
@@ -583,6 +611,16 @@ mod tests {
             "the medium has no network"
         );
         assert!(sim.network(CellId(2)).is_none(), "no second cell yet");
+    }
+
+    #[test]
+    fn a_fresh_cell_in_full_oxygen_is_cycling() {
+        let (sim, _) = Simulation::new(scenario(OxygenSource::Bath), &spec())
+            .unwrap()
+            .start()
+            .unwrap();
+        assert_eq!(sim.fate(CellId(1)), Some(Fate::Cycling));
+        assert_eq!(sim.fate(CellId(0)), None, "the medium has no fate");
     }
 
     #[test]

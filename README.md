@@ -55,7 +55,7 @@ Features will be added progressively, and this README will follow as they land.
 
 ## What works today
 
-- Builds clean, `cargo clippy -D warnings` passes, 73 tests green
+- Builds clean, `cargo clippy -D warnings` passes, 74 tests green
 - 2D lattice with Monte Carlo spin flips and a volume constraint, with the boundary term pinned by four tests whose values are computable by hand
 - **The protein network is a file, not code.** Any number of proteins, any topology, each declared with the terms that move it, drawn from a closed catalogue named after what each means in biology. The file also says which node answers which question the simulation asks a cell, and how growth becomes a demand on the lattice. So stating a different hypothesis is writing a different file, and two files under the same seed differ by exactly what you changed. The RAS/ERK network that used to be literals in the source is now `examples/networks/ras-erk.toml`, compiled in as the default so that the built-in hypothesis and one you write go through the same path; a test pins that the two produce identical trajectories to twelve decimals
 - RK4 integration per cell, whose growth node sets how large its cell tries to be. This is the upward half of the coupling, protein state driving mechanics
@@ -66,6 +66,7 @@ Features will be added progressively, and this README will follow as they land.
 - Dead cells are resorbed, giving up their pixels over a few dozen steps until nothing is left. In the cord that makes births balance deaths: about forty living cells, one born every three steps, the same one dying, for as long as the run lasts, without ever nearing the edge of the box. That steady turnover is what an evolving population needs, and what a growing spheroid cannot offer
 - A diffusion field solved to its steady state every lattice step by projected successive over-relaxation in red-black order, spread over every core, since oxygen equilibrates far faster than anything a cell does. Time stepping is kept for what needs it and refuses a step the explicit scheme cannot take. The field reproduces the closed-form profile of a bathed disc
 - TOML configuration, JSON snapshot output per saved step
+- A viewer, in a workspace of its own, that runs the same loop under the same seed and draws the tissue as it grows: each cell lit by its fate, a protein, or the oxygen it sits in, with the population plotted alongside. See [Watching a run](#watching-a-run)
 - CLI entry point, a thin driver over `Simulation`, the loop itself, which lives in the engine so that anything else that runs a simulation runs the same one
 
 ## What does not work yet
@@ -76,7 +77,7 @@ Listed plainly, because a green test suite is not the same thing as correct phys
 - **No measurements.** A run leaves snapshots and a log line, so reading what happened means squinting at files. Until it reports a handful of numbers per run, does a core appear, at what size, how thick the viable rim, what the turnover rate, nothing outside can compare two hypotheses without reimplementing the geometry.
 - **Only the field is parallel.** Solving it was the dominant cost and now runs on every core, the same to the last bit whatever their number: the cord runs about six times faster on a twenty-thread machine. The Monte Carlo step, which moves the pixels, still runs on one, because it draws from a single random sequence and splitting it would change which run a seed names.
 - **No evolution.** Daughters are exact copies. Nothing varies, so nothing is selected.
-- **No calibration, no visualization.** Every constant is a placeholder, and no unit of length or time has been fixed. The uptake rate is now a configuration value, but its two example values were chosen to make each geometry show its structure, not measured against anything.
+- **No calibration.** Every constant is a placeholder, and no unit of length or time has been fixed. The uptake rate is now a configuration value, but its two example values were chosen to make each geometry show its structure, not measured against anything.
 
 ## Building and running
 
@@ -94,6 +95,19 @@ cargo test --workspace
 ```
 
 Snapshots are written as `output/snapshot_NNNNNN.json`, one per interval, listing every living cell with its kind, volume, protein state and the oxygen it sits in. Two runs of the same configuration produce byte-identical snapshots, and CI checks that they still do, for both geometries.
+
+## Watching a run
+
+The viewer draws the tissue live, in a window, with [Bevy](https://bevyengine.org). It is a separate Cargo workspace in `viewer/`, so the simulator never compiles, links or needs anything graphical: `cargo build` at the root builds no window, and the viewer is only built when asked for.
+
+```bash
+cd viewer
+cargo run --release -- --config ../examples/cord.toml
+```
+
+On Linux it needs the Wayland and xkbcommon development headers (`libwayland-dev` and `libxkbcommon-dev` on Debian and Ubuntu).
+
+It runs the same `Simulation` as the command line, under the same seed, so step 300 in the window is step 300 in the snapshots. Each cell is filled by what it is doing, cycling, quiescent or necrotic, by the level of one protein, or by the oxygen it sits in, and outlined where it meets another. The panel counts the population and plots it. Space pauses, N takes one step, R restarts, the mouse turns and zooms the camera.
 
 ## Checks
 
@@ -117,6 +131,7 @@ flowchart LR
     push --> test["test<br/>Linux, macOS, Windows"]
     push --> msrv["msrv<br/>Rust 1.97"]
     push --> det["determinism<br/>two runs, one seed"]
+    push --> viewer["viewer<br/>fmt, clippy"]
     push --> deny["cargo-deny<br/>advisories, licences, sources"]
     cron --> deny
 ```
@@ -130,9 +145,10 @@ Separation between layers is enforced by the crate dependency graph, so the comp
 ```mermaid
 flowchart BT
     core["cellweave-core<br/>domain types and traits<br/>no I/O, no computation"]
-    engine["cellweave-engine<br/>lattice, ODE solver, diffusion"]
+    engine["cellweave-engine<br/>lattice, ODE solver, diffusion,<br/>the loop that steps them"]
     io["cellweave-io<br/>TOML config, snapshot output"]
     bin["cellweave<br/>command line"]
+    viewer["cellweave-viewer<br/>Bevy window<br/>a workspace of its own"]
 
     engine --> core
     io --> core
@@ -140,9 +156,12 @@ flowchart BT
     bin --> core
     bin --> engine
     bin --> io
+    viewer --> core
+    viewer --> engine
+    viewer --> io
 ```
 
-An arrow reads "depends on". Cargo refuses the reverse, so a layering mistake is a build failure rather than something a reviewer has to catch.
+An arrow reads "depends on". Cargo refuses the reverse, so a layering mistake is a build failure rather than something a reviewer has to catch. The viewer sits on top of everything and nothing depends on it; being a separate workspace, it cannot leak a graphics dependency into the simulator even by accident.
 
 There is no AI or MCP dependency inside cellweave. External tools connect through the CLI. See [CLAUDE.md](CLAUDE.md) for coding rules.
 

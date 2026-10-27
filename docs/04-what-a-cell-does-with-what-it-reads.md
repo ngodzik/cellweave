@@ -68,6 +68,7 @@ flowchart LR
 `crates/engine/src/simulation.rs`, the loop: `Simulation::step`, steps 1 to 5 in the comments: relax the field, read, step the networks, decide fates and set targets, Monte Carlo, divide. The command line and the viewer both run this one loop, so neither can drift from the other.
 
 - `divide_ready_cells` is the division rule and the assertion.
+- `Fate` is the classification itself, cycling, quiescent or necrotic, in one place so that what divides and what the viewer shows as dividing cannot disagree.
 - `DIVISION_RATIO`, `DIVISION_CHECK_EVERY`, `DEATH_THRESHOLD`, `QUIESCENCE_THRESHOLD`, `RESORPTION_RATE` are the constants, each with the reason for its value.
 - `living`, `necrotic` and `snapshot` are what gets counted and recorded; `src/main.rs` writes the snapshot to disk.
 

@@ -31,9 +31,11 @@ cellweave      (bin, depends on core + engine + io)
 | Crate              | Single responsibility                           |
 |--------------------|-------------------------------------------------|
 | `cellweave-core`   | Domain types + traits, zero I/O, zero compute   |
-| `cellweave-engine` | CPM, per-cell ODE, PDE diffusion                |
+| `cellweave-engine` | CPM, per-cell ODE, PDE diffusion, the loop      |
 | `cellweave-io`     | TOML config, JSON snapshot output                |
 | `cellweave` (bin)  | CLI entry point                                 |
+
+`viewer/` holds `cellweave-viewer`, a Bevy window over the same `Simulation`. It is a Cargo workspace of its own, excluded from the root one, so the simulator never compiles or links anything graphical. It depends on the crates above; nothing depends on it. Build and check it from `viewer/`.
 
 No AI/MCP dependency inside cellweave. External tools connect through the CLI.
 

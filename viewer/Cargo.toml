@@ -1,0 +1,46 @@
+[package]
+name         = "cellweave-viewer"
+version      = "0.1.0"
+edition      = "2024"
+# Bevy 0.20's own minimum, which the simulator's workspace matches so that the
+# repository has one toolchain to install.
+rust-version = "1.97"
+authors      = ["Nicolas Godzik"]
+license      = "MIT"
+description  = "Watch a cellweave simulation run, in a window."
+publish      = false
+
+# A workspace of its own, not a member of the simulator's: nothing graphical is
+# compiled into the simulator, its tests, or its CI, and the simulator builds
+# and runs without a window, a GPU, or any of this.
+[workspace]
+
+[[bin]]
+name = "cellweave-viewer"
+path = "src/main.rs"
+
+[dependencies]
+cellweave-core   = { path = "../crates/core" }
+cellweave-engine = { path = "../crates/engine" }
+cellweave-io     = { path = "../crates/io" }
+anyhow           = "1"
+# Only what a desktop window drawing one textured plane in HDR needs: no audio,
+# no gamepads, no glTF, no sprites, no UI nodes.
+bevy = { version = "0.20.0", default-features = false, features = [
+    "std", "async_executor", "multi_threaded", "bevy_log", "bevy_winit", "bevy_window",
+    "x11", "wayland", "bevy_render", "bevy_core_pipeline", "bevy_asset", "bevy_color", "hdr",
+    "bevy_post_process", "bevy_camera", "bevy_mesh", "bevy_image", "bevy_shader", "bevy_material",
+    "bevy_pbr", "bevy_light", "mouse", "keyboard",
+] }
+# bevy_egui 0.43 is the release for Bevy 0.20 and egui 0.36, which egui_plot
+# 0.37 is built on.
+bevy_egui = { version = "0.43.1", default-features = false, features = ["render", "default_fonts"] }
+egui_plot = "0.37.0"
+
+# The simulation is the hot loop, and it is a dependency here: optimise every
+# dependency even in a debug build, or a debug viewer runs at a crawl.
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3

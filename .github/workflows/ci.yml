@@ -95,6 +95,33 @@ jobs:
       - name: Build
         run: cargo check --workspace --all-targets --all-features
 
+  viewer:
+    name: Viewer builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: viewer
+
+      # What winit links against to open a window on Linux.
+      - name: System libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends libwayland-dev libxkbcommon-dev
+
+      # A workspace of its own, so none of the jobs above see it: the
+      # simulator is checked without a graphics stack, and this is the one
+      # place that pays for Bevy.
+      - name: Formatting
+        run: cargo fmt --manifest-path viewer/Cargo.toml -- --check
+
+      - name: Lints
+        run: cargo clippy --manifest-path viewer/Cargo.toml --all-targets
+
   determinism:
     name: Same seed, same run
     runs-on: ubuntu-latest

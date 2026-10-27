@@ -14,4 +14,4 @@ pub mod simulation;
 pub use cpm::CpmLattice;
 pub use network::Network;
 pub use pde::ScalarField;
-pub use simulation::{Scenario, Simulation};
+pub use simulation::{Fate, Scenario, Simulation};
