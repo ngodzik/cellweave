@@ -361,6 +361,23 @@ impl Network {
         self.apoptosis.map(|i| self.state.values[i].0)
     }
 
+    /// The chance per step this network would give of starting apoptosis,
+    /// were its cell to sit in `inputs` for `time` units of network time from
+    /// where it stands now. Worked out on a copy: the network itself does not
+    /// move. `None` for a network without an apoptosis role.
+    ///
+    /// How a cell would respond somewhere it is not is what separates a
+    /// mutation that changes a response from one that only changes where the
+    /// cell happens to be.
+    pub fn apoptosis_under(&self, inputs: &CellInputs, time: u32) -> Option<f64> {
+        self.apoptosis?;
+        let mut probe = self.clone();
+        for _ in 0..time {
+            probe.step(TimeStep(1.0), inputs);
+        }
+        probe.apoptosis()
+    }
+
     /// The value of one source, given the current state and the environment.
     fn read(state: &[f64], inputs: &CellInputs, source: Source) -> f64 {
         match source {

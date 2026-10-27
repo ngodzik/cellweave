@@ -5,6 +5,7 @@
 //! ```text
 //! cellweave [--config <path>] [--mcs <n>] [--seed <n>] [--output <dir>]
 //!           [--suppress <clone>,<clone>...] [--attribute]
+//!           [--seeds <a>-<b> [--versus <path>]]
 //! cellweave --version
 //! ```
 //!
@@ -14,6 +15,7 @@
 #![deny(unsafe_code)]
 
 mod attribute;
+mod campaign;
 
 use anyhow::{Context, Result};
 use cellweave_core::Seeding;
@@ -60,6 +62,43 @@ fn main() -> Result<()> {
             .map(|c| c.trim().parse())
             .collect::<Result<_, _>>()
             .context("--suppress takes clone numbers separated by commas")?;
+    }
+
+    // --seeds: the configuration under every seed of a range, and with
+    // --versus, a second configuration under the same seeds, compared pair by
+    // pair.
+    if let Some(w) = args.windows(2).find(|w| w[0] == "--seeds") {
+        let seeds = campaign::parse_seeds(&w[1])?;
+        let arm = |config: &SimConfig, path: Option<&str>| -> Result<campaign::Arm> {
+            Ok(campaign::Arm {
+                name: path
+                    .and_then(|p| std::path::Path::new(p).file_stem())
+                    .map_or_else(
+                        || "default".to_owned(),
+                        |s| s.to_string_lossy().into_owned(),
+                    ),
+                scenario: config.scenario(),
+                spec: config.load_network(path)?,
+                steps: config.mcs,
+            })
+        };
+        let mut arms = vec![arm(&config, config_path)?];
+        if let Some(v) = args.windows(2).find(|w| w[0] == "--versus") {
+            let mut other =
+                SimConfig::from_file(&v[1]).with_context(|| format!("loading config {}", v[1]))?;
+            other.mcs = config.mcs;
+            arms.push(arm(&other, Some(&v[1]))?);
+        }
+        eprintln!(
+            "campaign: {} arm(s), seeds {}..={}, {} MCS each, all at once",
+            arms.len(),
+            seeds.start(),
+            seeds.end(),
+            config.mcs
+        );
+        let summary = campaign::campaign(&arms, seeds, std::path::Path::new(&config.output_dir))?;
+        eprint!("{summary}");
+        return Ok(());
     }
 
     if args.iter().any(|a| a == "--attribute") {

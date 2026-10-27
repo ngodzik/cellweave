@@ -1,0 +1,292 @@
+//! One configuration under many seeds, or two configurations under the same
+//! seeds, side by side.
+//!
+//! Two arms run under the same seed are the same history until the first
+//! thing that differs between their configurations, say the step an exposure
+//! goes off in one and stays on in the other. Comparing them seed by seed,
+//! rather than mean against mean, takes that shared history out of the
+//! comparison: what differs between the two runs of a pair is what differs
+//! between the arms, and not the luck of the draw. That is the method of
+//! common random numbers, and the exact reproducibility of a run is what
+//! makes it available.
+
+use std::fmt::Write as _;
+use std::fs;
+use std::ops::RangeInclusive;
+use std::path::Path;
+
+use anyhow::{Context, Result, bail};
+use cellweave_core::NetworkSpec;
+use cellweave_engine::Simulation;
+use cellweave_engine::simulation::Scenario;
+use rayon::prelude::*;
+
+/// Fraction of the exposure's intensity a cell's response is measured at.
+const RESPONSE_LEVEL: f64 = 0.5;
+
+/// One arm of a campaign: a name and what it runs.
+pub struct Arm {
+    /// Shown in the table and the file.
+    pub name: String,
+    /// The configuration, under whatever seed the campaign sets.
+    pub scenario: Scenario,
+    /// The network its cells carry.
+    pub spec: NetworkSpec,
+    /// Steps per run.
+    pub steps: u64,
+}
+
+/// Where one run ended.
+#[derive(Debug, Clone, PartialEq)]
+struct Outcome {
+    seed: u64,
+    arm: usize,
+    end_mcs: u64,
+    reached_edge: bool,
+    living: usize,
+    cycling: usize,
+    quiescent: usize,
+    clones: usize,
+    /// Fewest living cells from the exposure's start on, when there is one.
+    nadir: Option<usize>,
+    /// Share of the living that is resistant at the end, when the network
+    /// has an apoptosis role and the run has an exposure.
+    resistant: Option<f64>,
+    /// Mean response of the living to the stress at the end, relative to
+    /// the unmutated network's: one unchanged, lower less sensitive.
+    response: Option<f64>,
+    /// The latest mutations of the clone holding the most living cells.
+    leading: String,
+}
+
+/// Mutations shown for the leading clone, the latest ones.
+const SHOWN_MUTATIONS: usize = 4;
+
+/// A range of seeds written `a-b`, or a single seed.
+pub fn parse_seeds(text: &str) -> Result<RangeInclusive<u64>> {
+    let (a, b) = text.split_once('-').unwrap_or((text, text));
+    let (a, b): (u64, u64) = (
+        a.trim()
+            .parse()
+            .context("--seeds takes a seed or a range like 1-20")?,
+        b.trim()
+            .parse()
+            .context("--seeds takes a seed or a range like 1-20")?,
+    );
+    if a > b {
+        bail!("--seeds {a}-{b} is empty; write the smaller seed first");
+    }
+    Ok(a..=b)
+}
+
+fn run(arm: &Arm, index: usize, seed: u64) -> Result<Outcome> {
+    let scenario = Scenario {
+        seed,
+        ..arm.scenario.clone()
+    };
+    let exposure = scenario.exposure;
+    let (mut sim, _) = Simulation::new(scenario, &arm.spec)?.start()?;
+    let mut nadir: Option<usize> = None;
+    let mut reached_edge = false;
+    for _ in 0..arm.steps {
+        let step = sim.step()?;
+        if exposure.is_some_and(|e| step.mcs >= e.start) {
+            let living = sim.living();
+            nadir = Some(nadir.map_or(living, |n| n.min(living)));
+        }
+        if step.reached_edge {
+            reached_edge = true;
+            break;
+        }
+    }
+    let m = sim.measure();
+    // Asked at half the source's level, which is about what the cells nearest
+    // the source read once the stress has been taken up on its way in; at the
+    // full level a response saturates, and no single mutation can halve it.
+    let level = exposure.map(|e| RESPONSE_LEVEL * e.intensity);
+    let resistant = level.and_then(|l| sim.resistant_fraction(l));
+    let response = level
+        .and_then(|l| sim.relative_responses(l))
+        .filter(|r| !r.is_empty())
+        .map(|r| r.iter().sum::<f64>() / r.len() as f64);
+    let sizes = sim.clone_sizes();
+    let leading = (0..sizes.len())
+        .filter(|&c| sizes[c] > 0)
+        .max_by_key(|&c| (sizes[c], std::cmp::Reverse(c)))
+        .map_or_else(String::new, |c| {
+            let mut chain = Vec::new();
+            let mut at = sim.clones().get(c);
+            while let Some(record) = at {
+                if let Some(m) = &record.mutation
+                    && !record.suppressed
+                {
+                    chain.push(m.to_string());
+                }
+                at = record.parent.and_then(|p| sim.clones().get(p.0 as usize));
+            }
+            chain.truncate(SHOWN_MUTATIONS);
+            chain.reverse();
+            chain.join(" / ")
+        });
+    Ok(Outcome {
+        seed,
+        arm: index,
+        end_mcs: m.mcs,
+        reached_edge,
+        living: m.living(),
+        cycling: m.cycling,
+        quiescent: m.quiescent,
+        clones: m.clones,
+        nadir,
+        resistant,
+        response,
+        leading,
+    })
+}
+
+/// Run every arm under every seed, all at once, write `campaign.csv` into
+/// `dir`, and return a summary: each arm on its own, and with two arms, how
+/// the second compares with the first seed by seed.
+pub fn campaign(arms: &[Arm], seeds: RangeInclusive<u64>, dir: &Path) -> Result<String> {
+    let jobs: Vec<(usize, u64)> = seeds
+        .clone()
+        .flat_map(|s| (0..arms.len()).map(move |a| (a, s)))
+        .collect();
+    let mut outcomes = jobs
+        .par_iter()
+        .map(|&(a, s)| run(&arms[a], a, s))
+        .collect::<Result<Vec<_>>>()?;
+    outcomes.sort_by_key(|o| (o.seed, o.arm));
+
+    let mut csv = String::from(
+        "seed,arm,end_mcs,reached_edge,living,cycling,quiescent,clones,nadir,resistant,response,leading\n",
+    );
+    for o in &outcomes {
+        let _ = writeln!(
+            csv,
+            "{},{},{},{},{},{},{},{},{},{},{},{}",
+            o.seed,
+            arms[o.arm].name,
+            o.end_mcs,
+            o.reached_edge,
+            o.living,
+            o.cycling,
+            o.quiescent,
+            o.clones,
+            o.nadir.map_or_else(String::new, |n| n.to_string()),
+            o.resistant.map_or_else(String::new, |r| format!("{r:.4}")),
+            o.response.map_or_else(String::new, |r| format!("{r:.4}")),
+            o.leading
+        );
+    }
+    fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
+    fs::write(dir.join("campaign.csv"), csv).context("writing campaign.csv")?;
+
+    let n = seeds.clone().count();
+    let mut text = format!("{n} seeds, {}..={}\n", seeds.start(), seeds.end());
+    for (a, arm) in arms.iter().enumerate() {
+        let mine: Vec<&Outcome> = outcomes.iter().filter(|o| o.arm == a).collect();
+        let living: Vec<f64> = mine.iter().map(|o| o.living as f64).collect();
+        let edge = mine.iter().filter(|o| o.reached_edge).count();
+        let resistant: Vec<f64> = mine.iter().filter_map(|o| o.resistant).collect();
+        let response: Vec<f64> = mine.iter().filter_map(|o| o.response).collect();
+        let _ = write!(
+            text,
+            "  {}: living at the end {}, touched the edge in {edge} of {n}",
+            arm.name,
+            spread(&living)
+        );
+        if !resistant.is_empty() {
+            let _ = write!(
+                text,
+                ", resistant share {}, response {}",
+                spread(&resistant),
+                spread(&response)
+            );
+        }
+        text.push('\n');
+    }
+    if arms.len() == 2 {
+        let pairs: Vec<(&Outcome, &Outcome)> = outcomes
+            .chunks(2)
+            .filter_map(|p| match p {
+                [a, b] if a.seed == b.seed => Some((a, b)),
+                _ => None,
+            })
+            .collect();
+        let (first, second) = (&arms[0].name, &arms[1].name);
+        let _ = writeln!(text, "  seed by seed, {second} against {first}:");
+        let _ = writeln!(
+            text,
+            "    more living at the end: {}",
+            tally(&pairs, |o| Some(o.living as f64))
+        );
+        let _ = writeln!(
+            text,
+            "    larger resistant share: {}",
+            tally(&pairs, |o| o.resistant)
+        );
+        let _ = writeln!(
+            text,
+            "    weaker response, more resistant: {}",
+            tally(&pairs, |o| o.response.map(|r| -r))
+        );
+    }
+    Ok(text)
+}
+
+/// Median and range of some numbers, as text.
+fn spread(values: &[f64]) -> String {
+    if values.is_empty() {
+        return "none".to_owned();
+    }
+    let mut sorted = values.to_vec();
+    sorted.sort_by(f64::total_cmp);
+    let median = if sorted.len() % 2 == 1 {
+        sorted[sorted.len() / 2]
+    } else {
+        (sorted[sorted.len() / 2 - 1] + sorted[sorted.len() / 2]) / 2.0
+    };
+    format!(
+        "median {:.2} (from {:.2} to {:.2})",
+        median,
+        sorted[0],
+        sorted[sorted.len() - 1]
+    )
+}
+
+/// In how many pairs the second arm's value is above, below, or equal to
+/// the first's, counting only pairs where both have one.
+fn tally(pairs: &[(&Outcome, &Outcome)], pick: impl Fn(&Outcome) -> Option<f64>) -> String {
+    let (mut above, mut below, mut equal) = (0, 0, 0);
+    for (a, b) in pairs {
+        if let (Some(x), Some(y)) = (pick(a), pick(b)) {
+            match y.total_cmp(&x) {
+                std::cmp::Ordering::Greater => above += 1,
+                std::cmp::Ordering::Less => below += 1,
+                std::cmp::Ordering::Equal => equal += 1,
+            }
+        }
+    }
+    format!("in {above} seeds, fewer in {below}, equal in {equal}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn seeds_are_a_seed_or_a_range() {
+        assert_eq!(parse_seeds("7").unwrap(), 7..=7);
+        assert_eq!(parse_seeds("1-20").unwrap(), 1..=20);
+        assert!(parse_seeds("20-1").is_err());
+        assert!(parse_seeds("one").is_err());
+    }
+
+    #[test]
+    fn a_spread_is_a_median_and_a_range() {
+        assert_eq!(spread(&[3.0, 1.0, 2.0]), "median 2.00 (from 1.00 to 3.00)");
+        assert_eq!(spread(&[4.0, 1.0]), "median 2.50 (from 1.00 to 4.00)");
+        assert_eq!(spread(&[]), "none");
+    }
+}
