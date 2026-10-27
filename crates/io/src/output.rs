@@ -45,8 +45,7 @@ pub struct MeasurementLog {
 }
 
 /// The columns, in the order [`MeasurementLog::record`] writes them.
-pub const MEASUREMENT_COLUMNS: &str =
-    "mcs,cycling,quiescent,necrotic,born,gone,clones,tissue_radius,necrotic_radius,viable_depth";
+pub const MEASUREMENT_COLUMNS: &str = "mcs,cycling,quiescent,necrotic,differentiating,born,gone,clones,tissue_radius,necrotic_radius,viable_depth";
 
 impl MeasurementLog {
     /// Start the table in `dir`, which must exist, with its header row.
@@ -72,11 +71,12 @@ impl MeasurementLog {
     /// [`CellweaveError::Simulation`] when the file cannot be written.
     pub fn record(&mut self, m: &Measurements) -> Result<(), CellweaveError> {
         self.line(&format!(
-            "{},{},{},{},{},{},{},{:.4},{:.4},{:.4}",
+            "{},{},{},{},{},{},{},{},{:.4},{:.4},{:.4}",
             m.mcs,
             m.cycling,
             m.quiescent,
             m.necrotic,
+            m.differentiating,
             m.born,
             m.gone,
             m.clones,
@@ -153,6 +153,7 @@ mod tests {
             cycling: 3,
             quiescent: 2,
             necrotic: 1,
+            differentiating: 0,
             born: 9,
             gone: 4,
             clones: 2,
@@ -167,7 +168,7 @@ mod tests {
         fs::remove_dir_all(&dir).unwrap();
         let lines: Vec<&str> = text.lines().collect();
         assert_eq!(lines[0], MEASUREMENT_COLUMNS);
-        assert_eq!(lines[1], "7,3,2,1,9,4,2,12.0000,0.3333,11.6667");
+        assert_eq!(lines[1], "7,3,2,1,0,9,4,2,12.0000,0.3333,11.6667");
         assert_eq!(
             lines[0].split(',').count(),
             lines[1].split(',').count(),

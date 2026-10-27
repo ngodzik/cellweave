@@ -123,10 +123,7 @@ node is, after the override, is written in one place. A new name is appended,
 and roles and mechanics are inherited when left out. A file that extends itself
 round a loop is refused, with the loop named.
 
-Every name a term reads is resolved when the file is loaded, against the nodes
-and against the two names the environment provides, `oxygen` and `egf`. A term
-reading anything else is an error naming what it read and listing what is known,
-rather than a silent zero in the middle of a run.
+Every name a term reads is resolved when the file is loaded, against the nodes and against the three names the environment provides, `oxygen`, `egf` and `crowding` (chapter 7). A term reading anything else is an error naming what it read and listing what is known, rather than a silent zero in the middle of a run.
 
 ### How the equations are solved
 

@@ -28,6 +28,9 @@ const SHOULDER: f32 = 5.0;
 const CYCLING_HEIGHT: f32 = 5.0;
 const QUIESCENT_HEIGHT: f32 = 3.8;
 const NECROTIC_HEIGHT: f32 = 1.0;
+/// A cell leaving the layer rises out of it, the way a differentiating cell
+/// in an epithelium moves up out of the basal layer.
+const DIFFERENTIATING_HEIGHT: f32 = 8.0;
 const VESSEL_HEIGHT: f32 = 9.0;
 
 /// How quickly the surface catches up with the simulation, per second. At
@@ -193,6 +196,7 @@ fn heights(sim: &Simulation<Running>) -> Vec<f32> {
         _ => match sim.fate(CellId(cell)) {
             Some(Fate::Cycling) => CYCLING_HEIGHT,
             Some(Fate::Quiescent) => QUIESCENT_HEIGHT,
+            Some(Fate::Differentiating) => DIFFERENTIATING_HEIGHT,
             Some(Fate::Necrotic) | None => NECROTIC_HEIGHT,
         },
     };

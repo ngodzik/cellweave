@@ -26,14 +26,18 @@ pub struct Measurements {
     pub quiescent: usize,
     /// Cells dead and not yet resorbed.
     pub necrotic: usize,
-    /// Cells ever born, the first one included.
+    /// Cells committed to differentiate and leaving the layer.
+    pub differentiating: usize,
+    /// Cells ever born, the first one included, or the whole first sheet.
     pub born: u64,
-    /// Cells resorbed to nothing.
+    /// Cells that have left for good: resorbed to nothing after dying, or
+    /// shed after differentiating.
     pub gone: u64,
     /// Clones with at least one living cell.
     pub clones: usize,
-    /// Equivalent radius of everything the tissue covers, in pixels: living
-    /// and necrotic cells, and the vessel they surround if there is one.
+    /// Equivalent radius of everything the tissue covers, in pixels: living,
+    /// necrotic and departing cells, and the vessel they surround if there is
+    /// one.
     pub tissue_radius: f64,
     /// Equivalent radius of the necrotic area, in pixels. In a spheroid this
     /// is the core; around a vessel the dead lie outside the living, and it is
@@ -47,7 +51,8 @@ pub struct Measurements {
     /// vessel, it arrives at the wall and the living tissue is a sleeve
     /// around it: the radius of vessel and living together, less the vessel's.
     /// Either way it is the depth diffusion can feed, which is the number a
-    /// pathologist reads off a section.
+    /// pathologist reads off a section. A sheet has no supply to measure
+    /// from, and there the number means nothing.
     pub viable_depth: f64,
 }
 
@@ -70,8 +75,8 @@ impl<S: SimState> Simulation<S> {
     /// random number and moves nothing, so measuring a run does not change it.
     pub fn measure(&self) -> Measurements {
         let lattice = self.lattice();
-        let (mut cycling, mut quiescent, mut necrotic) = (0, 0, 0);
-        let (mut living_area, mut necrotic_area) = (0u64, 0u64);
+        let (mut cycling, mut quiescent, mut necrotic, mut differentiating) = (0, 0, 0, 0);
+        let (mut living_area, mut necrotic_area, mut leaving_area) = (0u64, 0u64, 0u64);
         for (id, record) in lattice.cell_records() {
             if record.volume.0 == 0 {
                 continue;
@@ -90,6 +95,10 @@ impl<S: SimState> Simulation<S> {
                     necrotic += 1;
                     necrotic_area += area;
                 }
+                Some(Fate::Differentiating) => {
+                    differentiating += 1;
+                    leaving_area += area;
+                }
                 None => {}
             }
         }
@@ -105,7 +114,8 @@ impl<S: SimState> Simulation<S> {
             }
         };
 
-        let tissue_radius = equivalent_radius(vessel_area + living_area + necrotic_area);
+        let tissue_radius =
+            equivalent_radius(vessel_area + living_area + necrotic_area + leaving_area);
         let necrotic_radius = equivalent_radius(necrotic_area);
         let viable_depth = match self.scenario().oxygen_source {
             OxygenSource::Bath => tissue_radius - necrotic_radius,
@@ -119,6 +129,7 @@ impl<S: SimState> Simulation<S> {
             cycling,
             quiescent,
             necrotic,
+            differentiating,
             born: self.born(),
             gone: self.gone(),
             clones: self.clone_sizes().iter().filter(|&&n| n > 0).count(),
@@ -153,6 +164,7 @@ mod tests {
             oxygen_uptake: 0.0003,
             seed: DEFAULT_SEED,
             mutation_rate: 0.0,
+            seeding: Default::default(),
         }
     }
 

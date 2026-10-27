@@ -133,7 +133,7 @@ Three things showed up only when the mechanisms were run together, and each look
 
 Both tissues are judged on the same few numbers, which every run writes to `measurements.csv`, one row per step, next to its snapshots:
 
-- **Cycling, quiescent, necrotic**: how many cells are in each fate of chapter 4.
+- **Cycling, quiescent, necrotic, differentiating**: how many cells are in each fate of chapter 4, and how many are leaving the layer of an epithelium (chapter 7).
 - **Born, gone**: cells created and cells resorbed since the start. The difference between two rows is the turnover over that window.
 - **Clones**: how many clones still have a living cell. One, unless mutation is on (chapter 6).
 - **Tissue radius**: the radius of a disc with the area the tissue covers, vessel included.

@@ -1,0 +1,24 @@
+# A sheet of normal epithelium, every cell labelled at the start.
+#
+# The box is tiled with square cells of normal tissue, each the founder of its
+# own clone, as in a lineage tracing experiment where every basal cell is
+# marked and its descendants followed. Cells grow and divide when there is
+# room, and commit to differentiate and leave the layer at a rate their NOTCH
+# sets. Nothing is mutated, so no clone has an advantage: which survive is
+# chance, and the number of clones falls while the survivors grow.
+#
+# There is no oxygen to speak of: a sheet leaves no medium for a supply, so
+# the field is off and every cell reads full oxygen.
+
+width = 200
+height = 200
+mcs = 3000
+temperature = 10.0
+snapshot_interval = 100
+output_dir = "output-epithelium"
+oxygen_uptake = 0.0
+network = "networks/epithelium.toml"
+
+[seeding]
+kind = "sheet"
+side = 10

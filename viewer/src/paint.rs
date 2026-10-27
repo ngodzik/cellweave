@@ -7,7 +7,7 @@
 use bevy::asset::RenderAssetUsages;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
-use cellweave_core::{CellId, CloneId, DiffusionField, SignalingNetwork};
+use cellweave_core::{CellId, CloneId, DiffusionField, Seeding, SignalingNetwork};
 use cellweave_engine::cpm::OBSTACLE;
 use cellweave_engine::simulation::Running;
 use cellweave_engine::{CpmLattice, Fate, Simulation};
@@ -32,6 +32,9 @@ pub const CYCLING: LinearRgba = LinearRgba::rgb(0.02, 0.62, 0.48);
 pub const QUIESCENT: LinearRgba = LinearRgba::rgb(0.90, 0.32, 0.02);
 /// A dead cell, still giving up its pixels.
 pub const NECROTIC: LinearRgba = LinearRgba::rgb(0.08, 0.05, 0.10);
+/// A cell committed to differentiate, on its way out of the layer: pale, a
+/// cell that has stopped being a progenitor.
+pub const DIFFERENTIATING: LinearRgba = LinearRgba::rgb(0.55, 0.45, 0.28);
 /// The vessel wall, held at full oxygen. The brightest thing in the picture,
 /// because everything else lives off it.
 pub const VESSEL: LinearRgba = LinearRgba::rgb(1.0, 0.08, 0.04);
@@ -208,11 +211,14 @@ pub fn cell_colour(sim: &Simulation<Running>, id: CellId, view: View) -> LinearR
             ramp(level)
         }
         (View::Clone, fate) => {
-            let colour = sim.clone_of(id).map_or(NECROTIC, clone_colour);
+            let seeding = sim.scenario().seeding;
+            let colour = sim
+                .clone_of(id)
+                .map_or(NECROTIC, |c| clone_colour(c, seeding));
             // A clone keeps its hue whatever its cells are doing; an arrested
-            // cell is a dimmer shade of it, so a clone that escapes arrest is
-            // also a clone that lights up.
-            if fate == Fate::Quiescent {
+            // or departing cell is a dimmer shade of it, so a clone that
+            // escapes arrest is also a clone that lights up.
+            if matches!(fate, Fate::Quiescent | Fate::Differentiating) {
                 colour * 0.35
             } else {
                 colour
@@ -220,15 +226,18 @@ pub fn cell_colour(sim: &Simulation<Running>, id: CellId, view: View) -> LinearR
         }
         (_, Fate::Cycling) => CYCLING,
         (_, Fate::Quiescent) => QUIESCENT,
+        (_, Fate::Differentiating) => DIFFERENTIATING,
     };
     base * jitter
 }
 
-/// The colour of a clone. The founder is a cold, muted blue, so that every
-/// mutant stands out against it; mutants step round the hue circle by the
-/// golden angle, which keeps clones founded one after the other far apart.
-pub fn clone_colour(clone: CloneId) -> LinearRgba {
-    if clone.0 == 0 {
+/// The colour of a clone. Grown from one cell, the founding clone is a cold,
+/// muted blue, so that every mutant stands out against it. In a sheet every
+/// cell founds a clone and none is special. Other clones step round the hue
+/// circle by the golden angle, which keeps clones founded one after the other
+/// far apart.
+pub fn clone_colour(clone: CloneId, seeding: Seeding) -> LinearRgba {
+    if clone.0 == 0 && seeding == Seeding::Single {
         return LinearRgba::rgb(0.10, 0.20, 0.42);
     }
     let hue = (f64::from(clone.0) * 137.507_764).rem_euclid(360.0) as f32;

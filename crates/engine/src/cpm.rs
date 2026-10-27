@@ -89,7 +89,9 @@ impl ContactEnergy {
         match k {
             CellKind::Medium => 0,
             CellKind::Tumor => 1,
-            CellKind::Normal => 2,
+            // A cell leaving the layer keeps its grip on its neighbours until
+            // it is gone, so it costs what it cost while it was dividing.
+            CellKind::Normal | CellKind::Differentiated => 2,
             CellKind::Necrotic => 3,
         }
     }
@@ -182,6 +184,32 @@ impl CpmLattice {
             }
         }
 
+        self.cells.push(CellRecord {
+            kind,
+            volume: Volume(vol),
+            target_volume: Volume(vol),
+            lambda_volume: 50.0,
+        });
+        CellId(id)
+    }
+
+    /// Add a rectangular cell of `kind`, `width` by `height` pixels, with its
+    /// top left corner at `corner`, clipped to the box and to free pixels.
+    ///
+    /// Rectangles tile without gaps or overlap, which is how a sheet of tissue
+    /// fills the box at the start. Returns the new `CellId`.
+    pub fn add_block(&mut self, kind: CellKind, corner: Pos2, width: u32, height: u32) -> CellId {
+        let id = self.cells.len() as u32;
+        let mut vol = 0u32;
+        for row in corner.y..(corner.y + height).min(self.height) {
+            for col in corner.x..(corner.x + width).min(self.width) {
+                let pixel = &mut self.grid[[row as usize, col as usize]];
+                if *pixel == 0 {
+                    *pixel = id;
+                    vol += 1;
+                }
+            }
+        }
         self.cells.push(CellRecord {
             kind,
             volume: Volume(vol),
