@@ -23,6 +23,18 @@ enum Source {
     Node(usize),
 }
 
+/// The source an environment input reads, by the name a file gives it.
+/// `None` for a name that is not an input.
+fn input_source(name: &str) -> Option<Source> {
+    match name {
+        "oxygen" => Some(Source::Oxygen),
+        "egf" => Some(Source::Egf),
+        "crowding" => Some(Source::Crowding),
+        "stress" => Some(Source::Stress),
+        _ => None,
+    }
+}
+
 /// A term with its source resolved and its shape reduced to what the loop needs.
 #[derive(Debug, Clone, Copy)]
 enum Compiled {
@@ -82,27 +94,61 @@ impl Compiled {
 /// down.
 pub const MUTATION_SPREAD: f64 = 2.0;
 
-/// One heritable change to a network: a single rate scaled.
+/// The rate a gained link starts at, before the same spread a scaled rate
+/// gets: a weak link, of the order of the network's own terms, that has to be
+/// strengthened by later mutations to matter much.
+pub const GAINED_RATE: f64 = 0.1;
+
+/// One heritable change to a network.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Mutation {
-    /// The node whose term changed, by name.
+    /// The node whose terms changed, by name.
     pub node: String,
-    /// Which of its terms, counting from zero in the order the file lists them.
+    /// Which of its terms, counting from zero in the order the file lists
+    /// them; for a gained link, the position it was added at, the last.
     pub term: usize,
     /// What kind of term that is, as the file names it.
     pub kind: &'static str,
-    /// What its rate was multiplied by, between `1 / MUTATION_SPREAD` and
-    /// [`MUTATION_SPREAD`].
-    pub factor: f64,
+    /// What happened to it.
+    pub change: Change,
+}
+
+/// What a mutation did to a term.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Change {
+    /// Its rate was multiplied by this factor, between `1 / MUTATION_SPREAD`
+    /// and [`MUTATION_SPREAD`].
+    Scaled(f64),
+    /// It is new: the node now also reads `source`, at `rate`.
+    Gained {
+        /// The node or input the new term reads.
+        source: String,
+        /// The rate it starts at.
+        rate: f64,
+    },
+    /// It was removed.
+    Lost,
 }
 
 impl std::fmt::Display for Mutation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{} {} #{} x{:.2}",
-            self.node, self.kind, self.term, self.factor
-        )
+        match &self.change {
+            Change::Scaled(factor) => {
+                write!(
+                    f,
+                    "{} {} #{} x{:.2}",
+                    self.node, self.kind, self.term, factor
+                )
+            }
+            Change::Gained { source, rate } => {
+                write!(
+                    f,
+                    "{} gains {} {} @{:.2}",
+                    self.node, self.kind, source, rate
+                )
+            }
+            Change::Lost => write!(f, "{} loses {} #{}", self.node, self.kind, self.term),
+        }
     }
 }
 
@@ -181,19 +227,16 @@ impl Network {
         }
 
         let resolve = |name: &str, whose: &str| -> Result<Source, CellweaveError> {
-            match name {
-                "oxygen" => Ok(Source::Oxygen),
-                "egf" => Ok(Source::Egf),
-                "crowding" => Ok(Source::Crowding),
-                "stress" => Ok(Source::Stress),
-                other => index.get(other).copied().map(Source::Node).ok_or_else(|| {
-                    let mut known: Vec<&str> = INPUT_NAMES.to_vec();
-                    known.extend(spec.nodes.iter().map(|n| n.name.as_str()));
-                    CellweaveError::Config(format!(
-                        "node `{whose}` reads `{other}`, which is neither a node nor an input; known names are {known:?}"
-                    ))
-                }),
+            if let Some(input) = input_source(name) {
+                return Ok(input);
             }
+            index.get(name).copied().map(Source::Node).ok_or_else(|| {
+                let mut known: Vec<&str> = INPUT_NAMES.to_vec();
+                known.extend(spec.nodes.iter().map(|n| n.name.as_str()));
+                CellweaveError::Config(format!(
+                    "node `{whose}` reads `{name}`, which is neither a node nor an input; known names are {known:?}"
+                ))
+            })
         };
 
         let mut terms = Vec::with_capacity(spec.nodes.len());
@@ -339,10 +382,75 @@ impl Network {
                     node: self.names[node].clone(),
                     term: pick,
                     kind: term.kind(),
-                    factor,
+                    change: Change::Scaled(factor),
                 });
             }
             pick -= terms.len();
+        }
+        None
+    }
+
+    /// Change the network's wiring rather than a rate, and say what changed.
+    /// `draws` are five uniform draws in `[0, 1)`, taken by the caller.
+    ///
+    /// Half the time a term is lost: one of all the network's terms, every
+    /// one equally likely, is removed. The other half a link is gained: a
+    /// node, every one equally likely, starts to read a source, any input of
+    /// the environment or any node, itself included, either switched on by it
+    /// (`activated_by`) or by its absence (`activated_by_absence_of`), at
+    /// [`GAINED_RATE`] spread as a scaled rate is. That is how a gene comes
+    /// to answer a signal it ignored, or stops answering one.
+    ///
+    /// `None` when there is nothing to lose, a network without a single term.
+    pub fn rewire(&mut self, draws: [f64; 5]) -> Option<Mutation> {
+        let [mode, which, source, sign, how] = draws;
+        let pick = |n: usize, u: f64| ((u * n as f64) as usize).min(n.saturating_sub(1));
+        if mode < 0.5 {
+            let node = pick(self.terms.len(), which);
+            let sources = INPUT_NAMES.len() + self.names.len();
+            let s = pick(sources, source);
+            let (source, source_name) = match INPUT_NAMES.get(s) {
+                Some(&name) => (input_source(name)?, name.to_owned()),
+                None => {
+                    let n = s - INPUT_NAMES.len();
+                    (Source::Node(n), self.names[n].clone())
+                }
+            };
+            let rate = GAINED_RATE * MUTATION_SPREAD.powf(2.0 * how - 1.0);
+            let term = if sign < 0.5 {
+                Compiled::ActivatedBy {
+                    source,
+                    rate,
+                    hill: None,
+                }
+            } else {
+                Compiled::ActivatedByAbsenceOf { source, rate }
+            };
+            let kind = term.kind();
+            self.terms[node].push(term);
+            return Some(Mutation {
+                node: self.names[node].clone(),
+                term: self.terms[node].len() - 1,
+                kind,
+                change: Change::Gained {
+                    source: source_name,
+                    rate,
+                },
+            });
+        }
+        let count: usize = self.terms.iter().map(Vec::len).sum();
+        let mut at = pick(count, which);
+        for (node, terms) in self.terms.iter_mut().enumerate() {
+            if at < terms.len() {
+                let lost = terms.remove(at);
+                return Some(Mutation {
+                    node: self.names[node].clone(),
+                    term: at,
+                    kind: lost.kind(),
+                    change: Change::Lost,
+                });
+            }
+            at -= terms.len();
         }
         None
     }
@@ -865,7 +973,10 @@ mod tests {
             (m.node.as_str(), m.term, m.kind),
             ("bcl2", 3, "damaged_below")
         );
-        assert!((m.factor - MUTATION_SPREAD).abs() < 1e-5);
+        let Change::Scaled(factor) = m.change else {
+            panic!("a rate was scaled: {m}")
+        };
+        assert!((factor - MUTATION_SPREAD).abs() < 1e-5);
 
         let survive = |mut net: Network| {
             for _ in 0..40 {
@@ -887,7 +998,7 @@ mod tests {
             (m.node.as_str(), m.term, m.kind),
             ("ras", 0, "activated_by")
         );
-        assert_eq!(m.factor, 1.0);
+        assert_eq!(m.change, Change::Scaled(1.0));
         for _ in 0..5 {
             net.step(TimeStep(1.0), &at(0.8, 0.2));
         }
@@ -935,5 +1046,43 @@ mod tests {
             None,
             "a tumour network has none"
         );
+    }
+
+    #[test]
+    fn a_gained_link_makes_a_node_answer_what_it_ignored() {
+        let mut net = ras_erk();
+        // Gain (below one half), on the first node, RAS; from the first
+        // source, oxygen; switched on by it; at the middle of the spread.
+        let m = net.rewire([0.0, 0.0, 0.0, 0.0, 0.5]).unwrap();
+        assert_eq!(m.to_string(), "ras gains activated_by oxygen @0.10");
+        assert_eq!(m.term, 2, "added after RAS's two terms");
+        // With no EGF at all, the healthy RAS stays off; this one rises with
+        // the oxygen it now reads.
+        let ras = |mut n: Network| {
+            for _ in 0..40 {
+                n.step(TimeStep(1.0), &at(1.0, 0.0));
+            }
+            n.state().values[0].0
+        };
+        assert!(ras(ras_erk()) < 0.01);
+        assert!(ras(net) > 0.1);
+    }
+
+    #[test]
+    fn a_lost_term_takes_its_answer_away() {
+        let mut net = ras_erk();
+        // Loss (one half or above), of the very first term: RAS switched on
+        // by EGF.
+        let m = net.rewire([0.9, 0.0, 0.0, 0.0, 0.0]).unwrap();
+        assert_eq!(m.to_string(), "ras loses activated_by #0");
+        assert_eq!(m.change, Change::Lost);
+        let ras = |mut n: Network| {
+            for _ in 0..40 {
+                n.step(TimeStep(1.0), &at(0.8, 0.2));
+            }
+            n.state().values[0].0
+        };
+        assert!(ras(ras_erk()) > 0.2, "EGF switches the healthy RAS on");
+        assert!(ras(net) < 0.01, "and nothing switches this one on");
     }
 }

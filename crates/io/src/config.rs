@@ -59,6 +59,11 @@ pub struct SimConfig {
     /// command line rather than written in a file.
     #[serde(default)]
     pub suppress: Vec<u32>,
+    /// Probability that a mutation rewires the network, gaining or losing a
+    /// term, rather than scaling a rate. Zero, the default, leaves every run
+    /// as it was.
+    #[serde(default)]
+    pub rewiring: f64,
 }
 
 fn default_seed() -> u64 {
@@ -102,6 +107,7 @@ impl SimConfig {
             seed: self.seed,
             mutation_rate: self.mutation_rate,
             suppress: self.suppress.iter().copied().map(CloneId).collect(),
+            rewiring: self.rewiring,
             seeding: self.seeding,
             exposure: self.exposure,
         }
@@ -193,6 +199,7 @@ impl Default for SimConfig {
             seeding: Seeding::Single,
             exposure: None,
             suppress: Vec::new(),
+            rewiring: 0.0,
         }
     }
 }

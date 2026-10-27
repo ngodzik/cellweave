@@ -1,6 +1,7 @@
 //! Simulation output: JSON snapshots, and a table of measurements, to disk.
 
 use cellweave_core::{CellweaveError, SimOutput, SimSnapshot};
+use cellweave_engine::network::{Change, Mutation};
 use cellweave_engine::{CloneRecord, Measurements};
 use std::fs::{self, File};
 use std::io::{BufWriter, Write};
@@ -104,6 +105,33 @@ impl MeasurementLog {
     }
 }
 
+/// A mutation as `clones.json` holds it. A scaled rate is written as it
+/// always was; a gained or lost term says so, and a gained one what it reads.
+fn mutation_json(m: &Mutation) -> serde_json::Value {
+    match &m.change {
+        Change::Scaled(factor) => serde_json::json!({
+            "node": m.node,
+            "term": m.term,
+            "kind": m.kind,
+            "factor": factor,
+        }),
+        Change::Gained { source, rate } => serde_json::json!({
+            "node": m.node,
+            "term": m.term,
+            "kind": m.kind,
+            "change": "gained",
+            "source": source,
+            "rate": rate,
+        }),
+        Change::Lost => serde_json::json!({
+            "node": m.node,
+            "term": m.term,
+            "kind": m.kind,
+            "change": "lost",
+        }),
+    }
+}
+
 /// Write every clone ever founded to `clones.json` in `dir`: its parent, the
 /// step it arose at, the mutation that founded it, and how many living cells
 /// it has in `sizes`, indexed like the clones.
@@ -123,12 +151,7 @@ pub fn write_clones(
                 "id": c.id.0,
                 "parent": c.parent.map(|p| p.0),
                 "founded_at": c.founded_at,
-                "mutation": c.mutation.as_ref().map(|m| serde_json::json!({
-                    "node": m.node,
-                    "term": m.term,
-                    "kind": m.kind,
-                    "factor": m.factor,
-                })),
+                "mutation": c.mutation.as_ref().map(mutation_json),
                 "living": sizes.get(c.id.0 as usize).copied().unwrap_or(0),
             });
             // Said only of a clone that was suppressed, so that a run which

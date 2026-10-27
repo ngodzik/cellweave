@@ -54,6 +54,27 @@ That held in four: seeds 2, 3, 5 and 7, each through a different HIF-1α change 
 
 Escaping arrest is the most common route but not the only one: surviving deeper (seed 4) or growing more (seed 1) also breaks the balance. In biology this is **convergent evolution**: the same outcome, a tumour that outgrows its steady state, reached through different changes.
 
+### Mutations that rewire
+
+A mutation above changes how strongly a term acts and never which terms there are. Real mutations also do the second: a gene stops being switched on by what used to switch it on, or comes to answer a signal it ignored. With `rewiring` set in the configuration, that fraction of mutations **rewires** the network instead. Half of them lose a term, any one of all the network's terms; half gain one: a node, any node, starts to read a source, any input of the environment or any node, itself included, switched on by it or by its absence, at a small rate (0.1, spread like a scaled rate). Zero, the default, draws nothing for it, so every run written before is unchanged to the byte.
+
+`examples/cord-rewiring.toml` is the evolving cord with three mutations in ten rewiring, run under seeds 1 to 8 with `--seeds`. The prediction, written before the code: in at least five of the eight, the leading line ends up with its hypoxia response weakened, and in at least two of those by rewiring rather than by a scaled rate.
+
+| seed | the leading line's latest changes | at the end |
+|---|---|---|
+| 1 | HIF-1α **loses** its activation by the lack of oxygen; BCL2 **loses** its damage below the anoxia threshold | touched the edge at step 2756, no quiescent cell |
+| 2 | BCL2 damaged at 0.60 of its rate | touched the edge at step 2212, 53 quiescent |
+| 3 | BCL2 damaged at 0.56 | touched the edge at step 711 |
+| 4 | ERK **loses** its decay | touched the edge at step 530 |
+| 5 | HIF-1α **loses** its activation by the lack of oxygen | touched the edge at step 1049, no quiescent cell |
+| 6 | BCL2 made from ERK at 0.59; HIF-1α decays at 1.14 | the edge not reached |
+| 7 | HIF-1α decays at 1.70; ERK **loses** its decay | touched the edge at step 1739 |
+| 8 | HIF-1α decays at 1.37; RAS **loses** its decay; BCL2 **gains** a response to the stress | touched the edge at step 1531 |
+
+The prediction held, narrowly: five lines weakened their hypoxia response (seeds 1, 5, 6, 7, 8, seed 6 only slightly), two of them by losing the term outright. The cord touched the edge in seven seeds of eight, where without rewiring it did in four of the same eight seeds (the two sets of runs part at their first mutation, so the comparison is of outcomes, not of pairs).
+
+What rewiring added is the loss of a brake. A node that loses its decay is stuck on: ERK in seeds 4 and 7, RAS in seed 8, the growth pathway jammed open, and seed 4 reached the edge in 530 steps. A survival node that loses its damage term no longer dies of anoxia at all. A hypoxia response that loses its sensor never arrests. Losses are the shortest road, because a scaled rate can at most halve a brake, and a lost term removes it. In seed 8 the leading line also gained a link from BCL2 to the stress, which is not on in this run: a passenger by construction, as the VEGF changes were.
+
 ### Watching it
 
 In the viewer, colour by **clone**. The founder is a muted blue and every mutant a hue of its own, dimmed while arrested, so a clone that escapes arrest is also a clone that lights up. The panel lists the leading clones with the mutation that founded each, and plots every clone's share of the living over time, stacked: a **Muller plot**, where a sweep is a band that widens until it pushes the others out.
@@ -72,11 +93,11 @@ In the viewer, colour by **clone**. The founder is a muted blue and every mutant
 
 ## Where in the code
 
-`crates/engine/src/network.rs`: `Network::mutate`, which picks a term and scales its rate, `Mutation`, what changed, and `MUTATION_SPREAD`, the factor's bound.
+`crates/engine/src/network.rs`: `Network::mutate`, which picks a term and scales its rate, `Network::rewire`, which gains or loses one, `Mutation` and `Change`, what changed, `MUTATION_SPREAD`, the factor's bound, and `GAINED_RATE`, where a gained link starts.
 
 `crates/engine/src/evolution.rs`: `CloneRecord`, a clone's parent, birth step and founding mutation; `Simulation::clone_sizes`, the living cells per clone.
 
-`crates/engine/src/simulation.rs`: `divide_ready_cells` draws, mutates and founds; `Scenario::mutation_rate` is the probability; `clone_of` and `clones` read the lineage back.
+`crates/engine/src/simulation.rs`: `divide_ready_cells` draws, mutates and founds; `Scenario::mutation_rate` is the probability, and `Scenario::rewiring` the share of mutations that rewire; `clone_of` and `clones` read the lineage back.
 
 `crates/core/src/types.rs`: `CloneId`, which every cell in a snapshot now carries.
 
@@ -86,4 +107,4 @@ In the viewer, colour by **clone**. The founder is a muted blue and every mutant
 
 ## Still a placeholder
 
-The mutation rate: one in twenty divisions, where a real one is nearer one change per gene in a billion. It compresses years into a few thousand steps, and the order in which things happen is all it preserves. The factor's range, the uniform choice of term, and the absence of any mutation that changes a threshold, a contact energy, or the shape of a cell. And the tissue itself: one geometry, nine seeds. Nine histories say which routes exist; how often each is taken needs many more, and a statistic over them that the program does not yet compute.
+The mutation rate: one in twenty divisions, where a real one is nearer one change per gene in a billion. It compresses years into a few thousand steps, and the order in which things happen is all it preserves. The factor's range, the uniform choice of term, the share of mutations that rewire and the rate a gained link starts at, and the absence of any mutation that changes a threshold, a contact energy, or the shape of a cell. And the tissue itself: one geometry, a handful of seeds. A few histories say which routes exist; how often each is taken needs many more, which chapter 10's campaigns can now run.

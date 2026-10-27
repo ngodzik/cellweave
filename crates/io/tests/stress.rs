@@ -30,6 +30,7 @@ fn exposed(exposure: Option<Exposure>) -> Scenario {
         seed: DEFAULT_SEED,
         mutation_rate: 0.0,
         suppress: Vec::new(),
+        rewiring: 0.0,
         seeding: Default::default(),
         exposure,
     }
