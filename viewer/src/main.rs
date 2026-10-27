@@ -3,7 +3,7 @@
 //! Usage:
 //!
 //! ```text
-//! cellweave-viewer [--config <path>]
+//! cellweave-viewer [--config <path>] [--view fate|oxygen|clone]
 //! ```
 //!
 //! It runs the same [`cellweave_engine::Simulation`] the command line runs,
@@ -53,6 +53,15 @@ fn main() -> Result<()> {
         Some(p) => SimConfig::from_file(p).map_err(|e| anyhow!("loading config {p}: {e}"))?,
         None => SimConfig::default(),
     };
+    let view = match args.windows(2).find(|w| w[0] == "--view") {
+        None => paint::View::default(),
+        Some(w) => match w[1].as_str() {
+            "fate" => paint::View::Fate,
+            "oxygen" => paint::View::Oxygen,
+            "clone" => paint::View::Clone,
+            other => return Err(anyhow!("--view {other}: expected fate, oxygen or clone")),
+        },
+    };
     let spec = config.load_network(config_path)?;
     let experiment = Experiment {
         label: config_path.unwrap_or("the default spheroid").to_owned(),
@@ -72,7 +81,7 @@ fn main() -> Result<()> {
         .insert_resource(ClearColor(paint::BACKGROUND))
         .insert_resource(runner::Runner::new(&experiment))
         .insert_resource(orbit::Orbit::framing(&experiment.scenario))
-        .insert_resource(paint::View::default())
+        .insert_resource(view)
         .insert_resource(experiment)
         .add_systems(Startup, setup)
         .add_systems(

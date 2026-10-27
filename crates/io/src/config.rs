@@ -38,6 +38,11 @@ pub struct SimConfig {
     /// the built-in RAS/ERK network is used, which is the same file compiled in.
     #[serde(default)]
     pub network: Option<String>,
+    /// Probability that a daughter is born with one rate of its network
+    /// changed, founding a clone. Zero, the default, makes every daughter an
+    /// exact copy and leaves a run exactly as it was before mutation existed.
+    #[serde(default)]
+    pub mutation_rate: f64,
 }
 
 /// The RAS/ERK network, compiled in so that the built-in hypothesis and one you
@@ -75,6 +80,7 @@ impl SimConfig {
             oxygen_source: self.oxygen_source,
             oxygen_uptake: self.oxygen_uptake,
             seed: DEFAULT_SEED,
+            mutation_rate: self.mutation_rate,
         }
     }
 
@@ -159,6 +165,7 @@ impl Default for SimConfig {
             oxygen_source: OxygenSource::Bath,
             oxygen_uptake: default_oxygen_uptake(),
             network: None,
+            mutation_rate: 0.0,
         }
     }
 }

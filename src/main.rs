@@ -15,7 +15,7 @@
 use anyhow::{Context, Result};
 use cellweave_core::traits::SimOutput;
 use cellweave_engine::{Measurements, Simulation};
-use cellweave_io::{JsonOutput, MeasurementLog, SimConfig};
+use cellweave_io::{JsonOutput, MeasurementLog, SimConfig, write_clones};
 
 fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
@@ -107,11 +107,61 @@ fn run(config: SimConfig, config_path: Option<&str>) -> Result<()> {
 
     output.finalize()?;
     log.finish()?;
+    let sizes = sim.clone_sizes();
+    write_clones(&config.output_dir, sim.clones(), &sizes)?;
     if let Some(summary) = summarise(&measured) {
         eprintln!("{summary}");
     }
+    if sim.clones().len() > 1 {
+        eprintln!("{}", leading_clones(&sim, &sizes));
+    }
     eprintln!("done.");
     Ok(())
+}
+
+/// Mutations shown per clone in the summary, the latest ones.
+const SHOWN_MUTATIONS: usize = 4;
+
+/// The clones holding the most living cells, each with the chain of
+/// mutations that separates it from the founder.
+fn leading_clones<S: cellweave_engine::simulation::SimState>(
+    sim: &Simulation<S>,
+    sizes: &[usize],
+) -> String {
+    let living: usize = sizes.iter().sum();
+    let mut order: Vec<usize> = (0..sizes.len()).filter(|&c| sizes[c] > 0).collect();
+    order.sort_by_key(|&c| std::cmp::Reverse(sizes[c]));
+    let mut text = format!(
+        "{} clones founded, {} still living",
+        sim.clones().len(),
+        order.len()
+    );
+    for &c in order.iter().take(5) {
+        let mut chain = Vec::new();
+        let mut at = sim.clones().get(c);
+        while let Some(clone) = at {
+            if let Some(m) = &clone.mutation {
+                chain.push(m.to_string());
+            }
+            at = clone.parent.and_then(|p| sim.clones().get(p.0 as usize));
+        }
+        chain.reverse();
+        // A long line of descent is shown by its latest changes, the ones
+        // that set it apart from its nearest relatives.
+        let earlier = chain.len().saturating_sub(SHOWN_MUTATIONS);
+        let latest = chain[earlier..].join(", then ");
+        let chain = match (chain.is_empty(), earlier) {
+            (true, _) => "the founder".to_owned(),
+            (false, 0) => latest,
+            (false, n) => format!("{n} earlier, then {latest}"),
+        };
+        text.push_str(&format!(
+            "\n  clone {c:4}: {:3} cells ({:3.0}%), {chain}",
+            sizes[c],
+            100.0 * sizes[c] as f64 / living.max(1) as f64
+        ));
+    }
+    text
 }
 
 /// What the run came to, in a few lines: the shape the tissue ended in, and

@@ -1,0 +1,30 @@
+# The tumour cord of cord.toml, with daughters that are not quite copies.
+#
+# One division in twenty gives a daughter one rate of its network scaled by up
+# to two either way, and the daughter founds a clone. Nothing says which change
+# is good. The clones compete for the space near the vessel, and whichever
+# keeps dividing where the others stop takes over.
+#
+# Under seed 42, what takes over is a clone whose hypoxia response is weaker:
+# its cells no longer stop dividing when oxygen runs low. Near step 2000 the
+# quiescent cells vanish, the cord stops holding its thickness, and it grows
+# until it touches the edge of the box. Nobody wrote "escape hypoxic arrest";
+# it is what selection found.
+#
+# One in twenty is far higher than any real mutation rate, which is closer to
+# one change per gene in a billion divisions. It compresses into a few
+# thousand steps what takes a tumour years, and it is a placeholder.
+
+width = 200
+height = 200
+mcs = 3000
+temperature = 10.0
+snapshot_interval = 50
+output_dir = "output-cord-evolving"
+oxygen_uptake = 0.00003
+mutation_rate = 0.05
+network = "networks/ras-erk.toml"
+
+[oxygen_source]
+kind = "vessel"
+radius = 6

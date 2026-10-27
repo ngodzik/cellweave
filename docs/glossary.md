@@ -18,17 +18,23 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Contact energy, J** (1). What a piece of boundary between two cells of given kinds costs.
 
+**Clonal sweep** (6). One clone outcompeting the rest and taking over the population.
+
+**Clone** (6). Every cell descended from one mutated ancestor with no further mutation in between. The first cell founds clone 0.
+
 **Cord, tumour cord** (5). Tumour tissue living around a vessel out to the depth oxygen reaches, dead beyond. A steady state with turnover.
 
-**Determinism** (1, 6). The same seed gives the same simulation, byte for byte. Checked on every push.
+**Determinism** (1, 7). The same seed gives the same simulation, byte for byte. Checked on every push.
 
 **Diffusion, D** (3). Oxygen wandering from where there is more to where there is less. D is how fast.
 
-**Division** (4). A cell past 1.4 times its lineage's reference volume is cut along a line through its centre of mass; the daughter inherits a copy of the network.
+**Division** (4). A cell past 1.4 times its lineage's reference volume is cut along a line through its centre of mass; the daughter inherits a copy of the network, or with the mutation rate a copy with one rate changed.
+
+**Drift** (6). A variant spreading or vanishing by chance rather than because of what it does.
 
 **EGF** (2). Epidermal growth factor, the growth signal. A hardcoded input for every cell today.
 
-**Emergence** (6). Behaviour that follows from the model without any rule naming it. The necrotic core, the compact cell, the cord's thickness.
+**Emergence** (6, 7). Behaviour that follows from the model without any rule naming it. The necrotic core, the compact cell, the cord's thickness.
 
 **Energy, Hamiltonian, H** (1). The number every configuration of the lattice has, which the Monte Carlo lowers.
 
@@ -44,6 +50,8 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **HIF-1α** (2). Hypoxia-inducible factor 1 alpha, the protein that accumulates as oxygen falls. Above 0.45 the cell is quiescent.
 
+**Hitchhiking** (6). A neutral mutation spreading because it shares a lineage with one that pays off.
+
 **Hypoxia** (2, 3). Too little oxygen, but enough to live on. Distinct from anoxia.
 
 **Jacobi** (3). The plain way to relax a field, one full update from the previous state. Replaced by SOR for steady states.
@@ -57,6 +65,12 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 **Medium** (1, 3). Empty pixels, identity 0. Liquid in a bath; stroma around a vessel.
 
 **Monte Carlo step, MCS** (1). One attempt per pixel to change hands, 40,000 on the default grid. The lattice's unit of time.
+
+**Muller plot** (6). Every clone's share of the population over time, stacked, so a sweep is a band that widens.
+
+**Mutation** (6). A heritable change. Here one rate of a daughter's network scaled by a factor between one half and two.
+
+**Mutation rate** (6). The probability that a daughter is born with a mutation. One in twenty in the evolving cord, a placeholder.
 
 **Necrosis, necrotic** (2, 4). Death by energy failure. A kind on the lattice: stops consuming, network frozen, resorbed.
 
@@ -84,9 +98,11 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **RK4** (2). Fourth order Runge-Kutta, the scheme that advances the network's equations.
 
+**Selection** (6). Variants leaving more descendants because of what they do where they are. Nobody chooses the winner.
+
 **Seed** (1). The number that starts the random draws. Same seed, same run.
 
-**Snapshot** (4, 6). A file listing every living cell's state and the oxygen it reads, one per interval.
+**Snapshot** (4, 7). A file listing every living cell's state and the oxygen it reads, one per interval.
 
 **SOR** (3). Successive over-relaxation, the sweep that solves for a steady state in about L passes rather than L².
 

@@ -1,7 +1,7 @@
 //! Simulation output: JSON snapshots, and a table of measurements, to disk.
 
 use cellweave_core::{CellweaveError, SimOutput, SimSnapshot};
-use cellweave_engine::Measurements;
+use cellweave_engine::{CloneRecord, Measurements};
 use std::fs::{self, File};
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
@@ -46,7 +46,7 @@ pub struct MeasurementLog {
 
 /// The columns, in the order [`MeasurementLog::record`] writes them.
 pub const MEASUREMENT_COLUMNS: &str =
-    "mcs,cycling,quiescent,necrotic,born,gone,tissue_radius,necrotic_radius,viable_depth";
+    "mcs,cycling,quiescent,necrotic,born,gone,clones,tissue_radius,necrotic_radius,viable_depth";
 
 impl MeasurementLog {
     /// Start the table in `dir`, which must exist, with its header row.
@@ -72,13 +72,14 @@ impl MeasurementLog {
     /// [`CellweaveError::Simulation`] when the file cannot be written.
     pub fn record(&mut self, m: &Measurements) -> Result<(), CellweaveError> {
         self.line(&format!(
-            "{},{},{},{},{},{},{:.4},{:.4},{:.4}",
+            "{},{},{},{},{},{},{},{:.4},{:.4},{:.4}",
             m.mcs,
             m.cycling,
             m.quiescent,
             m.necrotic,
             m.born,
             m.gone,
+            m.clones,
             m.tissue_radius,
             m.necrotic_radius,
             m.viable_depth
@@ -101,6 +102,41 @@ impl MeasurementLog {
     }
 }
 
+/// Write every clone ever founded to `clones.json` in `dir`: its parent, the
+/// step it arose at, the mutation that founded it, and how many living cells
+/// it has in `sizes`, indexed like the clones.
+///
+/// # Errors
+///
+/// [`CellweaveError::Simulation`] when the file cannot be written.
+pub fn write_clones(
+    dir: impl AsRef<Path>,
+    clones: &[CloneRecord],
+    sizes: &[usize],
+) -> Result<(), CellweaveError> {
+    let list: Vec<serde_json::Value> = clones
+        .iter()
+        .map(|c| {
+            serde_json::json!({
+                "id": c.id.0,
+                "parent": c.parent.map(|p| p.0),
+                "founded_at": c.founded_at,
+                "mutation": c.mutation.as_ref().map(|m| serde_json::json!({
+                    "node": m.node,
+                    "term": m.term,
+                    "kind": m.kind,
+                    "factor": m.factor,
+                })),
+                "living": sizes.get(c.id.0 as usize).copied().unwrap_or(0),
+            })
+        })
+        .collect();
+    let json = serde_json::to_string_pretty(&list)
+        .map_err(|e| CellweaveError::Simulation(e.to_string()))?;
+    fs::write(dir.as_ref().join("clones.json"), json)
+        .map_err(|e| CellweaveError::Simulation(e.to_string()))
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used)]
@@ -119,6 +155,7 @@ mod tests {
             necrotic: 1,
             born: 9,
             gone: 4,
+            clones: 2,
             tissue_radius: 12.0,
             necrotic_radius: 1.0 / 3.0,
             viable_depth: 11.666_666,
@@ -130,7 +167,7 @@ mod tests {
         fs::remove_dir_all(&dir).unwrap();
         let lines: Vec<&str> = text.lines().collect();
         assert_eq!(lines[0], MEASUREMENT_COLUMNS);
-        assert_eq!(lines[1], "7,3,2,1,9,4,12.0000,0.3333,11.6667");
+        assert_eq!(lines[1], "7,3,2,1,9,4,2,12.0000,0.3333,11.6667");
         assert_eq!(
             lines[0].split(',').count(),
             lines[1].split(',').count(),

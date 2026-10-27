@@ -12,8 +12,8 @@
 use std::marker::PhantomData;
 
 use cellweave_core::{
-    CellId, CellInputs, CellKind, CellSnapshot, CellweaveError, Concentration, NetworkSpec,
-    OxygenSource, Pos2, SignalingNetwork, SimSnapshot, TimeStep, Volume,
+    CellId, CellInputs, CellKind, CellSnapshot, CellweaveError, CloneId, Concentration,
+    NetworkSpec, OxygenSource, Pos2, SignalingNetwork, SimSnapshot, TimeStep, Volume,
 };
 use rand::rngs::StdRng;
 use rand::{RngExt, SeedableRng};
@@ -22,6 +22,7 @@ use crate::coupling::{
     apply_background_uptake, apply_uptake, hold_medium_bath, hold_obstacles_at, mean_per_cell,
 };
 use crate::cpm::{CpmLattice, OBSTACLE};
+use crate::evolution::CloneRecord;
 use crate::network::Network;
 use crate::pde::ScalarField;
 
@@ -114,6 +115,11 @@ pub struct Scenario {
     pub oxygen_uptake: f64,
     /// Seed of the only random generator in the run.
     pub seed: u64,
+    /// Probability that a daughter is born with one rate of its network
+    /// changed, founding a clone of its own. Zero keeps every daughter an
+    /// exact copy, and draws nothing from the generator for it, so a run
+    /// without mutation is the same run it was before mutation existed.
+    pub mutation_rate: f64,
 }
 
 /// Lifecycle stage of a [`Simulation`]. Sealed: the stages are the ones below.
@@ -178,6 +184,10 @@ pub struct Simulation<S: SimState> {
     /// names the cell whose slot is `i`, which holds as long as a daughter slot
     /// is pushed exactly when a daughter cell is created.
     networks: Vec<Option<Network>>,
+    /// The clone of the cell in each slot, kept even once the cell is gone.
+    lineage: Vec<CloneId>,
+    /// Every clone ever founded, by identifier.
+    clones: Vec<CloneRecord>,
     oxygen: ScalarField,
     rng: StdRng,
     first: CellId,
@@ -196,9 +206,15 @@ impl Simulation<Configured> {
     ///
     /// # Errors
     ///
-    /// [`CellweaveError::Config`] when the grid dimensions are invalid or the
-    /// network does not compile.
+    /// [`CellweaveError::Config`] when the grid dimensions are invalid, the
+    /// network does not compile, or the mutation rate is not a probability.
     pub fn new(scenario: Scenario, spec: &NetworkSpec) -> Result<Self, CellweaveError> {
+        if !(0.0..=1.0).contains(&scenario.mutation_rate) {
+            return Err(CellweaveError::Config(format!(
+                "the mutation rate is {}; it is a probability per division, between 0 and 1",
+                scenario.mutation_rate
+            )));
+        }
         let mut lattice = CpmLattice::new(scenario.width, scenario.height, scenario.temperature)
             .map_err(|e| CellweaveError::Config(e.to_string()))?;
         let cx = scenario.width / 2;
@@ -238,6 +254,8 @@ impl Simulation<Configured> {
             scenario,
             lattice,
             networks: vec![Some(seed_network)],
+            lineage: vec![CloneId(0)],
+            clones: vec![CloneRecord::founder()],
             oxygen,
             first,
             next_mcs: 0,
@@ -268,6 +286,8 @@ impl Simulation<Configured> {
             scenario: self.scenario,
             lattice: self.lattice,
             networks: self.networks,
+            lineage: self.lineage,
+            clones: self.clones,
             oxygen: self.oxygen,
             rng: self.rng,
             first: self.first,
@@ -369,7 +389,7 @@ impl Simulation<Running> {
         // 5. Cells that have grown enough, and are not too short of oxygen to
         //    cycle, split in two.
         if mcs.is_multiple_of(DIVISION_CHECK_EVERY) && self.networks.len() < MAX_CELLS {
-            self.born += self.divide_ready_cells();
+            self.born += self.divide_ready_cells(mcs);
         }
 
         Ok(report)
@@ -384,8 +404,9 @@ impl Simulation<Running> {
     ///
     /// A daughter inherits a copy of its parent's network, so its protein state
     /// and its parameters, which is what makes the population a lineage rather
-    /// than a crowd of identical newborns.
-    fn divide_ready_cells(&mut self) -> u64 {
+    /// than a crowd of identical newborns. With the scenario's mutation rate, the
+    /// copy has one rate changed, and the daughter founds a clone.
+    fn divide_ready_cells(&mut self, mcs: u64) -> u64 {
         let ready: Vec<usize> = self
             .networks
             .iter()
@@ -410,8 +431,26 @@ impl Simulation<Running> {
             }
             let angle = self.rng.random::<f64>() * std::f64::consts::PI;
             if self.lattice.divide(cell_of(i), angle).is_some() {
-                let daughter = self.networks[i].clone();
+                let mut daughter = self.networks[i].clone();
+                let mut clone = self.lineage[i];
+                // The rate is tested before anything is drawn, so that a run
+                // without mutation takes exactly the draws it always took.
+                let rate = self.scenario.mutation_rate;
+                if rate > 0.0 && self.rng.random::<f64>() < rate {
+                    let (which, how) = (self.rng.random::<f64>(), self.rng.random::<f64>());
+                    if let Some(mutation) = daughter.as_mut().and_then(|n| n.mutate(which, how)) {
+                        let founded = CloneId(self.clones.len() as u32);
+                        self.clones.push(CloneRecord {
+                            id: founded,
+                            parent: Some(clone),
+                            founded_at: mcs,
+                            mutation: Some(mutation),
+                        });
+                        clone = founded;
+                    }
+                }
                 self.networks.push(daughter);
+                self.lineage.push(clone);
                 born += 1;
             }
         }
@@ -423,6 +462,11 @@ impl Simulation<Running> {
             self.networks.len(),
             self.lattice.cell_count(),
             "one slot per cell: the lattice and the network list have diverged"
+        );
+        assert_eq!(
+            self.networks.len(),
+            self.lineage.len(),
+            "one clone per cell: the network list and the lineage have diverged"
         );
         born
     }
@@ -441,12 +485,14 @@ impl Simulation<Running> {
             .zip(self.networks.iter())
             .filter_map(|((id, rec), slot)| {
                 let net = slot.as_ref()?;
+                let clone = self.clone_of(id)?;
                 (rec.volume.0 > 0).then(|| CellSnapshot {
                     id,
                     kind: rec.kind,
                     volume: rec.volume,
                     proteins: net.state().clone(),
                     oxygen: Concentration(local_o2[id.0 as usize]),
+                    clone,
                 })
             })
             .collect();
@@ -516,6 +562,19 @@ impl<S: SimState> Simulation<S> {
         self.networks.get(slot)?.as_ref()
     }
 
+    /// The clone a cell belongs to, or `None` for the medium or an obstacle. A
+    /// cell that is gone keeps the clone it had.
+    pub fn clone_of(&self, id: CellId) -> Option<CloneId> {
+        let slot = (id.0 as usize).checked_sub(1)?;
+        self.lineage.get(slot).copied()
+    }
+
+    /// Every clone founded so far, the founding clone first, indexed by
+    /// identifier.
+    pub fn clones(&self) -> &[CloneRecord] {
+        &self.clones
+    }
+
     /// What a cell is doing, or `None` for the medium, an obstacle, or a cell
     /// that is gone.
     ///
@@ -579,6 +638,7 @@ mod tests {
             oxygen_source,
             oxygen_uptake: 0.0003,
             seed: DEFAULT_SEED,
+            mutation_rate: 0.0,
         }
     }
 
@@ -638,5 +698,53 @@ mod tests {
         assert_eq!(sim.step().unwrap().mcs, 0);
         assert_eq!(sim.step().unwrap().mcs, 1);
         assert_eq!(sim.snapshot().mcs, 1);
+    }
+
+    fn evolving(rate: f64) -> Simulation<Running> {
+        let scenario = Scenario {
+            mutation_rate: rate,
+            ..scenario(OxygenSource::Bath)
+        };
+        let (mut sim, _) = Simulation::new(scenario, &spec()).unwrap().start().unwrap();
+        for _ in 0..80 {
+            sim.step().unwrap();
+        }
+        sim
+    }
+
+    #[test]
+    fn without_mutation_every_cell_is_the_founder() {
+        let sim = evolving(0.0);
+        assert!(sim.born() > 1, "the population grew");
+        assert_eq!(sim.clones().len(), 1);
+        assert!(sim.snapshot().cells.iter().all(|c| c.clone == CloneId(0)));
+    }
+
+    #[test]
+    fn when_every_daughter_mutates_every_daughter_founds_a_clone() {
+        let sim = evolving(1.0);
+        assert_eq!(sim.clones().len() as u64, sim.born());
+        for (i, clone) in sim.clones().iter().enumerate().skip(1) {
+            assert_eq!(clone.id, CloneId(i as u32));
+            let parent = clone.parent.unwrap();
+            assert!(parent < clone.id, "a clone arises in an older one");
+            assert!(clone.mutation.is_some());
+        }
+        assert_eq!(
+            format!("{:?}", sim.snapshot()),
+            format!("{:?}", evolving(1.0).snapshot()),
+            "one seed, one evolution"
+        );
+    }
+
+    #[test]
+    fn a_mutation_rate_is_a_probability() {
+        for rate in [-0.1, 1.5, f64::NAN] {
+            let scenario = Scenario {
+                mutation_rate: rate,
+                ..scenario(OxygenSource::Bath)
+            };
+            assert!(Simulation::new(scenario, &spec()).is_err(), "{rate}");
+        }
     }
 }

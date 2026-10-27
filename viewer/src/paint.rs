@@ -4,7 +4,7 @@
 use bevy::asset::RenderAssetUsages;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
-use cellweave_core::{CellId, DiffusionField, SignalingNetwork};
+use cellweave_core::{CellId, CloneId, DiffusionField, SignalingNetwork};
 use cellweave_engine::cpm::OBSTACLE;
 use cellweave_engine::simulation::Running;
 use cellweave_engine::{Fate, Simulation};
@@ -49,6 +49,8 @@ pub enum View {
     Protein(usize),
     /// The oxygen each pixel sits in, cells included.
     Oxygen,
+    /// The clone each cell belongs to: which mutation it descends from.
+    Clone,
 }
 
 /// The texture the tissue is painted into, and the material that shows it.
@@ -181,10 +183,32 @@ fn cell_colour(sim: &Simulation<Running>, id: CellId, view: View) -> LinearRgba 
                 .map_or(0.0, |c| c.0 as f32);
             ramp(level)
         }
+        (View::Clone, fate) => {
+            let colour = sim.clone_of(id).map_or(NECROTIC, clone_colour);
+            // A clone keeps its hue whatever its cells are doing; an arrested
+            // cell is a dimmer shade of it, so a clone that escapes arrest is
+            // also a clone that lights up.
+            if fate == Fate::Quiescent {
+                colour * 0.35
+            } else {
+                colour
+            }
+        }
         (_, Fate::Cycling) => CYCLING,
         (_, Fate::Quiescent) => QUIESCENT,
     };
     base * jitter
+}
+
+/// The colour of a clone. The founder is a cold, muted blue, so that every
+/// mutant stands out against it; mutants step round the hue circle by the
+/// golden angle, which keeps clones founded one after the other far apart.
+pub fn clone_colour(clone: CloneId) -> LinearRgba {
+    if clone.0 == 0 {
+        return LinearRgba::rgb(0.10, 0.20, 0.42);
+    }
+    let hue = (f64::from(clone.0) * 137.507_764).rem_euclid(360.0) as f32;
+    Color::hsl(hue, 0.9, 0.55).to_linear()
 }
 
 /// A dark-to-bright scale for a value between zero and one: violet, red,
