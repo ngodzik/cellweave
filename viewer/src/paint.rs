@@ -1,5 +1,8 @@
 //! Turns the lattice into a picture: one texel block per pixel, each cell
 //! filled with what it is doing and outlined where it meets something else.
+//!
+//! This is the colour of the surface under the lamp. What it gives off as
+//! light is drawn separately, by the glow.
 
 use bevy::asset::RenderAssetUsages;
 use bevy::prelude::*;
@@ -7,7 +10,7 @@ use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use cellweave_core::{CellId, CloneId, DiffusionField, SignalingNetwork};
 use cellweave_engine::cpm::OBSTACLE;
 use cellweave_engine::simulation::Running;
-use cellweave_engine::{Fate, Simulation};
+use cellweave_engine::{CpmLattice, Fate, Simulation};
 
 use crate::runner::Runner;
 
@@ -17,8 +20,8 @@ use crate::runner::Runner;
 /// read as a line around a cell rather than as a cell of its own.
 pub const SCALE: u32 = 4;
 
-/// How bright the brightest colour is, in HDR units. Above one, it blooms.
-pub const GLOW: f32 = 1.5;
+/// How bright the brightest emission is, in HDR units. Above one, it blooms.
+pub const GLOW: f32 = 4.0;
 
 /// What the window shows behind the tissue.
 pub const BACKGROUND: Color = Color::srgb(0.004, 0.006, 0.014);
@@ -28,7 +31,7 @@ pub const CYCLING: LinearRgba = LinearRgba::rgb(0.02, 0.62, 0.48);
 /// A cell alive but arrested by hypoxia.
 pub const QUIESCENT: LinearRgba = LinearRgba::rgb(0.90, 0.32, 0.02);
 /// A dead cell, still giving up its pixels.
-pub const NECROTIC: LinearRgba = LinearRgba::rgb(0.045, 0.03, 0.06);
+pub const NECROTIC: LinearRgba = LinearRgba::rgb(0.08, 0.05, 0.10);
 /// The vessel wall, held at full oxygen. The brightest thing in the picture,
 /// because everything else lives off it.
 pub const VESSEL: LinearRgba = LinearRgba::rgb(1.0, 0.08, 0.04);
@@ -58,7 +61,7 @@ pub enum View {
 pub struct Canvas {
     /// Written by [`repaint`].
     pub image: Handle<Image>,
-    /// Shows the image as emission.
+    /// Shows the image as the surface's colour.
     pub material: Handle<StandardMaterial>,
 }
 
@@ -80,20 +83,20 @@ pub fn canvas(width: u32, height: u32) -> Image {
 
 /// Repaint the canvas when the simulation moved or the view changed.
 ///
-/// A view changed while the simulation is away in the task pool is remembered
-/// and painted when it comes back.
+/// A view changed while the simulation is away in the task pool is painted
+/// when it comes back.
 pub fn repaint(
-    mut runner: ResMut<Runner>,
+    runner: Res<Runner>,
     view: Res<View>,
     canvas: Option<Res<Canvas>>,
     mut images: ResMut<Assets<Image>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut pending: Local<bool>,
+    mut seen: Local<Option<(u64, View)>>,
 ) {
-    *pending |= view.is_changed() || runner.take_fresh();
     let Some(canvas) = canvas else { return };
     let Some(sim) = runner.idle() else { return };
-    if !*pending {
+    let now = (runner.generation(), *view);
+    if *seen == Some(now) {
         return;
     }
     let Some(mut image) = images.get_mut(&canvas.image) else {
@@ -106,7 +109,7 @@ pub fn repaint(
     // An image changed under a material does not always reach the material's
     // bind group; touching the material makes it pick the new texture up.
     let _ = materials.get_mut(&canvas.material);
-    *pending = false;
+    *seen = Some(now);
 }
 
 /// Paint the whole lattice into `out`, an sRGB RGBA buffer [`SCALE`] times
@@ -115,7 +118,6 @@ fn paint(sim: &Simulation<Running>, view: View, out: &mut [u8]) {
     let lattice = sim.lattice();
     let oxygen = sim.oxygen();
     let (w, h) = lattice.dims();
-    let row = (w * SCALE * 4) as usize;
 
     // Each cell's colour, worked out once rather than once per pixel.
     let cells: Vec<[u8; 4]> = (0..=lattice.cell_count() as u32)
@@ -132,42 +134,64 @@ fn paint(sim: &Simulation<Running>, view: View, out: &mut [u8]) {
                 _ if view == View::Oxygen => bytes(ramp(oxygen.concentration_at(x, y) as f32)),
                 _ => cells.get(id as usize).copied().unwrap_or(vessel),
             };
-            let is_cell = id != 0 && id != OBSTACLE;
-            // A neighbour off the edge of the box counts as the same cell, so
-            // the box itself is not outlined.
-            let differs = |nx: i64, ny: i64| {
-                nx >= 0
-                    && ny >= 0
-                    && (nx as u32) < w
-                    && (ny as u32) < h
-                    && lattice.occupant(nx as u32, ny as u32) != id
-            };
-            let (xi, yi) = (i64::from(x), i64::from(y));
-            let edge = [
-                is_cell && differs(xi - 1, yi),
-                is_cell && differs(xi + 1, yi),
-                is_cell && differs(xi, yi - 1),
-                is_cell && differs(xi, yi + 1),
-            ];
-            let membrane = darken(fill);
+            block(out, w, (x, y), fill, darken(fill), membrane(lattice, x, y));
+        }
+    }
+}
 
-            for sy in 0..SCALE {
-                let start = (y * SCALE + sy) as usize * row + (x * SCALE * 4) as usize;
-                for sx in 0..SCALE {
-                    let on_edge = (sx == 0 && edge[0])
-                        || (sx == SCALE - 1 && edge[1])
-                        || (sy == 0 && edge[2])
-                        || (sy == SCALE - 1 && edge[3]);
-                    let at = start + (sx * 4) as usize;
-                    out[at..at + 4].copy_from_slice(if on_edge { &membrane } else { &fill });
-                }
-            }
+/// Which sides of pixel `(x, y)` are a membrane: left, right, top, bottom.
+///
+/// Only a cell has membranes. A neighbour off the edge of the box counts as
+/// the same cell, so the box itself is not outlined.
+pub fn membrane(lattice: &CpmLattice, x: u32, y: u32) -> [bool; 4] {
+    let (w, h) = lattice.dims();
+    let id = lattice.occupant(x, y);
+    if id == 0 || id == OBSTACLE {
+        return [false; 4];
+    }
+    let differs = |nx: i64, ny: i64| {
+        nx >= 0
+            && ny >= 0
+            && (nx as u32) < w
+            && (ny as u32) < h
+            && lattice.occupant(nx as u32, ny as u32) != id
+    };
+    let (xi, yi) = (i64::from(x), i64::from(y));
+    [
+        differs(xi - 1, yi),
+        differs(xi + 1, yi),
+        differs(xi, yi - 1),
+        differs(xi, yi + 1),
+    ]
+}
+
+/// Fill the [`SCALE`] by [`SCALE`] block of texels for pixel `at` of a
+/// lattice `width` pixels wide, with `rim` on the sides `edges` marks.
+pub fn block(
+    out: &mut [u8],
+    width: u32,
+    at: (u32, u32),
+    fill: [u8; 4],
+    rim: [u8; 4],
+    edges: [bool; 4],
+) {
+    let row = (width * SCALE * 4) as usize;
+    let (x, y) = at;
+    for sy in 0..SCALE {
+        let start = (y * SCALE + sy) as usize * row + (x * SCALE * 4) as usize;
+        for sx in 0..SCALE {
+            let on_edge = (sx == 0 && edges[0])
+                || (sx == SCALE - 1 && edges[1])
+                || (sy == 0 && edges[2])
+                || (sy == SCALE - 1 && edges[3]);
+            let at = start + (sx * 4) as usize;
+            out[at..at + 4].copy_from_slice(if on_edge { &rim } else { &fill });
         }
     }
 }
 
 /// The colour a cell is filled with, before its membrane is drawn.
-fn cell_colour(sim: &Simulation<Running>, id: CellId, view: View) -> LinearRgba {
+pub fn cell_colour(sim: &Simulation<Running>, id: CellId, view: View) -> LinearRgba {
     let Some(fate) = sim.fate(id) else {
         return NECROTIC;
     };
@@ -208,7 +232,7 @@ pub fn clone_colour(clone: CloneId) -> LinearRgba {
         return LinearRgba::rgb(0.10, 0.20, 0.42);
     }
     let hue = (f64::from(clone.0) * 137.507_764).rem_euclid(360.0) as f32;
-    Color::hsl(hue, 0.9, 0.55).to_linear()
+    Color::hsl(hue, 0.85, 0.45).to_linear()
 }
 
 /// A dark-to-bright scale for a value between zero and one: violet, red,

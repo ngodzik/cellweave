@@ -74,8 +74,12 @@ fn work(job: Work) -> Outcome {
 #[derive(Resource)]
 pub struct Runner {
     stage: Stage,
-    /// The canvas is out of date.
-    fresh: bool,
+    /// Counts every change to what the simulation shows: each batch back from
+    /// the pool, each restart. Anything drawn from the simulation remembers
+    /// the generation it drew, and draws again when this moves on.
+    generation: u64,
+    /// The generation the last restart began.
+    restarts_at: u64,
     /// Nothing is stepped while set, except one step when asked.
     pub paused: bool,
     /// Take exactly one step, then wait.
@@ -101,7 +105,8 @@ impl Runner {
     pub fn new(experiment: &Experiment) -> Self {
         let mut runner = Self {
             stage: Stage::Failed,
-            fresh: true,
+            generation: 0,
+            restarts_at: 0,
             paused: false,
             step_once: false,
             steps_per_batch: 2,
@@ -122,7 +127,8 @@ impl Runner {
         self.clone_history.clear();
         self.clones.clear();
         self.rate = 0.0;
-        self.fresh = true;
+        self.generation += 1;
+        self.restarts_at = self.generation;
         match Simulation::new(experiment.scenario.clone(), &experiment.spec) {
             Ok(sim) => {
                 self.stage = Stage::Configured(sim);
@@ -149,9 +155,15 @@ impl Runner {
             || (matches!(self.stage, Stage::Busy(_)) && self.history.is_empty())
     }
 
-    /// Whether the canvas needs painting, clearing the flag.
-    pub fn take_fresh(&mut self) -> bool {
-        std::mem::take(&mut self.fresh)
+    /// Which state of the simulation is the current one; see the field.
+    pub fn generation(&self) -> u64 {
+        self.generation
+    }
+
+    /// Whether the run was restarted since `seen`, rather than stepped: a
+    /// census of the population then starts from nothing.
+    pub fn restarted_since(&self, seen: u64) -> bool {
+        self.restarts_at > seen
     }
 
     /// Halve the history, in both series together so they stay aligned.
@@ -246,7 +258,7 @@ pub fn collect(mut runner: ResMut<Runner>) {
             runner.stopped = Some(format!("The run failed: {e}"));
         }
     }
-    runner.fresh = true;
+    runner.generation += 1;
 }
 
 /// Hand the simulation to the pool, if there is something for it to do.

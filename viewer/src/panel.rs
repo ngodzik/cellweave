@@ -41,7 +41,9 @@ pub fn draw(
                 ui.colored_label(colour(paint::QUIESCENT), why);
             }
             ui.separator();
-            ui.weak("Space pause · N step · R restart · drag to turn · scroll to zoom");
+            ui.weak(
+                "Space pause · N step · R restart · H relief · A spin · drag to turn · scroll to zoom",
+            );
         });
     Ok(())
 }
