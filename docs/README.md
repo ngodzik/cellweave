@@ -36,6 +36,7 @@ flowchart LR
     c4 --> cpm
     c5["5. two tissues"] --> cfg["crates/core/src/types.rs<br/>OxygenSource"]
     c5 --> ex["examples/*.toml"]
+    c5 --> mea["crates/engine/src/measure.rs<br/>Measurements"]
 ```
 
 The README at the root of the repository says what works and what does not today. This course says why.

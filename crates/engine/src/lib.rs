@@ -7,11 +7,13 @@
 
 pub mod coupling;
 pub mod cpm;
+pub mod measure;
 pub mod network;
 pub mod pde;
 pub mod simulation;
 
 pub use cpm::CpmLattice;
+pub use measure::Measurements;
 pub use network::Network;
 pub use pde::ScalarField;
 pub use simulation::{Fate, Scenario, Simulation};

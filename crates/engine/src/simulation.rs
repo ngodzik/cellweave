@@ -451,7 +451,7 @@ impl Simulation<Running> {
             })
             .collect();
         SimSnapshot {
-            mcs: self.next_mcs.saturating_sub(1),
+            mcs: self.last_mcs(),
             cells,
         }
     }
@@ -486,6 +486,12 @@ impl<S: SimState> Simulation<S> {
         };
         (0..w).any(|x| is_cell(x, 0) || is_cell(x, h - 1))
             || (0..h).any(|y| is_cell(0, y) || is_cell(w - 1, y))
+    }
+
+    /// Index of the step last taken, which labels what is read off the
+    /// simulation now. Zero before the first step as well as after it.
+    pub(crate) fn last_mcs(&self) -> u64 {
+        self.next_mcs.saturating_sub(1)
     }
 
     /// What this simulation was asked to be.

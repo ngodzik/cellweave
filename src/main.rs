@@ -14,8 +14,8 @@
 
 use anyhow::{Context, Result};
 use cellweave_core::traits::SimOutput;
-use cellweave_engine::Simulation;
-use cellweave_io::{JsonOutput, SimConfig};
+use cellweave_engine::{Measurements, Simulation};
+use cellweave_io::{JsonOutput, MeasurementLog, SimConfig};
 
 fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
@@ -51,6 +51,7 @@ fn run(config: SimConfig, config_path: Option<&str>) -> Result<()> {
     );
 
     let mut output = JsonOutput::new(&config.output_dir).context("creating output directory")?;
+    let mut log = MeasurementLog::new(&config.output_dir)?;
 
     // The hypothesis under test, read from a file rather than compiled in.
     let spec = config.load_network(config_path)?;
@@ -67,8 +68,14 @@ fn run(config: SimConfig, config_path: Option<&str>) -> Result<()> {
     let (mut sim, warmup) = Simulation::new(config.scenario(), &spec)?.start()?;
     eprintln!("  initial field settled in {warmup} steps");
 
+    // Every step is measured, and the measurements kept, so that a rate can
+    // be read off any window of the run once it is over.
+    let mut measured = Vec::new();
     for _ in 0..config.mcs {
         let step = sim.step()?;
+        let m = sim.measure();
+        log.record(&m)?;
+        measured.push(m);
 
         // The moment tissue touches the edge of the box, the box is deciding
         // what the tissue sees. Stop, and say so.
@@ -99,6 +106,35 @@ fn run(config: SimConfig, config_path: Option<&str>) -> Result<()> {
     }
 
     output.finalize()?;
+    log.finish()?;
+    if let Some(summary) = summarise(&measured) {
+        eprintln!("{summary}");
+    }
     eprintln!("done.");
     Ok(())
+}
+
+/// What the run came to, in a few lines: the shape the tissue ended in, and
+/// how fast it was turning over in the second half of the run, which leaves
+/// out the growth from a single cell.
+fn summarise(measured: &[Measurements]) -> Option<String> {
+    let last = measured.last()?;
+    let first = &measured[measured.len() / 2];
+    let span = (last.mcs - first.mcs).max(1) as f64;
+    let per_hundred = |n: u64| 100.0 * n as f64 / span;
+    Some(format!(
+        "at MCS {}: {} cycling, {} quiescent, {} necrotic\n  \
+         tissue radius {:.1} px, necrotic radius {:.1} px, viable depth {:.1} px\n  \
+         from MCS {}: {:.1} births and {:.1} resorptions per 100 MCS",
+        last.mcs,
+        last.cycling,
+        last.quiescent,
+        last.necrotic,
+        last.tissue_radius,
+        last.necrotic_radius,
+        last.viable_depth,
+        first.mcs,
+        per_hundred(last.born - first.born),
+        per_hundred(last.gone - first.gone),
+    ))
 }
