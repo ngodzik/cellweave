@@ -27,6 +27,15 @@ updates:
     groups:
       minor-and-patch:
         update-types: [minor, patch]
+    ignore:
+      # egui_plot has to draw with the egui that bevy_egui hands it, and each
+      # of its minor releases moves to the next egui. Raised on its own, it
+      # brings a second egui whose colours and widgets the first refuses, and
+      # the viewer stops compiling (#30). Its patch releases still come. Raise
+      # its minor version by hand, in the same change as the bevy_egui release
+      # that moves to the same egui.
+      - dependency-name: egui_plot
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
 
   # The actions in the workflows are dependencies too, and the ones that go
   # stale quietly are the ones nobody thinks of.
