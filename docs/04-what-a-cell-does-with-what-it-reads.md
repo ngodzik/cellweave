@@ -8,7 +8,7 @@ A cell in a tissue is in one of a few states, and oxygen is one of the main thin
 
 **Proliferating.** Enough oxygen, enough growth signal: the cell runs its cycle, grows, and divides. At the end of the cycle it splits into two daughters, each with a copy of its chromosomes and, roughly, half of everything else.
 
-**Quiescent.** Alive, metabolising, holding its place, but not cycling. Hypoxia arrests the cell cycle well before it kills, through HIF-1α and the proteins it switches on. Quiescent cells are a large part of any tumour, and they are the ones chemotherapy, which targets dividing cells, tends to miss.
+**Quiescent.** Alive, metabolising, holding its place, but not cycling. Hypoxia arrests the cell cycle well before it kills, through HIF-1α and the proteins it switches on. Quiescent cells are a large part of any tumour.
 
 **Necrotic.** Dead by energy failure, as in chapter 2. The membrane gives way, the contents spill, and what is left is cleared over days by the body's scavenger cells. In a tumour, necrosis is what fills the space beyond the reach of oxygen.
 
@@ -78,4 +78,4 @@ flowchart LR
 
 ## Still a placeholder
 
-All three thresholds, the growth coefficient 1.5, the division ratio 1.4, the check every twenty steps, and the resorption rate. Growth is fast: a cell doubles in about twenty steps at full oxygen, and with the clocks as they are that is a compressed but consistent day. Only one kind of death exists; apoptosis, the programmed kind, is what a drug would trigger, and it is not here. Unless the configuration sets a mutation rate, a daughter is an exact copy, and there is nothing for selection to act on; chapter 6 is what happens when it does.
+All three thresholds, the growth coefficient 1.5, the division ratio 1.4, the check every twenty steps, and the resorption rate. Growth is fast: a cell doubles in about twenty steps at full oxygen, and with the clocks as they are that is a compressed but consistent day. Only one kind of death exists; apoptosis, the programmed kind that a cell starts itself, is not here. Unless the configuration sets a mutation rate, a daughter is an exact copy, and there is nothing for selection to act on; chapter 6 is what happens when it does.

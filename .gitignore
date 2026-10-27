@@ -22,3 +22,5 @@ target
 
 # Simulation output
 output/
+# and what each example writes, under a name of its own
+output-*/

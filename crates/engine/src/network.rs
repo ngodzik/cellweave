@@ -477,7 +477,6 @@ mod tests {
             egf: Concentration(egf),
             vegf: Concentration(0.0),
             crowding: Concentration(0.0),
-            drugs: vec![],
         }
     }
 

@@ -35,7 +35,7 @@ What is a placeholder today, gathered from the chapters:
 ## What is not there
 
 - **Only oxygen and crowding are coupled.** Growth factor is the same hardcoded input for every cell. VEGF is computed and goes nowhere: nothing is secreted into the field.
-- **Only necrosis.** Apoptosis, the programmed death a drug would trigger, does not exist.
+- **Only necrosis.** Apoptosis, the programmed death a cell starts itself, does not exist.
 - **Two dimensions.** A tissue here is a monolayer. In three dimensions a sphere starves at a different radius than a disc, and a cell has a dozen neighbours rather than six; the mechanisms are the same, the numbers are not.
 - **Tumour and normal tissue never meet.** Normal tissue exists as a sheet that renews itself (chapter 7), and a tumour grows from one cell in a box of its own. Nothing yet puts a tumour inside an epithelium, which is where most cancers start.
 - **Only the field is parallel.** The Monte Carlo step, which moves the pixels, runs on one core. It draws its proposals from one random sequence, and splitting it would change which run a seed names.
