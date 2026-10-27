@@ -22,6 +22,8 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Clone** (6). Every cell descended from one mutated ancestor with no further mutation in between. The first cell founds clone 0.
 
+**Convergent evolution** (6). The same outcome reached through different changes. Seven evolving cords out of eight outgrew their steady state, by at least three routes.
+
 **Cord, tumour cord** (5). Tumour tissue living around a vessel out to the depth oxygen reaches, dead beyond. A steady state with turnover.
 
 **Determinism** (1, 7). The same seed gives the same simulation, byte for byte. Checked on every push.

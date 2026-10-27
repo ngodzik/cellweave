@@ -150,7 +150,7 @@ The run itself ends with the same in three lines, the turnover taken over the se
 
 `crates/engine/src/measure.rs`: `Measurements`, and `Simulation::measure`, which reads the lattice and the fates and draws nothing, so measuring a run does not change it. `crates/io/src/output.rs`: `MeasurementLog`, the table.
 
-`crates/core/src/types.rs`: `OxygenSource`, bath or vessel with a radius. `crates/io/src/config.rs`: `oxygen_uptake`, and `SimConfig::scenario`, which turns a configuration into what the engine runs.
+`crates/core/src/types.rs`: `OxygenSource`, bath or vessel with a radius. `crates/io/src/config.rs`: `oxygen_uptake`, `seed`, and `SimConfig::scenario`, which turns a configuration into what the engine runs. The command line's `--seed` and `--output` run one configuration under another seed, somewhere else, without editing it.
 
 `examples/spheroid.toml` and `examples/cord.toml`: the two configurations, run twice each by CI and compared byte for byte.
 

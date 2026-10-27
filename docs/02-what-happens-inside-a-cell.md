@@ -115,6 +115,8 @@ also removes a way to be wrong: adjusting a rate in the healthy network without
 adjusting the copy would leave two runs differing by two things, and the
 comparison would mean nothing.
 
+Run against the healthy network in the cord of chapter 5, under the same seed for 3000 steps, the prediction written beforehand was that RAS stuck on would not change the cord's depth, since oxygen sets it, and would raise its turnover. Both halves were wrong. Over the second half of the runs the viable depth averages 61.3 pixels against 54.0, the two ranges not overlapping, and births fall from 38.5 to 31.2 per hundred steps. The reason is in the network: ERK also feeds BCL2, the survival protein. With RAS on, ERK sits at 0.56 rather than 0.33, survival collapses later, and the last living cells sit in 3.1 percent of the vessel's oxygen rather than 5.8. The mutation does not make the cord grow faster; it makes its cells die deeper. A pro-survival effect of the growth pathway is real biology, and here it came out of a link written for another reason.
+
 A node whose name appears in both **replaces** the inherited one whole, rather
 than merging term by term. Replacing is the more predictable of the two: what a
 node is, after the override, is written in one place. A new name is appended,

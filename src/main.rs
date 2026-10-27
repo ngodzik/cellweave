@@ -3,7 +3,7 @@
 //! Usage:
 //!
 //! ```text
-//! cellweave [--config <path>] [--mcs <n>]
+//! cellweave [--config <path>] [--mcs <n>] [--seed <n>] [--output <dir>]
 //! cellweave --version
 //! ```
 //!
@@ -39,6 +39,14 @@ fn main() -> Result<()> {
     // --mcs override.
     if let Some(w) = args.windows(2).find(|w| w[0] == "--mcs") {
         config.mcs = w[1].parse().context("--mcs must be an integer")?;
+    }
+    // --seed and --output, so that one configuration can be run under many
+    // seeds side by side without editing it.
+    if let Some(w) = args.windows(2).find(|w| w[0] == "--seed") {
+        config.seed = w[1].parse().context("--seed must be an integer")?;
+    }
+    if let Some(w) = args.windows(2).find(|w| w[0] == "--output") {
+        config.output_dir = w[1].clone();
     }
 
     run(config, config_path)
