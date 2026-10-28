@@ -333,6 +333,8 @@ pub struct Simulation<S: SimState> {
     next_mcs: u64,
     born: u64,
     gone: u64,
+    /// Cells a growing vessel took every pixel of.
+    crushed: u64,
     _state: PhantomData<S>,
 }
 
@@ -616,6 +618,7 @@ impl Simulation<Configured> {
             next_mcs: 0,
             born: cells as u64,
             gone: 0,
+            crushed: 0,
             _state: PhantomData,
         })
     }
@@ -661,6 +664,7 @@ impl Simulation<Configured> {
             next_mcs: self.next_mcs,
             born: self.born,
             gone: self.gone,
+            crushed: self.crushed,
             _state: PhantomData,
         };
         Ok((running, sweeps))
@@ -866,6 +870,7 @@ impl Simulation<Running> {
                 if crushed {
                     self.lattice.set_kind(id, CellKind::Necrotic);
                     self.lives.left(i);
+                    self.crushed += 1;
                 }
             }
         }
@@ -1362,6 +1367,12 @@ impl<S: SimState> Simulation<S> {
     pub fn gone(&self) -> u64 {
         self.gone
     }
+
+    /// Cells a growing vessel left with no pixel at all, which died of it.
+    /// Counted among the gone once resorbed, which is at once.
+    pub fn crushed(&self) -> u64 {
+        self.crushed
+    }
 }
 
 /// The decay rate that gives VEGF the reach a scenario states.
@@ -1389,6 +1400,7 @@ fn cell_of(i: usize) -> CellId {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cellweave_core::InTheWay;
 
     fn spec() -> NetworkSpec {
         toml::from_str(include_str!("../../../examples/networks/ras-erk.toml"))
@@ -1762,6 +1774,7 @@ mod tests {
                 reach: 15.0,
                 perfusion: Perfusion::AtOnce,
                 regress_after: None,
+                in_the_way: InTheWay::Crushed,
             }),
             width: 100,
             height: 100,
@@ -1842,6 +1855,7 @@ mod tests {
                 reach,
                 perfusion: Perfusion::AtOnce,
                 regress_after: None,
+                in_the_way: InTheWay::Crushed,
             });
             assert!(refused(s, &spec()), "speed {speed}, reach {reach}");
         }

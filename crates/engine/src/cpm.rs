@@ -250,6 +250,89 @@ impl CpmLattice {
         }
     }
 
+    /// Fill a disc with obstacle, pushing the cells in it aside rather than
+    /// taking their pixels.
+    ///
+    /// The disc's cell pixels are shoved one at a time, the nearest to the
+    /// centre first. Each moves one pixel outward, along the line from the
+    /// centre through it, and so does every cell pixel beyond it on that
+    /// line, up to the first pixel of medium, which the last of them fills.
+    /// No cell changes size. The centre itself is shoved along `heading`, the
+    /// way the disc is moving. A pixel whose line meets an obstacle or the
+    /// edge of the box before any medium cannot be shoved, and is taken off
+    /// its cell as [`CpmLattice::add_obstacle_disc`] takes it. Returns how
+    /// many pixels were taken.
+    pub fn push_obstacle_disc(&mut self, centre: Pos2, radius: u32, heading: (f64, f64)) -> u32 {
+        let (cx, cy) = (i64::from(centre.x), i64::from(centre.y));
+        let r2 = i64::from(radius * radius);
+        let rows = centre.y.saturating_sub(radius)..(centre.y + radius + 1).min(self.height);
+        let cols = centre.x.saturating_sub(radius)..(centre.x + radius + 1).min(self.width);
+        let mut disc: Vec<(i64, i64)> = rows
+            .flat_map(|y| cols.clone().map(move |x| (i64::from(x), i64::from(y))))
+            .filter(|&(x, y)| (x - cx).pow(2) + (y - cy).pow(2) <= r2)
+            .collect();
+        // Stable, so that pixels as near as each other go in reading order.
+        disc.sort_by_key(|&(x, y)| (x - cx).pow(2) + (y - cy).pow(2));
+        let mut taken = 0;
+        for (x, y) in disc {
+            let id = self.grid[[y as usize, x as usize]];
+            if id == OBSTACLE {
+                continue;
+            }
+            let direction = if (x, y) == (cx, cy) {
+                heading
+            } else {
+                ((x - cx) as f64, (y - cy) as f64)
+            };
+            if id != 0 && !self.shove((x, y), direction) {
+                self.cells[id as usize].volume.0 -= 1;
+                taken += 1;
+            }
+            self.grid[[y as usize, x as usize]] = OBSTACLE;
+        }
+        taken
+    }
+
+    /// Move the cell pixel at `from`, and every cell pixel beyond it along
+    /// `direction`, one pixel further, into the first pixel of medium on the
+    /// way. The line steps one pixel at a time along its longer axis. Leaves
+    /// `from` holding what it held, about to be overwritten, and returns
+    /// whether medium was found before an obstacle or the edge of the box.
+    fn shove(&mut self, from: (i64, i64), direction: (f64, f64)) -> bool {
+        let longer = direction.0.abs().max(direction.1.abs());
+        if !(longer.is_finite() && longer > 0.0) {
+            return false;
+        }
+        let (sx, sy) = (direction.0 / longer, direction.1 / longer);
+        let at = |k: i64| {
+            (
+                from.0 + (k as f64 * sx).round() as i64,
+                from.1 + (k as f64 * sy).round() as i64,
+            )
+        };
+        let inside = |(x, y): (i64, i64)| {
+            x >= 0 && y >= 0 && x < i64::from(self.width) && y < i64::from(self.height)
+        };
+        let mut end = 1;
+        loop {
+            let pixel = at(end);
+            if !inside(pixel) {
+                return false;
+            }
+            match self.grid[[pixel.1 as usize, pixel.0 as usize]] {
+                0 => break,
+                OBSTACLE => return false,
+                _ => end += 1,
+            }
+        }
+        for k in (1..=end).rev() {
+            let (to, behind) = (at(k), at(k - 1));
+            self.grid[[to.1 as usize, to.0 as usize]] =
+                self.grid[[behind.1 as usize, behind.0 as usize]];
+        }
+        true
+    }
+
     /// Give an obstacle pixel back to the medium, where a vessel was taken
     /// back, for cells to move into. Any other pixel is left as it is.
     pub fn clear_obstacle(&mut self, x: u32, y: u32) {
@@ -833,6 +916,75 @@ mod tests {
             lat.volume(alive).unwrap().0 > 200,
             "the living cell should have spread"
         );
+        assert!(records_match_grid(&lat));
+    }
+
+    #[test]
+    fn a_disc_pushed_into_tissue_moves_cells_aside_and_keeps_every_size() {
+        // Three cells side by side, with medium all around them.
+        let mut lat = CpmLattice::new(60, 60, 10.0).unwrap();
+        let ids: Vec<CellId> = (0..3)
+            .map(|k| {
+                lat.add_block(
+                    CellKind::Tumor,
+                    Pos2 {
+                        x: 15 + 10 * k,
+                        y: 25,
+                    },
+                    10,
+                    10,
+                )
+            })
+            .collect();
+        let sizes = |lat: &CpmLattice| -> Vec<u32> {
+            ids.iter().map(|&id| lat.volume(id).unwrap().0).collect()
+        };
+        let before = sizes(&lat);
+        let medium = |lat: &CpmLattice| lat.grid.iter().filter(|&&p| p == 0).count();
+        let free = medium(&lat);
+
+        let taken = lat.push_obstacle_disc(Pos2 { x: 30, y: 30 }, 2, (1.0, 0.0));
+        assert_eq!(taken, 0, "there was room to push into");
+        assert_eq!(sizes(&lat), before, "no cell lost a pixel");
+        assert!(records_match_grid(&lat));
+        let disc = lat.grid.iter().filter(|&&p| p == OBSTACLE).count();
+        assert_eq!(disc, 13, "a disc of radius two");
+        assert_eq!(medium(&lat), free - 13, "what was pushed filled the medium");
+    }
+
+    #[test]
+    fn a_pixel_with_nothing_free_beyond_it_is_taken() {
+        // One cell filling the box: nowhere to push it.
+        let mut lat = CpmLattice::new(20, 20, 10.0).unwrap();
+        let id = lat.add_block(CellKind::Tumor, Pos2 { x: 0, y: 0 }, 20, 20);
+        let taken = lat.push_obstacle_disc(Pos2 { x: 10, y: 10 }, 2, (1.0, 0.0));
+        assert_eq!(taken, 13);
+        assert_eq!(lat.volume(id).unwrap().0, 400 - 13);
+        assert!(records_match_grid(&lat));
+    }
+
+    #[test]
+    fn a_push_stops_at_an_obstacle_and_takes_the_pixel_instead() {
+        // One cell from x = 3 to 19, a wall at x = 20, medium on both sides
+        // of the pair. Pushed from a disc at (16, 10): every line to the
+        // right meets the wall, the vertical and diagonal ones the edge of
+        // the box, and only the two leftward along the row reach medium.
+        let mut lat = CpmLattice::new(40, 20, 10.0).unwrap();
+        for y in 0..20 {
+            lat.add_obstacle_disc(Pos2 { x: 20, y }, 0);
+        }
+        let id = lat.add_block(CellKind::Tumor, Pos2 { x: 3, y: 0 }, 17, 20);
+        let left = |lat: &CpmLattice| {
+            (0..20)
+                .flat_map(|y| (0..3).map(move |x| (x, y)))
+                .filter(|&(x, y)| lat.occupant(x, y) == 0)
+                .count()
+        };
+        let free = left(&lat);
+        let taken = lat.push_obstacle_disc(Pos2 { x: 16, y: 10 }, 2, (1.0, 0.0));
+        assert_eq!(taken, 11);
+        assert_eq!(lat.volume(id).unwrap().0, 17 * 20 - 11);
+        assert_eq!(left(&lat), free - 2, "the two pushed went left");
         assert!(records_match_grid(&lat));
     }
 }
