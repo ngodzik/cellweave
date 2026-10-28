@@ -50,7 +50,7 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Crowding** (7). How squeezed a cell is: how far below its reference size it sits, as a fraction of it. An input every network can read, like oxygen.
 
-**Determinism** (1, 9, 14, 16, 21). The same seed gives the same simulation, byte for byte. Checked on every push.
+**Determinism** (1, 9, 14, 16, 22). The same seed gives the same simulation, byte for byte. Checked on every push.
 
 **Differentiation** (7). A cell giving up dividing to become a specialised cell. In an epithelium, a basal cell that commits leaves the layer. Here, a chance per step set by the network's differentiation node.
 
@@ -66,7 +66,7 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **EGF** (2). Epidermal growth factor, the growth signal. A hardcoded input for every cell today.
 
-**Emergence** (6, 7, 12, 14, 20, 21). Behaviour that follows from the model without any rule naming it. The necrotic core, the compact cell, the cord's thickness.
+**Emergence** (6, 7, 12, 14, 20, 22). Behaviour that follows from the model without any rule naming it. The necrotic core, the compact cell, the cord's thickness.
 
 **Endothelial cell** (14). A cell of the thin layer that lines every blood vessel. The cells that sprout.
 
@@ -146,7 +146,7 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Proliferating** (4). Alive, cycling, dividing. The default fate under enough oxygen.
 
-**Pruning** (16). A vessel network removing some of its segments, usually those carrying the least blood, after growing more than it keeps.
+**Pruning** (16, 21). A vessel network removing some of its segments, usually those carrying the least blood, after growing more than it keeps.
 
 **Public good** (15). Something everyone nearby can use and nobody can keep to themselves, such as a factor a cell secretes into the space around it.
 
@@ -180,7 +180,7 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Sister fates, r** (12). What the two cells of one division do next. r is the chance both divide, which equals the chance both leave; a quarter if sisters were independent, below a quarter when they tend to do opposite things, as in the mouse and in the sheet.
 
-**Snapshot** (4, 21). A file listing every living cell's state and the oxygen it reads, one per interval.
+**Snapshot** (4, 22). A file listing every living cell's state and the oxygen it reads, one per interval.
 
 **SOR** (3). Successive over-relaxation, the sweep that solves for a steady state in about L passes rather than L².
 

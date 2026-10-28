@@ -35,7 +35,8 @@ Chapters build on each other and are meant to be read in order the first time.
 | 18 | [A capillary in the plane](18-a-capillary-in-the-plane.md) | What does a tumour do against a vessel lying across the tissue rather than one seen end on, and can it make blood flow? |
 | 19 | [Blood that flows](19-blood-that-flows.md) | When blood goes only where pressure drives it, how much of a tumour's new vessel carries any, and what does the tumour make of it? |
 | 20 | [What blood delivers](20-what-blood-delivers.md) | When a vessel delivers oxygen in proportion to the blood through it, what does a tumour make of vessels that carry little? |
-| 21 | [What the model does not say](21-what-the-model-does-not-say.md) | The placeholders, the missing units, and why emergence is the whole point. |
+| 21 | [Pruned by the flow](21-pruned-by-the-flow.md) | When vessels carrying too little blood are pruned, as real networks prune them, does the network shrink, and does the tumour lose by it? |
+| 22 | [What the model does not say](22-what-the-model-does-not-say.md) | The placeholders, the missing units, and why emergence is the whole point. |
 | | [Glossary](glossary.md) | Every word, in one place. |
 
 ## How the chapters map onto the code
@@ -83,6 +84,7 @@ flowchart LR
     c19 --> ves
     c20["20. what blood<br/>delivers"] --> cpl
     c20 --> flo
+    c21["21. pruned<br/>by the flow"] --> ves
 ```
 
 The README at the root of the repository says what works and what does not today. This course says why.

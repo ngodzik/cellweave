@@ -1,0 +1,25 @@
+# capillary-delivery.toml, with sprouts that regress after 100 steps
+# carrying no blood (chapters 16 and 21). The twin of capillary-pruning.toml,
+# which also prunes the ones carrying too little. Everything else is
+# capillary-delivery.toml.
+
+width = 300
+height = 300
+mcs = 1500
+temperature = 10.0
+snapshot_interval = 100
+output_dir = "output-capillary-regressing"
+oxygen_uptake = 0.0001
+network = "networks/ras-erk.toml"
+
+[oxygen_source]
+kind = "capillary"
+radius = 3
+
+[angiogenesis]
+threshold = 0.3
+speed = 1.0
+reach = 30.0
+perfusion = "flow"
+half_delivery_flow = 0.1
+regress_after = 100
