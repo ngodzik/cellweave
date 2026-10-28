@@ -144,6 +144,8 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Resorption** (4). Dead tissue being cleared. Two pixels per step here.
 
+**Reversion** (13). Undoing a clone's mutation at one step, in every cell carrying it, as switching a gene back does in an experiment. The run is the real one until that step.
+
 **Rewiring** (6). A mutation that changes which terms a network has rather than how strong one is: a node loses a term, or gains a link to an input or another node.
 
 **RK4** (2). Fourth order Runge-Kutta, the scheme that advances the network's equations.

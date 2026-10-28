@@ -188,6 +188,7 @@ mod tests {
             seeding: Default::default(),
             exposure: None,
             lesion: None,
+            revert: None,
         }
     }
 

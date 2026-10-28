@@ -35,6 +35,7 @@ fn exposed(exposure: Option<Exposure>) -> Scenario {
         seeding: Default::default(),
         exposure,
         lesion: None,
+        revert: None,
     }
 }
 

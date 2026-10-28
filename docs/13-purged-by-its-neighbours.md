@@ -81,6 +81,28 @@ All three held. There is a window. A lesion barely fitter than normal cells is l
 
 That is Colom and colleagues' conclusion, reached in the model from the other side: whether an early tumour survives depends on its fitness relative to the clones around it, not on its fitness alone. And it adds what the mice could not show directly: the same lesion, in the same tissue with the same luck, survives or is lost depending only on whether the clones around it carry their mutations.
 
+### Who purged it
+
+Which of those clones? Suppressing a neighbour's mutation from its birth, as chapter 9 does, would not answer it: the mutation was made hundreds of steps before the lesion, and without it the whole sheet would be different by the time the lesion came. So the question is put the way an experiment on mice would put it, by switching the gene back. A scenario may now carry a `Reversion`: at one step, every living cell whose lineage passes through the named clones has those clones' mutations undone, its network rebuilt from the network its lineage started from with every mutation made since but those (`Network` replays a recorded mutation exactly), keeping the protein levels it had. `clones.json` says when, as `reverted_at`. Until that step the run is the real one to the last bit; after it, it differs by those cells and by what they then do.
+
+`cellweave --attribute`, on a configuration with a lesion, runs the real history and notes every clone with a living cell next to a living cell of the lesion while it lived. The candidates are the mutations in those clones' lineages that were acting when the lesion appeared. Each is undone at that step, alone, and then all of them at once, each run on its own core, and for each the table says whether the history stayed identical to the last bit and, if not, what became of the lesion.
+
+The predictions, written before any code, for the strong lesion of the previous section in the first three seeds where it is lost, 1, 2 and 3: undoing all the candidates at once saves it in at least 2 of the 3; in at least 2 of the 3 one single candidate saves it, and every candidate that does carries a NOTCH change that lowers or removes its baseline; and about one candidate per seed leaves the history identical to the last bit, none of them a change to NOTCH, RAS or ERK.
+
+```bash
+cellweave --config examples/epithelium-lesion-strong.toml --seed 3 --attribute
+```
+
+| seed | the lesion, real history | undoing one candidate | undoing all at once |
+|---|---|---|---|
+| 1 | lost at step 5139 | 6 of 8 identical to the last bit (three VEGF changes, one BCL2, one HIF-1α, and a link gained by ERK); the two clones that lost NOTCH's baseline, undone one at a time: still lost, earlier, at 4276 and 4446 | 28 cells at step 5999 |
+| 2 | lost at step 4863 | two clones, both having lost NOTCH's baseline; undone one at a time: still lost, later, at 4980 and 5735 | 24 cells |
+| 3 | lost at step 5746 | clone 436, NOTCH decaying 1.94 times as fast, 52 cells: **saved**, 33 cells at the end; clone 502, NOTCH answering crowding 1.77 times as strongly: saved, 4 cells; 3 of 5 identical (VEGF, BCL2, and a small NOTCH change in a clone of 2 cells) | 29 cells |
+
+The first prediction held: undoing everything that touched the lesion saved it every time. The second failed. Only in seed 3 did one clone decide its fate, a clone keeping NOTCH low; a second rescue there came from a clone answering crowding more strongly, not one with a lower baseline. In seeds 1 and 2 no one clone did it. Each NOTCH-loss neighbour was enough without the others: undo one, and the rest still pushed the lesion out, in seed 1 even sooner than in the real history. The purge was collective, and redundant. The third held on the count, three identical candidates per seed on average, and failed on its clause: a link gained by ERK, and a small NOTCH change in a clone of two cells, were passengers too. Without pressing, a stronger growth signal buys a cell nothing (chapter 11), so an ERK change can do nothing at all.
+
+The passengers are shown, as in chapter 9, rather than inferred: undo them, and every measurement at every step and every pixel at the end come out the same.
+
 ## Choices, and why
 
 **A lesion is placed, not evolved.** Waiting for a tumour to arise by mutation in the sheet would make its fitness, its place and its timing different in every history, and the question is about the neighbours. Placing one, with a fitness stated in a file, at a step and a place the configuration fixes, keeps the lesion the same and lets the tissue around it vary.
@@ -91,11 +113,17 @@ That is Colom and colleagues' conclusion, reached in the model from the other si
 
 **A clean sheet by suppression, not by a lower mutation rate.** Running the clean sheet with no mutation would draw different numbers from the first division on, and the two sheets would differ everywhere for reasons that have nothing to do with mutant clones. Drawn and not made, the mutations leave the sheet's luck alone.
 
+**Undone at the lesion's step, not suppressed from birth.** Suppression asks what the tissue would have become without a mutation; undoing it at the lesion's step asks what the clones around the lesion, as they are, do to it. Only the second keeps the lesion's surroundings the same up to the moment it appears, which is what makes a difference afterwards attributable to that clone.
+
+**Candidates from contact.** Colom and colleagues put the competition in the epithelium next to the tumour. A clone that never touched the lesion can still matter, by pushing on a clone that does; it is left out, and undoing all candidates at once saving the lesion every time says the candidates were enough.
+
 **A second set of predictions, said to be one.** The first set failed, and the lesion's bias was then varied. That is the experiment the failure called for, and its predictions were written before it ran; the first lesion is kept as the one the chapter started with.
 
 ## Where in the code
 
 `crates/engine/src/simulation.rs`: `Lesion`, the `lesion` field of `Scenario`, and where a step places it; `suppress_before`, read where a division founds a clone. `crates/engine/src/evolution.rs`: the `lesion` field of `CloneRecord`, `Simulation::lesion_cells`, `Simulation::in_lesion`. `crates/engine/src/measure.rs`: the `lesion` column. `crates/io/src/config.rs`: `LesionConfig`, read next to the configuration. `crates/io/tests/lesion.rs`: that a lesion turns the cells at the centre into one clone at its step and not before, that one which never comes changes nothing, and that it needs a sheet and some room.
+
+`crates/engine/src/simulation.rs`: `Reversion`, the `revert` field of `Scenario`, and where a step undoes it. `crates/engine/src/network.rs`: `Network::apply`, which replays a recorded mutation. `crates/engine/src/evolution.rs`: the `reverted_at` field of `CloneRecord`. `src/attribute.rs`: the lesion's attribution, the clones touching it, the candidates and the runs.
 
 `src/campaign.rs`: the `lesion` and `lesion_lost_at` columns of `campaign.csv`, and the lesion's line in the summary and the pairs.
 
@@ -103,4 +131,4 @@ That is Colom and colleagues' conclusion, reached in the model from the other si
 
 ## Still a placeholder
 
-The lesion's bias, four values of it; its size and its place, the centre of the box; the step it appears at, about 100 days into an ageing sheet whose mutation rate is far above a real one. A real early tumour is a three dimensional patch that grows up as well as across; this one is a patch of the basal layer and nothing else. Twenty seeds per row give counts, and where the window begins and ends depends on every placeholder of chapters 7, 11 and 12. Which of the clones around a lesion removed it, the model has not said yet.
+The lesion's bias, four values of it; its size and its place, the centre of the box; the step it appears at, about 100 days into an ageing sheet whose mutation rate is far above a real one. A real early tumour is a three dimensional patch that grows up as well as across; this one is a patch of the basal layer and nothing else. Twenty seeds per row give counts, and where the window begins and ends depends on every placeholder of chapters 7, 11 and 12. Three seeds of attribution, the candidates chosen by contact, and one step to undo them at.
