@@ -214,13 +214,14 @@ pub struct Reversion {
     pub at: u64,
 }
 
-/// A patch of a sheet whose cells, at one step, start carrying another
-/// network: an early tumour arising inside normal tissue.
+/// A patch of tissue whose cells, at one step, start carrying another
+/// network: in a sheet, an early tumour arising inside normal tissue; in a
+/// tumour, a subclone placed by hand.
 ///
-/// What makes it a tumour here is only what its network does, its cells
-/// staying in the layer, dividing or leaving, as every other cell does.
-/// That is all a lesion needs to be for the question of whether its
-/// neighbours outcompete it, which is the question it is here to ask.
+/// What sets it apart is only what its network does, its cells growing,
+/// dividing, leaving or dying as every other cell does. That is all a
+/// lesion needs to be for the questions it is here to ask: whether its
+/// neighbours outcompete it, or how much of what it does goes to them.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Lesion {
     /// The network its cells carry from the step it appears.
@@ -228,8 +229,11 @@ pub struct Lesion {
     /// The step it appears at, before anything else happens in that step.
     pub at: u64,
     /// Every living cell whose centre lies within this many pixels of the
-    /// centre of the box joins it.
+    /// lesion's centre joins it.
     pub radius: f64,
+    /// Where the lesion is centred, in pixels across and down the box; the
+    /// centre of the box when left out.
+    pub centre: Option<(f64, f64)>,
 }
 
 /// Lifecycle stage of a [`Simulation`]. Sealed: the stages are the ones below.
@@ -442,11 +446,15 @@ impl Simulation<Configured> {
         let lesion_network = match &scenario.lesion {
             None => None,
             Some(lesion) => {
-                if !matches!(scenario.seeding, Seeding::Sheet { .. }) {
-                    return Err(CellweaveError::Config(
-                        "a lesion arises in a sheet of normal tissue; this scenario has none"
-                            .into(),
-                    ));
+                let inside = |(x, y): (f64, f64)| {
+                    (0.0..=f64::from(scenario.width)).contains(&x)
+                        && (0.0..=f64::from(scenario.height)).contains(&y)
+                };
+                if lesion.centre.is_some_and(|c| !inside(c)) {
+                    return Err(CellweaveError::Config(format!(
+                        "a lesion centred at {:?} lies outside the {}x{} box",
+                        lesion.centre, scenario.width, scenario.height
+                    )));
                 }
                 if !(lesion.radius.is_finite() && lesion.radius > 0.0) {
                     return Err(CellweaveError::Config(format!(
@@ -1042,7 +1050,9 @@ impl Simulation<Running> {
             return;
         };
         let (w, h) = self.lattice.dims();
-        let (cx, cy) = (f64::from(w) / 2.0, f64::from(h) / 2.0);
+        let (cx, cy) = lesion
+            .centre
+            .unwrap_or((f64::from(w) / 2.0, f64::from(h) / 2.0));
         // Centres of mass, one pass over the lattice, indexed by cell.
         let mut sums = vec![(0.0_f64, 0.0_f64, 0_u32); self.lattice.cell_count() + 1];
         for y in 0..h {

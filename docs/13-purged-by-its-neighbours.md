@@ -21,7 +21,7 @@ at = 4000                          # the step it appears at
 radius = 15.0                      # pixels around the centre of the box
 ```
 
-At the start of step `at`, every living cell whose centre lies within `radius` pixels of the centre of the box starts carrying the lesion's network, fresh, and all of them join one new clone, marked `"lesion": true` in `clones.json`. Placing it draws nothing, so the run until then is the run without it. Only a sheet can hold one.
+At the start of step `at`, every living cell whose centre lies within `radius` pixels of the centre of the box starts carrying the lesion's network, fresh, and all of them join one new clone, marked `"lesion": true` in `clones.json`. Placing it draws nothing, so the run until then is the run without it. A lesion may also say where it is centred, `centre = [x, y]` in pixels, and chapter 15 places one in a tumour.
 
 What makes it a tumour is only its network, which is all the question needs: whether its neighbours outcompete it. `examples/networks/lesion.toml` is the no-pressing epithelium of chapter 11 with NOTCH's baseline slowed to 0.7 of its rate: its cells leave the layer on their own about a third less often than normal cells, and divide no faster, the moderate bias of an early tumour. That makes it fitter than a normal cell and less fit than a cell that has lost NOTCH's baseline altogether, the clones that cover much of the ageing sheet of chapter 11.
 
@@ -133,7 +133,7 @@ In the first, the two sheets are the same, pixel for pixel, for 4000 steps. Then
 
 ## Where in the code
 
-`crates/engine/src/simulation.rs`: `Lesion`, the `lesion` field of `Scenario`, and where a step places it; `suppress_before`, read where a division founds a clone. `crates/engine/src/evolution.rs`: the `lesion` field of `CloneRecord`, `Simulation::lesion_cells`, `Simulation::in_lesion`. `crates/engine/src/measure.rs`: the `lesion` column. `crates/io/src/config.rs`: `LesionConfig`, read next to the configuration. `crates/io/tests/lesion.rs`: that a lesion turns the cells at the centre into one clone at its step and not before, that one which never comes changes nothing, and that it needs a sheet and some room.
+`crates/engine/src/simulation.rs`: `Lesion`, the `lesion` field of `Scenario`, and where a step places it; `suppress_before`, read where a division founds a clone. `crates/engine/src/evolution.rs`: the `lesion` field of `CloneRecord`, `Simulation::lesion_cells`, `Simulation::in_lesion`. `crates/engine/src/measure.rs`: the `lesion` column. `crates/io/src/config.rs`: `LesionConfig`, read next to the configuration. `crates/io/tests/lesion.rs`: that a lesion turns the cells at the centre into one clone at its step and not before, that one which never comes changes nothing, that it needs some room inside the box, and that one placed off centre in a tumour takes the cells there.
 
 `crates/engine/src/simulation.rs`: `Reversion`, the `revert` field of `Scenario`, and where a step undoes it. `crates/engine/src/network.rs`: `Network::apply`, which replays a recorded mutation. `crates/engine/src/evolution.rs`: the `reverted_at` field of `CloneRecord`. `src/attribute.rs`: the lesion's attribution, the clones touching it, the candidates and the runs.
 

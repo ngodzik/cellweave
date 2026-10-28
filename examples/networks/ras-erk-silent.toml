@@ -1,0 +1,15 @@
+# The RAS/ERK network of ras-erk.toml, calling for no vessel at all.
+#
+# Its VEGF node is no longer made from HIF-1a and decays to nothing, so the
+# cell secretes no VEGF however starved it is. Nothing else changes: it
+# grows, arrests and dies as any other cell, and is fed by any vessel that
+# comes near it (chapter 15).
+
+extends = "ras-erk.toml"
+
+[[nodes]]
+name = "vegf"
+initial = 0.0
+terms = [
+  { kind = "decays", rate = 0.3 },
+]

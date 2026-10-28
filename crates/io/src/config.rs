@@ -97,8 +97,12 @@ pub struct LesionConfig {
     /// The step it appears at.
     pub at: u64,
     /// Every living cell whose centre lies within this many pixels of the
-    /// centre of the box joins it.
+    /// lesion's centre joins it.
     pub radius: f64,
+    /// Where the lesion is centred, `[across, down]` in pixels; the centre
+    /// of the box when left out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub centre: Option<[f64; 2]>,
 }
 
 fn default_seed() -> u64 {
@@ -146,6 +150,7 @@ impl SimConfig {
                 spec: load_network_chain(&resolve(&l.network, config_path), &mut Vec::new())?,
                 at: l.at,
                 radius: l.radius,
+                centre: l.centre.map(|[x, y]| (x, y)),
             }),
         };
         Ok(Scenario {
