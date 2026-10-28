@@ -116,6 +116,12 @@ pub struct Angiogenesis {
     /// Left out, never: a blind end stays for good.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub regress_after: Option<u64>,
+    /// With blood flowing as pressure drives it, the flow, as a share of what
+    /// the capillary alone carries, at which a vessel delivers half of what
+    /// it would at full flow, of oxygen and of anything else blood brings.
+    /// Left out, every vessel carrying blood delivers in full.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub half_delivery_flow: Option<f64>,
     /// What becomes of the cells in the way of a growing vessel. Left out,
     /// they are crushed.
     #[serde(default)]

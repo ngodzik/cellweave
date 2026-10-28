@@ -21,7 +21,7 @@ use rand::{RngExt, SeedableRng};
 
 use crate::coupling::{
     apply_background_uptake, apply_production, apply_uptake, hold_medium_bath, hold_vessels_at,
-    mean_per_cell,
+    hold_vessels_by, mean_per_cell,
 };
 use crate::cpm::{CpmLattice, OBSTACLE};
 use crate::evolution::CloneRecord;
@@ -603,6 +603,20 @@ impl Simulation<Configured> {
                             .into(),
                     ));
                 }
+                if let Some(half) = a.half_delivery_flow {
+                    if a.perfusion != Perfusion::Flow {
+                        return Err(CellweaveError::Config(
+                            "a vessel delivers in proportion to the blood through it only \
+                             when blood flows as pressure drives it; set perfusion to flow"
+                                .into(),
+                        ));
+                    }
+                    if !(half.is_finite() && half > 0.0) {
+                        return Err(CellweaveError::Config(format!(
+                            "half_delivery_flow is {half}; it must be above zero"
+                        )));
+                    }
+                }
                 if a.regress_after.is_some() && a.perfusion == Perfusion::AtOnce {
                     return Err(CellweaveError::Config(
                         "a sprout regresses when it carries no blood, and with perfusion at \
@@ -630,11 +644,17 @@ impl Simulation<Configured> {
 
         let mut vessels = Vessels::default();
         if let OxygenSource::Capillary { radius } = scenario.oxygen_source {
-            vessels.lie_along(Capillary {
-                row: capillary_row(scenario.height),
-                width: scenario.width,
-                radius,
-            });
+            let flowing = scenario
+                .angiogenesis
+                .is_some_and(|a| a.perfusion == Perfusion::Flow);
+            vessels.lie_along(
+                Capillary {
+                    row: capillary_row(scenario.height),
+                    width: scenario.width,
+                    radius,
+                },
+                flowing,
+            );
         }
 
         Ok(Self {
@@ -1214,9 +1234,18 @@ impl<S: SimState> Simulation<S> {
             OxygenSource::Bath => hold_medium_bath(field, &self.lattice, level),
             OxygenSource::Vessel { .. } | OxygenSource::Capillary { .. } => {
                 apply_background_uptake(field, &self.lattice, exposure.uptake);
-                hold_vessels_at(field, &self.lattice, level, |x, y| {
-                    self.vessels.carries_blood(x, y)
-                });
+                match self
+                    .scenario
+                    .angiogenesis
+                    .and_then(|a| a.half_delivery_flow)
+                {
+                    None => hold_vessels_at(field, &self.lattice, level, |x, y| {
+                        self.vessels.carries_blood(x, y)
+                    }),
+                    Some(half) => hold_vessels_by(field, &self.lattice, level, |x, y| {
+                        delivered(&self.vessels, x, y, half)
+                    }),
+                }
             }
         }
         let (tolerance, max_sweeps) = if level == self.stress_level {
@@ -1250,9 +1279,18 @@ impl<S: SimState> Simulation<S> {
             OxygenSource::Bath => hold_medium_bath(&mut self.oxygen, &self.lattice, 1.0),
             OxygenSource::Vessel { .. } | OxygenSource::Capillary { .. } => {
                 apply_background_uptake(&mut self.oxygen, &self.lattice, uptake);
-                hold_vessels_at(&mut self.oxygen, &self.lattice, 1.0, |x, y| {
-                    self.vessels.carries_blood(x, y)
-                });
+                match self
+                    .scenario
+                    .angiogenesis
+                    .and_then(|a| a.half_delivery_flow)
+                {
+                    None => hold_vessels_at(&mut self.oxygen, &self.lattice, 1.0, |x, y| {
+                        self.vessels.carries_blood(x, y)
+                    }),
+                    Some(half) => hold_vessels_by(&mut self.oxygen, &self.lattice, 1.0, |x, y| {
+                        delivered(&self.vessels, x, y, half)
+                    }),
+                }
             }
         }
     }
@@ -1415,6 +1453,19 @@ impl<S: SimState> Simulation<S> {
     pub fn crushed(&self) -> u64 {
         self.crushed
     }
+}
+
+/// What the vessel at `(x, y)` delivers, between zero and one, when what it
+/// delivers follows the blood through it: nothing without blood, half at a
+/// flow of `half`, as a share of what the capillary alone carries, and all
+/// of it at the capillary's own flow,
+/// $\frac{q (1 + h)}{q + h}$ for a flow $q$ and `half` $h$.
+fn delivered(vessels: &Vessels, x: u32, y: u32, half: f64) -> f64 {
+    if !vessels.carries_blood(x, y) {
+        return 0.0;
+    }
+    let q = vessels.flow_through(x, y);
+    (q * (1.0 + half) / (q + half)).min(1.0)
 }
 
 /// The row a capillary lying across the box runs along: a quarter of the way
@@ -1822,6 +1873,7 @@ mod tests {
                 reach: 15.0,
                 perfusion: Perfusion::AtOnce,
                 regress_after: None,
+                half_delivery_flow: None,
                 in_the_way: InTheWay::Crushed,
             }),
             width: 100,
@@ -1903,6 +1955,7 @@ mod tests {
                 reach,
                 perfusion: Perfusion::AtOnce,
                 regress_after: None,
+                half_delivery_flow: None,
                 in_the_way: InTheWay::Crushed,
             });
             assert!(refused(s, &spec()), "speed {speed}, reach {reach}");
@@ -2026,5 +2079,28 @@ mod tests {
         assert!(m.perfused <= m.vessel);
         let row = capillary_row(100);
         assert!(sim.carries_blood(50, row), "the capillary always does");
+    }
+
+    #[test]
+    fn delivery_by_flow_needs_flow_and_a_half_above_zero() {
+        let delivering = |perfusion: Perfusion, half: f64| {
+            let mut s = growing(0.3);
+            s.oxygen_source = OxygenSource::Capillary { radius: 2 };
+            s.angiogenesis = s.angiogenesis.map(|a| Angiogenesis {
+                perfusion,
+                half_delivery_flow: Some(half),
+                ..a
+            });
+            Simulation::new(s, &spec())
+        };
+        assert!(delivering(Perfusion::OnJoining, 0.05).is_err());
+        assert!(delivering(Perfusion::Flow, 0.0).is_err());
+        // Before anything grows, the capillary carries its own flow and
+        // delivers in full.
+        let (sim, _) = delivering(Perfusion::Flow, 0.05).unwrap().start().unwrap();
+        let row = capillary_row(100);
+        let at = |y| cellweave_core::DiffusionField::concentration_at(sim.oxygen(), 50, y);
+        assert_eq!(at(row), 1.0);
+        assert!(at(row + 12) > 0.5, "and feeds the tissue below");
     }
 }

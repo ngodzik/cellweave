@@ -108,6 +108,57 @@ pub fn hold_vessels_at(
     });
 }
 
+/// Hold every obstacle pixel at `value` times what `delivery` says it
+/// delivers there, between zero and one, where that is more than the field
+/// already holds around it; leave it free otherwise.
+///
+/// A vessel delivers in proportion to the blood running through it, so a
+/// vessel network is a source whose strength varies along it. It gives what
+/// its blood brings and takes nothing: held below the tissue around it, a
+/// vessel carrying a trickle would draw the oxygen out of the tissue as if
+/// its blood could carry any amount away. So where the pixels around a
+/// vessel pixel, as the field last stood, already hold more than it would,
+/// it is left free, as a vessel carrying no blood is. With every vessel
+/// delivering in full, and nothing richer than a vessel, this is
+/// [`hold_obstacles_at`].
+pub fn hold_vessels_by(
+    field: &mut ScalarField,
+    lattice: &CpmLattice,
+    value: f64,
+    delivery: impl Fn(u32, u32) -> f64,
+) {
+    let (w, h) = lattice.dims();
+    let mut holds = vec![None; w as usize * h as usize];
+    for y in 0..h {
+        for x in 0..w {
+            if lattice.occupant(x, y) != OBSTACLE {
+                continue;
+            }
+            let share = delivery(x, y);
+            if share <= 0.0 {
+                continue;
+            }
+            let held = value * share.min(1.0);
+            let around: Vec<f64> = [
+                (x.wrapping_sub(1), y),
+                (x + 1, y),
+                (x, y.wrapping_sub(1)),
+                (x, y + 1),
+            ]
+            .iter()
+            .filter(|&&(i, j)| i < w && j < h && lattice.occupant(i, j) != OBSTACLE)
+            .map(|&(i, j)| field.concentration_at(i, j))
+            .collect();
+            let richer =
+                !around.is_empty() && around.iter().sum::<f64>() / around.len() as f64 >= held;
+            if !richer {
+                holds[y as usize * w as usize + x as usize] = Some(held);
+            }
+        }
+    }
+    field.hold_pixels_by(|x, y| holds[y as usize * w as usize + x as usize]);
+}
+
 /// Hold the medium the bath can reach at `value`.
 ///
 /// Reachability is decided by [`ScalarField::hold_bath`]; this only says which
@@ -239,5 +290,38 @@ mod tests {
         );
         // The obstacle itself has no entry to read.
         assert_eq!(o2.len(), lat.cell_count() + 1);
+    }
+
+    #[test]
+    fn a_vessel_delivers_what_its_share_says_and_a_dry_one_nothing() {
+        let mut lat = CpmLattice::new(10, 1, 10.0).unwrap();
+        for x in 0..3 {
+            lat.add_obstacle_disc(Pos2 { x, y: 0 }, 0);
+        }
+        let mut field = ScalarField::new(10, 1, 0.2, 0.0, 0.0).unwrap();
+        hold_vessels_by(&mut field, &lat, 2.0, |x, _| [0.0, 0.5, 3.0][x as usize]);
+        assert_eq!(
+            field.concentration_at(0, 0),
+            0.0,
+            "a dry vessel is not held"
+        );
+        assert_eq!(field.concentration_at(1, 0), 1.0, "half of 2");
+        assert_eq!(field.concentration_at(2, 0), 2.0, "never more than in full");
+    }
+
+    #[test]
+    fn a_vessel_poorer_than_the_tissue_around_it_takes_nothing_from_it() {
+        let mut lat = CpmLattice::new(10, 1, 10.0).unwrap();
+        lat.add_obstacle_disc(Pos2 { x: 5, y: 0 }, 0);
+        let mut field = ScalarField::new(10, 1, 0.2, 0.0, 0.0).unwrap();
+        field.fill(0.9);
+        hold_vessels_by(&mut field, &lat, 1.0, |_, _| 0.5);
+        assert_eq!(
+            field.concentration_at(5, 0),
+            0.9,
+            "left free, not held down to half"
+        );
+        hold_vessels_by(&mut field, &lat, 1.0, |_, _| 1.0);
+        assert_eq!(field.concentration_at(5, 0), 1.0, "held where it is richer");
     }
 }

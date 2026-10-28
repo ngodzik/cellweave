@@ -295,6 +295,22 @@ impl ScalarField {
         }
     }
 
+    /// Hold every pixel `level` gives a value at that value, each its own.
+    ///
+    /// A source whose strength varies from place to place: a vessel network
+    /// that delivers more where more blood runs.
+    pub fn hold_pixels_by(&mut self, level: impl Fn(u32, u32) -> Option<f64>) {
+        for y in 0..self.height {
+            for x in 0..self.width {
+                if let Some(value) = level(x, y) {
+                    let i = self.idx(x, y);
+                    self.held[i] = true;
+                    self.values[i] = value;
+                }
+            }
+        }
+    }
+
     /// Hold every pixel a bath can reach at `value`.
     ///
     /// `is_open` answers "can the bath occupy this pixel", which in practice means
