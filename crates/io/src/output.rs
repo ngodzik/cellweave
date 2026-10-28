@@ -46,7 +46,7 @@ pub struct MeasurementLog {
 }
 
 /// The columns, in the order [`MeasurementLog::record`] writes them.
-pub const MEASUREMENT_COLUMNS: &str = "mcs,cycling,quiescent,necrotic,differentiating,apoptotic,exposure,born,gone,clones,lesion,vessel,perfused,sprouts,tissue_radius,necrotic_radius,viable_depth";
+pub const MEASUREMENT_COLUMNS: &str = "mcs,cycling,quiescent,necrotic,differentiating,apoptotic,exposure,born,gone,clones,lesion,vessel,perfused,sprouts,regressed,tissue_radius,necrotic_radius,viable_depth";
 
 impl MeasurementLog {
     /// Start the table in `dir`, which must exist, with its header row.
@@ -72,7 +72,7 @@ impl MeasurementLog {
     /// [`CellweaveError::Simulation`] when the file cannot be written.
     pub fn record(&mut self, m: &Measurements) -> Result<(), CellweaveError> {
         self.line(&format!(
-            "{},{},{},{},{},{},{:.4},{},{},{},{},{},{},{},{:.4},{:.4},{:.4}",
+            "{},{},{},{},{},{},{:.4},{},{},{},{},{},{},{},{},{:.4},{:.4},{:.4}",
             m.mcs,
             m.cycling,
             m.quiescent,
@@ -87,6 +87,7 @@ impl MeasurementLog {
             m.vessel,
             m.perfused,
             m.sprouts,
+            m.regressed,
             m.tissue_radius,
             m.necrotic_radius,
             m.viable_depth
@@ -204,6 +205,7 @@ mod tests {
             vessel: 113,
             perfused: 113,
             sprouts: 1,
+            regressed: 2,
             tissue_radius: 12.0,
             necrotic_radius: 1.0 / 3.0,
             viable_depth: 11.666_666,
@@ -217,7 +219,7 @@ mod tests {
         assert_eq!(lines[0], MEASUREMENT_COLUMNS);
         assert_eq!(
             lines[1],
-            "7,3,2,1,0,5,0.5000,9,4,2,6,113,113,1,12.0000,0.3333,11.6667"
+            "7,3,2,1,0,5,0.5000,9,4,2,6,113,113,1,2,12.0000,0.3333,11.6667"
         );
         assert_eq!(
             lines[0].split(',').count(),

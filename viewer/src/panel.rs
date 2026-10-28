@@ -160,11 +160,16 @@ fn census(ui: &mut egui::Ui, runner: &Runner, sheet: bool, exposed: bool) {
             );
         }
         row("born · gone", format!("{} · {}", c.born, c.gone));
-        if runner.experiment.scenario.angiogenesis.is_some() {
+        if let Some(a) = runner.experiment.scenario.angiogenesis {
+            let regressed = if a.regress_after.is_some() {
+                format!(", {} regressed", c.regressed)
+            } else {
+                String::new()
+            };
             row(
                 "vessel",
                 format!(
-                    "{} px, {} with blood, {} sprouts growing",
+                    "{} px, {} with blood, {} sprouts growing{regressed}",
                     c.vessel, c.perfused, c.sprouts
                 ),
             );

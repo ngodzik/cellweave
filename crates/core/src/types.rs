@@ -110,6 +110,12 @@ pub struct Angiogenesis {
     /// When a new vessel starts carrying blood. Left out, at once.
     #[serde(default)]
     pub perfusion: Perfusion,
+    /// Steps a sprout may go without carrying blood, from the step it
+    /// started, before it regresses: its vessel is taken back and the
+    /// tissue may fill where it was, and so is every sprout grown from it.
+    /// Left out, never: a blind end stays for good.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub regress_after: Option<u64>,
 }
 
 /// When a new vessel starts carrying blood, and with it oxygen.

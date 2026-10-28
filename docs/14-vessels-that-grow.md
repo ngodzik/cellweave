@@ -156,7 +156,7 @@ The tumour that had to wait for loops did not end up with less vessel but with f
 
 ## Still a placeholder
 
-The threshold, one absolute level of VEGF whatever the reach, which lets vessels sprout only in a narrow range of reach; the reach; the spacing of 16 pixels; the width of a new vessel. Vessels never regress, and with `perfusion = "on_joining"` any loop carries blood, however long and however it closed. There is no blood flow, so a vessel far from where it started carries as much oxygen as the one it came from. Endothelial cells are not cells, and there is only one kind of vessel. Everything is in two dimensions, where a real sprout can pass above or below the tissue in its way.
+The threshold, one absolute level of VEGF whatever the reach, which lets vessels sprout only in a narrow range of reach; the reach; the spacing of 16 pixels; the width of a new vessel. Vessels never regress unless told to (chapter 16), and with `perfusion = "on_joining"` any loop carries blood, however long and however it closed. There is no blood flow, so a vessel far from where it started carries as much oxygen as the one it came from. Endothelial cells are not cells, and there is only one kind of vessel. Everything is in two dimensions, where a real sprout can pass above or below the tissue in its way.
 
 ## References
 
