@@ -59,6 +59,10 @@ pub struct SimConfig {
     /// command line rather than written in a file.
     #[serde(default)]
     pub suppress: Vec<u32>,
+    /// Every mutation founded before this step drawn but not made: the same
+    /// history's luck without its mutant clones. Left out, none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub suppress_before: Option<u64>,
     /// Probability that a mutation rewires the network, gaining or losing a
     /// term, rather than scaling a rate. Zero, the default, leaves every run
     /// as it was.
@@ -147,6 +151,7 @@ impl SimConfig {
             seed: self.seed,
             mutation_rate: self.mutation_rate,
             suppress: self.suppress.iter().copied().map(CloneId).collect(),
+            suppress_before: self.suppress_before,
             rewiring: self.rewiring,
             seeding: self.seeding,
             exposure: self.exposure,
@@ -259,6 +264,7 @@ impl Default for SimConfig {
             seeding: Seeding::Single,
             exposure: None,
             suppress: Vec::new(),
+            suppress_before: None,
             rewiring: 0.0,
             hours_per_step: None,
             lesion: None,

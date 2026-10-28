@@ -163,6 +163,11 @@ pub struct Scenario {
     /// the run is the run without the suppression, bit for bit; a mutation
     /// that never makes one leaves it so to the end.
     pub suppress: Vec<CloneId>,
+    /// Every mutation founded before this step is drawn but not made, as
+    /// [`Scenario::suppress`] does for one clone: the tissue has the same
+    /// luck and none of the mutant clones. Left out, nothing is suppressed
+    /// this way.
+    pub suppress_before: Option<u64>,
     /// Probability that a daughter is born with one rate of its network
     /// changed, founding a clone of its own. Zero keeps every daughter an
     /// exact copy, and draws nothing from the generator for it, so a run
@@ -760,7 +765,11 @@ impl Simulation<Running> {
                         None => n.mutate(which, how),
                     };
                     let founded = CloneId(self.clones.len() as u32);
-                    let suppressed = self.scenario.suppress.contains(&founded);
+                    let suppressed = self.scenario.suppress.contains(&founded)
+                        || self
+                            .scenario
+                            .suppress_before
+                            .is_some_and(|before| mcs < before);
                     // A suppressed mutation is made on a copy, to know what it
                     // would have been, and the copy is thrown away.
                     let made = if suppressed {
@@ -1109,6 +1118,7 @@ mod tests {
             seed: DEFAULT_SEED,
             mutation_rate: 0.0,
             suppress: Vec::new(),
+            suppress_before: None,
             rewiring: 0.0,
             seeding: Seeding::Single,
             exposure: None,
@@ -1300,6 +1310,32 @@ mod tests {
         );
         assert_eq!(real, without);
         assert_eq!(grid, other_grid);
+    }
+
+    #[test]
+    fn every_mutation_before_a_step_is_drawn_and_not_made() {
+        let (real, _, clones) = history(mutating(), 100);
+        let before = 60;
+        let (without, _, kept) = history(
+            Scenario {
+                suppress_before: Some(before),
+                ..mutating()
+            },
+            100,
+        );
+        assert!(
+            kept.iter().any(|c| c.founded_at < before)
+                && kept.iter().any(|c| c.founded_at >= before)
+        );
+        for clone in kept.iter().skip(1) {
+            assert_eq!(clone.suppressed, clone.founded_at < before, "{clone:?}");
+        }
+        let first = clones[1].founded_at as usize;
+        assert_eq!(
+            real[..=first],
+            without[..=first],
+            "one history until the first mutation"
+        );
     }
 
     #[test]

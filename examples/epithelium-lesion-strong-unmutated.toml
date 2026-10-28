@@ -1,0 +1,26 @@
+# The fitter lesion of networks/lesion-strong.toml in the same sheet with the
+# same luck but none of its mutant clones: every mutation founded before step
+# 4000 is drawn and not made, as in epithelium-lesion-unmutated.toml.
+
+width = 200
+height = 200
+mcs = 6000
+temperature = 10.0
+snapshot_interval = 100
+output_dir = "output-epithelium-lesion-strong-unmutated"
+oxygen_uptake = 0.0
+mutation_rate = 0.01
+rewiring = 0.3
+suppress_before = 4000
+network = "networks/epithelium-no-pressing.toml"
+# A step of the sheet is about 0.6 hours (chapter 12).
+hours_per_step = 0.6
+
+[seeding]
+kind = "sheet"
+side = 10
+
+[lesion]
+network = "networks/lesion-strong.toml"
+at = 4000
+radius = 15.0

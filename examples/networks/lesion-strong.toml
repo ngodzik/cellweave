@@ -1,0 +1,19 @@
+# A fitter early tumour than lesion.toml: NOTCH's baseline at 0.3 of its rate.
+#
+# A cell of this lesion leaves the layer on its own about two thirds less often
+# than a normal one, and divides no faster. Still less fit than a cell that has
+# lost NOTCH's baseline altogether. Of the four biases chapter 13 tries, this is
+# the one at which the clones around the lesion decide its fate most clearly.
+#
+# NOTCH is restated whole because a node that is overridden is replaced whole.
+
+extends = "epithelium-no-pressing.toml"
+
+[[nodes]]
+name = "notch"
+initial = 0.01
+terms = [
+  { kind = "relaxes_to", value = 1.0, rate = 0.0015 },
+  { kind = "decays", rate = 0.5 },
+  { kind = "activated_by", source = "crowding", rate = 0.03, hill = { n = 4.0, k = 0.4 } },
+]
