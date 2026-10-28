@@ -191,8 +191,11 @@ fn retarget_one(runner: &Runner, view: View, glow: &mut Glow) {
                     let s = stress.map_or(0.0, |f| f.concentration_at(x, y)) as f32;
                     MEDIUM_GLOW * oxygen.concentration_at(x, y) as f32 + STRESS_HAZE * s
                 }
-                OBSTACLE if sim.carries_blood(x, y) => paint::VESSEL * VESSEL_GLOW,
+                OBSTACLE if sim.carries_blood(x, y) => {
+                    paint::vessel_colour(sim, view, x, y) * VESSEL_GLOW
+                }
                 OBSTACLE => LinearRgba::BLACK,
+                _ if view == View::Flow => LinearRgba::BLACK,
                 // Coloured by the stress, a cell glows with what it sits in,
                 // pixel by pixel, rather than with what it is doing.
                 _ if view == View::Stress => {

@@ -49,6 +49,36 @@ pub const VESSEL: LinearRgba = LinearRgba::rgb(1.0, 0.08, 0.04);
 /// A sprout no blood flows through yet: the vessel's colour, gone dark, and
 /// giving off no light.
 pub const DRY_VESSEL: LinearRgba = LinearRgba::rgb(0.18, 0.03, 0.03);
+/// A living cell under the vessel network, in the flow view: a plain grey,
+/// so that the tissue the vessels feed can be seen without taking any of
+/// the colours the flow is drawn in.
+const UNDER_FLOW: LinearRgba = LinearRgba::rgb(0.30, 0.32, 0.36);
+
+/// How strongly a vessel carrying blood is drawn, between a fifth and one:
+/// one at the capillary's own flow, a third less for each tenfold less, so
+/// that a thousandth of it is still visible.
+pub fn flow_strength(share: f64) -> f32 {
+    ((share.max(1e-9).log10() as f32 + 3.0) / 3.0).clamp(0.2, 1.0)
+}
+
+/// The colour of the vessel at `(x, y)`: dark without blood; with it, full
+/// red, or where blood flows as pressure drives it, red as strong as the
+/// flow, and in the flow view the ramp from faint to bright.
+pub fn vessel_colour(sim: &Simulation<Running>, view: View, x: u32, y: u32) -> LinearRgba {
+    if !sim.carries_blood(x, y) {
+        return DRY_VESSEL;
+    }
+    if !sim.flowing() {
+        return VESSEL;
+    }
+    let strength = flow_strength(sim.flow_through(x, y));
+    if view == View::Flow {
+        ramp(strength)
+    } else {
+        DRY_VESSEL.mix(&VESSEL, strength)
+    }
+}
+
 /// The medium with no oxygen in it, and with all of it.
 const MEDIUM_EMPTY: LinearRgba = LinearRgba::rgb(0.001, 0.002, 0.008);
 const MEDIUM_FULL: LinearRgba = LinearRgba::rgb(0.002, 0.012, 0.032);
@@ -73,6 +103,10 @@ pub enum View {
     /// The call for vessels each pixel sits in, cells included, where
     /// vessels can grow.
     Vegf,
+    /// The blood through each vessel, where it flows as pressure drives it:
+    /// the network bright where it carries much, faint where little, over
+    /// the living tissue in grey and the dead near black.
+    Flow,
 }
 
 /// The texture one run's tissue is painted into, and the material that
@@ -148,14 +182,13 @@ fn paint(sim: &Simulation<Running>, view: View, out: &mut [u8]) {
         .map(|id| bytes(cell_colour(sim, CellId(id), view)))
         .collect();
     let vessel = bytes(VESSEL);
-    let dry = bytes(DRY_VESSEL);
 
     for y in 0..h {
         for x in 0..w {
             let id = lattice.occupant(x, y);
             let fill = match id {
-                OBSTACLE if sim.carries_blood(x, y) => vessel,
-                OBSTACLE => dry,
+                OBSTACLE => bytes(vessel_colour(sim, view, x, y)),
+                0 if view == View::Flow => bytes(MEDIUM_EMPTY),
                 _ if view == View::Stress => bytes(ramp(stress(x, y))),
                 _ if view == View::Vegf => bytes(ramp(vegf(x, y))),
                 0 => bytes(MEDIUM_EMPTY.mix(&MEDIUM_FULL, oxygen.concentration_at(x, y) as f32)),
@@ -228,6 +261,7 @@ pub fn cell_colour(sim: &Simulation<Running>, id: CellId, view: View) -> LinearR
     let jitter = 0.88 + 0.24 * ((f64::from(id.0) * 0.618_034).fract() as f32);
     let base = match (view, fate) {
         (_, Fate::Necrotic) => return NECROTIC,
+        (View::Flow, _) => UNDER_FLOW,
         (View::Protein(i), _) => {
             let level = sim
                 .network(id)
@@ -304,4 +338,21 @@ pub fn bytes(colour: LinearRgba) -> [u8; 4] {
 fn darken(fill: [u8; 4]) -> [u8; 4] {
     let d = |c: u8| (f32::from(c) * MEMBRANE) as u8;
     [d(fill[0]), d(fill[1]), d(fill[2]), 255]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_vessel_is_as_bright_as_its_flow_down_to_a_floor() {
+        assert_eq!(flow_strength(1.0), 1.0, "the capillary's own flow");
+        assert_eq!(flow_strength(3.0), 1.0, "and never brighter");
+        assert!(
+            (flow_strength(0.1) - 2.0 / 3.0).abs() < 1e-6,
+            "a third less per tenfold"
+        );
+        assert_eq!(flow_strength(1e-6), 0.2, "still visible far below");
+        assert_eq!(flow_strength(0.0), 0.2);
+    }
 }
