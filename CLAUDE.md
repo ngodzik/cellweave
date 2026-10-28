@@ -12,7 +12,7 @@
 
 ## The course
 
-`docs/` is a course that follows the software, chapter by chapter, from the biology up. A pull request that changes the model, a mechanism, a constant with a stated reason, or a scenario, is not finished until the chapter that describes it says the new thing. Every symbol the course names must exist in the code; check with grep before committing. Define every acronym and protein name at its first appearance in a chapter.
+`docs/` is a course that follows the software, chapter by chapter, from the biology up. A pull request that changes the model, a mechanism, a constant with a stated reason, or a scenario, is not finished until the chapter that describes it says the new thing. Every symbol the course names must exist in the code; check with grep before committing. Define every acronym and protein name at its first appearance in a chapter. Every paper a chapter cites is listed at its end, under References: the title linked to its DOI, and a link to its free full text on Europe PMC when there is one.
 
 ## Architecture
 

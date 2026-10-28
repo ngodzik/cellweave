@@ -146,3 +146,10 @@ In the first, the two sheets are the same, pixel for pixel, for 4000 steps. Then
 ## Still a placeholder
 
 The lesion's bias, four values of it; its size and its place, the centre of the box; the step it appears at, about 100 days into an ageing sheet whose mutation rate is far above a real one. A real early tumour is a three dimensional patch that grows up as well as across; this one is a patch of the basal layer and nothing else. Twenty seeds per row give counts, and where the window begins and ends depends on every placeholder of chapters 7, 11 and 12. Three seeds of attribution, the candidates chosen by contact, and one step to undo them at.
+
+## References
+
+- Alcolea MP. [Oesophageal stem cells and cancer](https://doi.org/10.1007/978-3-319-69194-7_10). A chapter in a Springer book, pages 187-206 (2017). [Free full text](https://europepmc.org/article/PMC/PMC6126191).
+- Colom B, Alcolea MP, Piedrafita G, et al. [Spatial competition shapes the dynamic mutational landscape of normal esophageal epithelium](https://doi.org/10.1038/s41588-020-0624-3). *Nature Genetics* 52, 604-614 (2020). [Free full text](https://europepmc.org/article/PMC/PMC7116672).
+- Colom B, Herms A, Hall MWJ, et al. [Mutant clones in normal epithelium outcompete and eliminate emerging tumours](https://doi.org/10.1038/s41586-021-03965-7). *Nature* 598, 510-514 (2021). [Free full text](https://europepmc.org/article/PMC/PMC7612642).
+- Frede J, Greulich P, Nagy T, et al. [A single dividing cell population with imbalanced fate drives oesophageal tumour growth](https://doi.org/10.1038/ncb3400). *Nature Cell Biology* 18, 967-978 (2016). [Free full text](https://europepmc.org/article/PMC/PMC5870829).
