@@ -13,7 +13,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 DOCS = ROOT / "docs"
-SOURCES = [ROOT / "crates", ROOT / "src"]
+SOURCES = [ROOT / "crates", ROOT / "src", ROOT / "viewer" / "src"]
 
 TOKEN = re.compile(r"`([^`\n]+)`")
 IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_:]*$")

@@ -103,6 +103,18 @@ The first prediction held: undoing everything that touched the lesion saved it e
 
 The passengers are shown, as in chapter 9, rather than inferred: undo them, and every measurement at every step and every pixel at the end come out the same.
 
+### Watching two histories at once
+
+The viewer can run two histories side by side, stepped together batch for batch so that both always show the same step. `--undo` runs, on the right, the same configuration with the named clones undone at the step the lesion appears; `--beside` runs another configuration under the same seed. The panel follows both, the lesion's cells on each side included, and says when the two stop being the same run.
+
+```bash
+cd viewer
+cargo run --release -- --config ../examples/epithelium-lesion-strong.toml --seed 3 --view clone --undo 436
+cargo run --release -- --config ../examples/epithelium-lesion-strong.toml --seed 3 --view clone --beside ../examples/epithelium-lesion-strong-unmutated.toml
+```
+
+In the first, the two sheets are the same, pixel for pixel, for 4000 steps. Then the cells of clone 436 turn back into normal cells on the right, and from there the two lesions, pale gold, go their separate ways: lost on the left, at step 5746, still there on the right 50 days on.
+
 ## Choices, and why
 
 **A lesion is placed, not evolved.** Waiting for a tumour to arise by mutation in the sheet would make its fitness, its place and its timing different in every history, and the question is about the neighbours. Placing one, with a fitness stated in a file, at a step and a place the configuration fixes, keeps the lesion the same and lets the tissue around it vary.
@@ -124,6 +136,8 @@ The passengers are shown, as in chapter 9, rather than inferred: undo them, and 
 `crates/engine/src/simulation.rs`: `Lesion`, the `lesion` field of `Scenario`, and where a step places it; `suppress_before`, read where a division founds a clone. `crates/engine/src/evolution.rs`: the `lesion` field of `CloneRecord`, `Simulation::lesion_cells`, `Simulation::in_lesion`. `crates/engine/src/measure.rs`: the `lesion` column. `crates/io/src/config.rs`: `LesionConfig`, read next to the configuration. `crates/io/tests/lesion.rs`: that a lesion turns the cells at the centre into one clone at its step and not before, that one which never comes changes nothing, and that it needs a sheet and some room.
 
 `crates/engine/src/simulation.rs`: `Reversion`, the `revert` field of `Scenario`, and where a step undoes it. `crates/engine/src/network.rs`: `Network::apply`, which replays a recorded mutation. `crates/engine/src/evolution.rs`: the `reverted_at` field of `CloneRecord`. `src/attribute.rs`: the lesion's attribution, the clones touching it, the candidates and the runs.
+
+`viewer/src/runner.rs`: `Pace`, shared by the runs on screen, `Divergence`, and the dispatch that keeps them in step. `viewer/src/main.rs`: `--undo` and `--beside`.
 
 `src/campaign.rs`: the `lesion` and `lesion_lost_at` columns of `campaign.csv`, and the lesion's line in the summary and the pairs.
 

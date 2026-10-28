@@ -3,6 +3,9 @@
 //!
 //! The simulation itself moves into the task and comes back out with it: it is
 //! owned by exactly one place at a time, and nothing is shared or locked.
+//!
+//! Two runs can be shown side by side, each with a runner of its own. They are
+//! stepped together, batch for batch, so that both always show the same step.
 
 use std::time::Instant;
 
@@ -70,16 +73,10 @@ fn work(job: Work) -> Outcome {
     }
 }
 
-/// The simulation, wherever it is, and what the panel asks of it.
-#[derive(Resource)]
-pub struct Runner {
-    stage: Stage,
-    /// Counts every change to what the simulation shows: each batch back from
-    /// the pool, each restart. Anything drawn from the simulation remembers
-    /// the generation it drew, and draws again when this moves on.
-    generation: u64,
-    /// The generation the last restart began.
-    restarts_at: u64,
+/// How the runs are stepped: shared by every run on screen, so that they
+/// pause, step and go together.
+#[derive(Resource, Debug)]
+pub struct Pace {
     /// Nothing is stepped while set, except one step when asked.
     pub paused: bool,
     /// Take exactly one step, then wait.
@@ -87,6 +84,44 @@ pub struct Runner {
     /// Steps per batch sent to the pool. More is faster to watch and coarser
     /// to see.
     pub steps_per_batch: u32,
+}
+
+impl Default for Pace {
+    fn default() -> Self {
+        Self {
+            paused: false,
+            step_once: false,
+            steps_per_batch: 2,
+        }
+    }
+}
+
+/// Where two runs shown side by side stopped being the same run.
+#[derive(Resource, Debug, Default)]
+pub struct Divergence {
+    /// The step of the first batch whose measurements differed, once they
+    /// have; `None` while they are identical, or with one run.
+    pub parted_at: Option<u64>,
+}
+
+/// One run on screen: the simulation, wherever it is, and what the panel
+/// asks of it.
+#[derive(Component)]
+pub struct Runner {
+    /// What it runs, kept so that a restart starts the very same run again.
+    pub experiment: Experiment,
+    /// How the panel names it.
+    pub name: String,
+    /// Its place on screen, from the left; the first is the one the panel
+    /// describes in full.
+    pub index: usize,
+    stage: Stage,
+    /// Counts every change to what the simulation shows: each batch back from
+    /// the pool, each restart. Anything drawn from the simulation remembers
+    /// the generation it drew, and draws again when this moves on.
+    generation: u64,
+    /// The generation the last restart began.
+    restarts_at: u64,
     /// Why the run stopped, if it did.
     pub stopped: Option<String>,
     /// The tissue measured once per batch, oldest first.
@@ -102,34 +137,34 @@ pub struct Runner {
 
 impl Runner {
     /// A runner holding a fresh simulation of this experiment.
-    pub fn new(experiment: &Experiment) -> Self {
+    pub fn new(experiment: Experiment, name: String, index: usize) -> Self {
         let mut runner = Self {
+            experiment,
+            name,
+            index,
             stage: Stage::Failed,
             generation: 0,
             restarts_at: 0,
-            paused: false,
-            step_once: false,
-            steps_per_batch: 2,
             stopped: None,
             history: Vec::new(),
             clone_history: Vec::new(),
             clones: Vec::new(),
             rate: 0.0,
         };
-        runner.restart(experiment);
+        runner.restart();
         runner
     }
 
     /// Throw the current run away and start the same one again. A batch in
     /// the pool is dropped, which cancels it.
-    pub fn restart(&mut self, experiment: &Experiment) {
+    pub fn restart(&mut self) {
         self.history.clear();
         self.clone_history.clear();
         self.clones.clear();
         self.rate = 0.0;
         self.generation += 1;
         self.restarts_at = self.generation;
-        match Simulation::new(experiment.scenario.clone(), &experiment.spec) {
+        match Simulation::new(self.experiment.scenario.clone(), &self.experiment.spec) {
             Ok(sim) => {
                 self.stage = Stage::Configured(sim);
                 self.stopped = None;
@@ -147,6 +182,11 @@ impl Runner {
             Stage::Idle(sim) => Some(sim),
             _ => None,
         }
+    }
+
+    /// Whether a batch is away in the pool.
+    pub fn busy(&self) -> bool {
+        matches!(self.stage, Stage::Busy(_))
     }
 
     /// Whether the field is still being solved for the first time.
@@ -189,32 +229,62 @@ fn thin<T>(series: &mut Vec<T>) {
     });
 }
 
-/// Space pauses, N steps once, R restarts, unless egui is taking the keys.
+/// Space pauses, N steps once, R restarts every run, unless egui is taking
+/// the keys.
 pub fn keys(
-    mut runner: ResMut<Runner>,
+    mut runners: Query<&mut Runner>,
+    mut pace: ResMut<Pace>,
     keys: Res<ButtonInput<KeyCode>>,
-    experiment: Res<Experiment>,
     mut contexts: EguiContexts,
 ) -> Result {
     if contexts.ctx_mut()?.egui_wants_keyboard_input() {
         return Ok(());
     }
     if keys.just_pressed(KeyCode::Space) {
-        runner.paused = !runner.paused;
+        pace.paused = !pace.paused;
     }
     if keys.just_pressed(KeyCode::KeyN) {
-        runner.paused = true;
-        runner.step_once = true;
+        pace.paused = true;
+        pace.step_once = true;
     }
     if keys.just_pressed(KeyCode::KeyR) {
-        runner.restart(&experiment);
+        for mut runner in &mut runners {
+            runner.restart();
+        }
     }
     Ok(())
 }
 
-/// Take back a batch the pool has finished, if there is one.
-pub fn collect(mut runner: ResMut<Runner>) {
-    let runner = &mut *runner;
+/// Take back every batch the pool has finished.
+pub fn collect(mut runners: Query<&mut Runner>) {
+    for mut runner in &mut runners {
+        collect_one(&mut runner);
+    }
+}
+
+/// Note where two runs side by side first differ: the step of the first pair
+/// of batches whose measurements are not the same.
+pub fn compare(runners: Query<&Runner>, mut divergence: ResMut<Divergence>) {
+    let mut sides: Vec<&Runner> = runners.iter().collect();
+    sides.sort_by_key(|r| r.index);
+    let [a, b] = sides.as_slice() else {
+        divergence.parted_at = None;
+        return;
+    };
+    if a.history.is_empty() || b.history.is_empty() {
+        divergence.parted_at = None;
+        return;
+    }
+    if divergence.parted_at.is_none()
+        && let (Some(x), Some(y)) = (a.latest(), b.latest())
+        && x.mcs == y.mcs
+        && x != y
+    {
+        divergence.parted_at = Some(x.mcs);
+    }
+}
+
+fn collect_one(runner: &mut Runner) {
     let Stage::Busy(task) = &mut runner.stage else {
         return;
     };
@@ -261,25 +331,37 @@ pub fn collect(mut runner: ResMut<Runner>) {
     runner.generation += 1;
 }
 
-/// Hand the simulation to the pool, if there is something for it to do.
-pub fn dispatch(mut runner: ResMut<Runner>) {
-    let runner = &mut *runner;
-    let job = match std::mem::replace(&mut runner.stage, Stage::Failed) {
-        Stage::Configured(sim) => Work::Start(sim),
-        Stage::Idle(sim) if runner.stopped.is_none() && (!runner.paused || runner.step_once) => {
-            let steps = if runner.step_once {
-                1
-            } else {
-                runner.steps_per_batch
-            };
-            runner.step_once = false;
-            Work::Steps(sim, steps)
-        }
-        other => {
-            runner.stage = other;
-            return;
-        }
+/// Hand every run to the pool, if there is something for it to do, and only
+/// once none is still away: runs side by side move batch for batch, and so
+/// always show the same step.
+pub fn dispatch(mut runners: Query<&mut Runner>, mut pace: ResMut<Pace>) {
+    if runners.iter().any(Runner::busy) {
+        return;
+    }
+    let go = !pace.paused || pace.step_once;
+    let steps = if pace.step_once {
+        1
+    } else {
+        pace.steps_per_batch
     };
-    let task = AsyncComputeTaskPool::get().spawn(async move { work(job) });
-    runner.stage = Stage::Busy(task);
+    let mut sent = false;
+    for mut runner in &mut runners {
+        let runner = &mut *runner;
+        let job = match std::mem::replace(&mut runner.stage, Stage::Failed) {
+            Stage::Configured(sim) => Work::Start(sim),
+            Stage::Idle(sim) if runner.stopped.is_none() && go => {
+                sent = true;
+                Work::Steps(sim, steps)
+            }
+            other => {
+                runner.stage = other;
+                continue;
+            }
+        };
+        let task = AsyncComputeTaskPool::get().spawn(async move { work(job) });
+        runner.stage = Stage::Busy(task);
+    }
+    if sent {
+        pace.step_once = false;
+    }
 }

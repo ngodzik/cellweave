@@ -8,16 +8,28 @@ use egui_plot::{Legend, Line, Plot, PlotPoints, Polygon};
 
 use crate::Experiment;
 use crate::paint::{self, View};
-use crate::runner::Runner;
+use crate::runner::{Divergence, Pace, Runner};
 
 /// Draw the panel, and apply what was clicked in it.
+///
+/// The first run on screen is described in full; any run beside it gets a
+/// line of its own, and where the two stopped being the same run.
 pub fn draw(
     mut contexts: EguiContexts,
-    mut runner: ResMut<Runner>,
+    mut runners: Query<&mut Runner>,
+    mut pace: ResMut<Pace>,
+    divergence: Res<Divergence>,
     mut view: ResMut<View>,
     experiment: Res<Experiment>,
 ) -> Result {
     let ctx = contexts.ctx_mut()?;
+    let mut restart = false;
+    let mut sides: Vec<Mut<Runner>> = runners.iter_mut().collect();
+    sides.sort_by_key(|r| r.index);
+    let Some((first, beside)) = sides.split_first_mut() else {
+        return Ok(());
+    };
+    let runner: &Runner = first;
     egui::Window::new("cellweave")
         .default_pos([12.0, 12.0])
         .default_width(300.0)
@@ -27,16 +39,22 @@ pub fn draw(
             let exposed = experiment.scenario.exposure.is_some();
             describe(ui, &experiment);
             ui.separator();
-            census(ui, &runner, sheet, exposed);
+            census(ui, runner, sheet, exposed);
+            if !beside.is_empty() {
+                ui.separator();
+                compared(ui, runner, beside, &divergence);
+            }
             ui.separator();
-            controls(ui, &mut runner, &experiment);
+            if controls(ui, &mut pace) {
+                restart = true;
+            }
             ui.separator();
             colouring(ui, &mut view, &experiment);
             ui.separator();
             if *view == View::Clone {
-                clones(ui, &runner, experiment.scenario.seeding);
+                clones(ui, runner, experiment.scenario.seeding);
             } else {
-                plot(ui, &runner, sheet);
+                plot(ui, runner, sheet);
             }
             if let Some(why) = &runner.stopped {
                 ui.separator();
@@ -47,7 +65,44 @@ pub fn draw(
                 "Space pause · N step · R restart · H relief · A spin · drag to turn · scroll to zoom",
             );
         });
+    if restart {
+        for side in sides.iter_mut() {
+            side.restart();
+        }
+    }
     Ok(())
+}
+
+/// The runs beside the first, a line each, and whether they are still the
+/// same run as the first.
+fn compared(ui: &mut egui::Ui, first: &Runner, beside: &[Mut<Runner>], divergence: &Divergence) {
+    let line = |runner: &Runner| {
+        runner.latest().map_or_else(
+            || "no step yet".to_owned(),
+            |m| {
+                let lesion = if runner.history.iter().any(|h| h.lesion > 0) {
+                    format!(", lesion {}", m.lesion)
+                } else {
+                    String::new()
+                };
+                format!("living {}{lesion}", m.living())
+            },
+        )
+    };
+    egui::Grid::new("compared").num_columns(2).show(ui, |ui| {
+        ui.label("left");
+        ui.label(format!("{}: {}", first.name, line(first)));
+        ui.end_row();
+        for (side, runner) in ["right", "further"].iter().zip(beside) {
+            ui.label(*side);
+            ui.label(format!("{}: {}", runner.name, line(runner)));
+            ui.end_row();
+        }
+    });
+    ui.label(match divergence.parted_at {
+        Some(step) => format!("The two runs parted by step {step}."),
+        None => "The two runs are the same run so far, to the last bit.".to_owned(),
+    });
 }
 
 fn describe(ui: &mut egui::Ui, experiment: &Experiment) {
@@ -119,21 +174,25 @@ fn census(ui: &mut egui::Ui, runner: &Runner, sheet: bool, exposed: bool) {
     });
 }
 
-fn controls(ui: &mut egui::Ui, runner: &mut Runner, experiment: &Experiment) {
+/// Pause, step and the batch size, for every run at once. Returns whether
+/// a restart was asked for.
+fn controls(ui: &mut egui::Ui, pace: &mut Pace) -> bool {
+    let mut restart = false;
     ui.horizontal(|ui| {
-        let label = if runner.paused { "Run" } else { "Pause" };
+        let label = if pace.paused { "Run" } else { "Pause" };
         if ui.button(label).clicked() {
-            runner.paused = !runner.paused;
+            pace.paused = !pace.paused;
         }
         if ui.button("Step").clicked() {
-            runner.paused = true;
-            runner.step_once = true;
+            pace.paused = true;
+            pace.step_once = true;
         }
         if ui.button("Restart").clicked() {
-            runner.restart(experiment);
+            restart = true;
         }
     });
-    ui.add(egui::Slider::new(&mut runner.steps_per_batch, 1..=25).text("steps per batch"));
+    ui.add(egui::Slider::new(&mut pace.steps_per_batch, 1..=25).text("steps per batch"));
+    restart
 }
 
 fn colouring(ui: &mut egui::Ui, view: &mut View, experiment: &Experiment) {

@@ -48,8 +48,8 @@ const APOPTOSIS: LinearRgba = LinearRgba::rgb(0.32, 0.06, 0.42);
 /// spreading from its source while exposure is on.
 const STRESS_HAZE: LinearRgba = LinearRgba::rgb(0.035, 0.0, 0.05);
 
-/// The emission image and what it is drawn from.
-#[derive(Resource)]
+/// One run's emission image and what it is drawn from.
+#[derive(Component)]
 pub struct Glow {
     /// Written every frame something is fading.
     pub image: Handle<Image>,
@@ -118,12 +118,17 @@ pub fn image(width: u32, height: u32) -> Image {
     )
 }
 
-/// Take in a new state: what each pixel gives off, which cells were just
-/// born, and which just died.
-pub fn retarget(runner: Res<Runner>, view: Res<View>, glow: Option<ResMut<Glow>>) {
-    let Some(mut glow) = glow else { return };
+/// Take in each run's new state: what each pixel gives off, which cells were
+/// just born, and which just died.
+pub fn retarget(mut sides: Query<(&Runner, &mut Glow)>, view: Res<View>) {
+    for (runner, mut glow) in &mut sides {
+        retarget_one(runner, *view, &mut glow);
+    }
+}
+
+fn retarget_one(runner: &Runner, view: View, glow: &mut Glow) {
     let Some(sim) = runner.idle() else { return };
-    let now = (runner.generation(), *view);
+    let now = (runner.generation(), view);
     if glow.seen == Some(now) {
         return;
     }
@@ -131,7 +136,6 @@ pub fn retarget(runner: Res<Runner>, view: Res<View>, glow: Option<ResMut<Glow>>
         .seen
         .is_none_or(|(seen, _)| runner.restarted_since(seen));
     glow.seen = Some(now);
-    let glow = &mut *glow;
 
     let lattice = sim.lattice();
     let cells = lattice.cell_count() + 1;
@@ -170,7 +174,7 @@ pub fn retarget(runner: Res<Runner>, view: Res<View>, glow: Option<ResMut<Glow>>
     glow.fates = fates;
 
     let per_cell: Vec<LinearRgba> = (0..cells as u32)
-        .map(|id| steady(sim, CellId(id), *view, glow.fates[id as usize]))
+        .map(|id| steady(sim, CellId(id), view, glow.fates[id as usize]))
         .collect();
     let oxygen = sim.oxygen();
     let stress = sim.stress();
@@ -189,7 +193,7 @@ pub fn retarget(runner: Res<Runner>, view: Res<View>, glow: Option<ResMut<Glow>>
                 OBSTACLE => paint::VESSEL * VESSEL_GLOW,
                 // Coloured by the stress, a cell glows with what it sits in,
                 // pixel by pixel, rather than with what it is doing.
-                _ if *view == View::Stress => {
+                _ if view == View::Stress => {
                     let s = stress.map_or(0.0, |f| f.concentration_at(x, y)) as f32;
                     paint::ramp(s) * CYCLING_GLOW
                 }
@@ -213,21 +217,35 @@ fn steady(sim: &Simulation<Running>, id: CellId, view: View, fate: Option<Fate>)
     paint::cell_colour(sim, id, view) * strength
 }
 
-/// Fade every flash a frame's worth and redraw the image, while anything is
-/// still changing.
+/// Fade every flash a frame's worth and redraw each run's image, while
+/// anything is still changing.
 pub fn animate(
     time: Res<Time>,
-    runner: Res<Runner>,
-    glow: Option<ResMut<Glow>>,
+    mut sides: Query<(&Runner, &mut Glow)>,
     mut images: ResMut<Assets<Image>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    let Some(mut glow) = glow else { return };
+    for (runner, mut glow) in &mut sides {
+        animate_one(
+            time.delta_secs(),
+            runner,
+            &mut glow,
+            &mut images,
+            &mut materials,
+        );
+    }
+}
+
+fn animate_one(
+    dt: f32,
+    runner: &Runner,
+    glow: &mut Glow,
+    images: &mut Assets<Image>,
+    materials: &mut Assets<StandardMaterial>,
+) {
     if !glow.fading {
         return;
     }
-    let glow = &mut *glow;
-    let dt = time.delta_secs();
     let per_step = FLASH_STEPS / (runner.rate as f32).max(1.0);
     let (birth_fade, death_fade) = (BIRTH_FADE.min(per_step), DEATH_FADE.min(per_step));
     let (birth_k, death_k) = ((-dt / birth_fade).exp(), (-dt / death_fade).exp());
