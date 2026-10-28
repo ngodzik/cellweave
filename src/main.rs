@@ -343,8 +343,17 @@ fn vessels<S: cellweave_engine::simulation::SimState>(sim: &Simulation<S>) -> Op
         .map_or_else(String::new, |d| {
             format!("; living tissue within {d:.1} px of a vessel")
         });
+    let regressed = if sim
+        .scenario()
+        .angiogenesis
+        .is_some_and(|a| a.regress_after.is_some())
+    {
+        format!(", {} regressed", m.regressed)
+    } else {
+        String::new()
+    };
     Some(format!(
-        "vessels: {} sprouts started, {} still growing, {} pixels of vessel{depth}",
+        "vessels: {} sprouts started, {} still growing{regressed}, {} pixels of vessel{depth}",
         sim.sprouted(),
         m.sprouts,
         m.vessel

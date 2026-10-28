@@ -250,6 +250,16 @@ impl CpmLattice {
         }
     }
 
+    /// Give an obstacle pixel back to the medium, where a vessel was taken
+    /// back, for cells to move into. Any other pixel is left as it is.
+    pub fn clear_obstacle(&mut self, x: u32, y: u32) {
+        if let Some(pixel) = self.grid.get_mut([y as usize, x as usize])
+            && *pixel == OBSTACLE
+        {
+            *pixel = 0;
+        }
+    }
+
     /// Execute one full Monte Carlo step (W×H spin-flip attempts).
     ///
     /// Uses a simple sequential scan rather than checkerboard for the

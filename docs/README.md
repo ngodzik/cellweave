@@ -30,7 +30,8 @@ Chapters build on each other and are meant to be read in order the first time.
 | 13 | [Purged by its neighbours](13-purged-by-its-neighbours.md) | What happens to an early tumour that arises among the mutant clones of an ageing epithelium? |
 | 14 | [Vessels that grow](14-vessels-that-grow.md) | What happens to a tumour cord when the cells starving at its edge can call new vessels to them? |
 | 15 | [A call heard by its neighbours](15-a-call-heard-by-its-neighbours.md) | When a cell calls for vessels, how much of what comes goes to the cells that called? |
-| 16 | [What the model does not say](16-what-the-model-does-not-say.md) | The placeholders, the missing units, and why emergence is the whole point. |
+| 16 | [Vessels that regress](16-vessels-that-regress.md) | When sprouts that carry no blood are taken back, does a tumour still call in more vessel than it needs? |
+| 17 | [What the model does not say](17-what-the-model-does-not-say.md) | The placeholders, the missing units, and why emergence is the whole point. |
 | | [Glossary](glossary.md) | Every word, in one place. |
 
 ## How the chapters map onto the code
@@ -68,6 +69,8 @@ flowchart LR
     c14 --> sim
     c15["15. a patch that<br/>does not call"] --> sim
     c15 --> sil["examples/networks/ras-erk-silent.toml"]
+    c16["16. vessels<br/>that regress"] --> ves
+    c16 --> cpm
 ```
 
 The README at the root of the repository says what works and what does not today. This course says why.

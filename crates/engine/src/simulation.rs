@@ -13,7 +13,7 @@ use std::marker::PhantomData;
 
 use cellweave_core::{
     Angiogenesis, CellId, CellInputs, CellKind, CellSnapshot, CellweaveError, CloneId,
-    Concentration, Exposure, NetworkSpec, OxygenSource, Pos2, Seeding, SignalingNetwork,
+    Concentration, Exposure, NetworkSpec, OxygenSource, Perfusion, Pos2, Seeding, SignalingNetwork,
     SimSnapshot, TimeStep, Volume,
 };
 use rand::rngs::StdRng;
@@ -565,6 +565,21 @@ impl Simulation<Configured> {
                         a.speed
                     )));
                 }
+                if a.regress_after == Some(0) {
+                    return Err(CellweaveError::Config(
+                        "a sprout that regresses after 0 steps is taken back the step it \
+                         starts; give it at least one"
+                            .into(),
+                    ));
+                }
+                if a.regress_after.is_some() && a.perfusion == Perfusion::AtOnce {
+                    return Err(CellweaveError::Config(
+                        "a sprout regresses when it carries no blood, and with perfusion at \
+                         once every sprout carries blood from its first pixel; set perfusion \
+                         to on_joining"
+                            .into(),
+                    ));
+                }
                 if seed_network.angiogenic().is_none() {
                     return Err(CellweaveError::Config(
                         "vessels grow towards what cells secrete, and this network names no \
@@ -836,7 +851,10 @@ impl Simulation<Running> {
         apply_production(vegf, &self.lattice, &per_cell);
         vegf.relax(TimeStep(1.0), VEGF_TOLERANCE * decay, OXYGEN_MAX_STEPS)
             .map_err(|e| CellweaveError::Simulation(format!("VEGF at MCS {mcs}: {e}")))?;
-        if self.vessels.grow(&mut self.lattice, vegf, &angiogenesis) {
+        if self
+            .vessels
+            .grow(&mut self.lattice, vegf, &angiogenesis, mcs)
+        {
             for i in 0..self.networks.len() {
                 let id = cell_of(i);
                 let crushed = self.networks[i].is_some()
@@ -1240,9 +1258,14 @@ impl<S: SimState> Simulation<S> {
         self.vessels.tips()
     }
 
-    /// How many sprouts have started, growing or not.
+    /// How many sprouts have started, growing or not, standing or not.
     pub fn sprouted(&self) -> usize {
         self.vessels.sprouted()
+    }
+
+    /// How many sprouts have regressed, for carrying no blood too long.
+    pub fn regressed(&self) -> usize {
+        self.vessels.regressed()
     }
 
     /// Whether the vessel at `(x, y)` carries blood, and with it oxygen:
@@ -1366,7 +1389,6 @@ fn cell_of(i: usize) -> CellId {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cellweave_core::Perfusion;
 
     fn spec() -> NetworkSpec {
         toml::from_str(include_str!("../../../examples/networks/ras-erk.toml"))
@@ -1739,6 +1761,7 @@ mod tests {
                 speed: 1.0,
                 reach: 15.0,
                 perfusion: Perfusion::AtOnce,
+                regress_after: None,
             }),
             width: 100,
             height: 100,
@@ -1818,9 +1841,68 @@ mod tests {
                 speed,
                 reach,
                 perfusion: Perfusion::AtOnce,
+                regress_after: None,
             });
             assert!(refused(s, &spec()), "speed {speed}, reach {reach}");
         }
         assert!(refused(growing(0.0), &spec()));
+    }
+
+    fn dry_for(regress_after: Option<u64>) -> Scenario {
+        let mut s = growing(0.3);
+        s.angiogenesis = s.angiogenesis.map(|a| Angiogenesis {
+            perfusion: Perfusion::OnJoining,
+            regress_after,
+            ..a
+        });
+        s
+    }
+
+    #[test]
+    fn a_sprout_regresses_only_where_it_can_go_without_blood_for_a_while() {
+        let refused = |scenario: Scenario| {
+            matches!(
+                Simulation::new(scenario, &spec()),
+                Err(CellweaveError::Config(_))
+            )
+        };
+        assert!(refused(dry_for(Some(0))));
+        let mut at_once = dry_for(Some(30));
+        at_once.angiogenesis = at_once.angiogenesis.map(|a| Angiogenesis {
+            perfusion: Perfusion::AtOnce,
+            ..a
+        });
+        assert!(refused(at_once));
+        assert!(!refused(dry_for(Some(30))));
+    }
+
+    #[test]
+    fn tissue_fills_where_a_blind_sprout_regressed() {
+        let (mut sim, _) = Simulation::new(dry_for(Some(10)), &spec())
+            .unwrap()
+            .start()
+            .unwrap();
+        let laid_at_start: Vec<bool> = sim.lattice().grid.iter().map(|&p| p == OBSTACLE).collect();
+        let mut ever_sprouted = vec![false; laid_at_start.len()];
+        for _ in 0..300 {
+            if sim.step().unwrap().reached_edge {
+                break;
+            }
+            for (seen, (&now, &first)) in ever_sprouted
+                .iter_mut()
+                .zip(sim.lattice().grid.iter().zip(&laid_at_start))
+            {
+                *seen |= now == OBSTACLE && !first;
+            }
+        }
+        assert!(sim.regressed() > 0, "a blind sprout regressed");
+        let refilled = sim
+            .lattice()
+            .grid
+            .iter()
+            .zip(&ever_sprouted)
+            .filter(|&(&now, &seen)| seen && now != 0 && now != OBSTACLE)
+            .count();
+        assert!(refilled > 0, "and cells moved in where it was");
     }
 }

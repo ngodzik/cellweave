@@ -1,0 +1,29 @@
+# cord-angiogenic-joining.toml, with blind sprouts that regress (chapter 16).
+#
+# A sprout that still carries no blood 100 steps after it started is taken
+# back, and so is every sprout grown from it: its pixels return to the
+# tissue, and the wall it left may sprout again. Everything else is
+# cord-angiogenic-joining.toml.
+#
+# The 100 steps are a placeholder, about the cycle of a cord cell; chapter
+# 17 runs 50 and 200 too.
+
+width = 300
+height = 300
+mcs = 1500
+temperature = 10.0
+snapshot_interval = 100
+output_dir = "output-cord-angiogenic-regressing"
+oxygen_uptake = 0.00003
+network = "networks/ras-erk.toml"
+
+[oxygen_source]
+kind = "vessel"
+radius = 6
+
+[angiogenesis]
+threshold = 0.5
+speed = 1.0
+reach = 30.0
+perfusion = "on_joining"
+regress_after = 100

@@ -13,7 +13,9 @@
 //! either at once or, when the scenario says so, only once its tip has
 //! joined another vessel: then the sprout, and every sprout it grew from,
 //! carries blood, and so does the one it joined, and everything that one
-//! grew from.
+//! grew from. When the scenario says so, a sprout that has carried no blood
+//! for long enough regresses, with every sprout grown from it: its vessel is
+//! taken back, and the wall it started from may sprout again.
 //!
 //! Nothing here is drawn at random. Which wall sprouts is the one reading the
 //! most VEGF, and where a tip goes is where the gradient points, so a run
@@ -84,6 +86,27 @@ struct Sprout {
     parent: Option<usize>,
     /// Whether blood flows through it.
     perfused: bool,
+    /// The wall pixel it started from.
+    origin: (u32, u32),
+    /// The step it started at.
+    started: u64,
+    /// Centre of every disc of vessel it laid.
+    centres: Vec<(u32, u32)>,
+    /// Whether it has regressed and its vessel been taken back.
+    regressed: bool,
+}
+
+impl Sprout {
+    fn new(parent: Option<usize>, perfused: bool, origin: (u32, u32), started: u64) -> Self {
+        Self {
+            parent,
+            perfused,
+            origin,
+            started,
+            centres: Vec::new(),
+            regressed: false,
+        }
+    }
 }
 
 /// Which sprout laid each pixel of vessel, and which sprouts carry blood.
@@ -135,6 +158,41 @@ impl Tree {
             let i = self.index(pixel);
             self.owner[i] = Some(sprout);
         }
+        self.sprouts[sprout].centres.push(centre);
+    }
+
+    /// Take back the vessel of `root` and of every sprout grown from it.
+    /// A pixel one of them laid is given back to the tissue, unless it lies
+    /// in a disc a sprout still standing laid too, which then keeps it.
+    fn regress(&mut self, lattice: &mut CpmLattice, root: usize) {
+        // A sprout comes after the one it grew from, so one pass in order
+        // finds every sprout grown from the root, however indirectly.
+        let mut going = vec![false; self.sprouts.len()];
+        for (i, sprout) in self.sprouts.iter().enumerate().skip(root) {
+            going[i] = i == root || sprout.parent.is_some_and(|p| going[p]);
+        }
+        for (sprout, &gone) in self.sprouts.iter_mut().zip(&going) {
+            sprout.regressed |= gone;
+        }
+        let r2 = i64::from(VESSEL_RADIUS * VESSEL_RADIUS);
+        let width = self.width as usize;
+        for (i, owner) in self.owner.iter_mut().enumerate() {
+            if !owner.is_some_and(|s| going[s]) {
+                continue;
+            }
+            let pixel = ((i % width) as u32, (i / width) as u32);
+            let keeper = self.sprouts.iter().position(|other| {
+                !other.regressed
+                    && other
+                        .centres
+                        .iter()
+                        .any(|&c| squared_distance(c, pixel) <= r2)
+            });
+            *owner = keeper;
+            if keeper.is_none() {
+                lattice.clear_obstacle(pixel.0, pixel.1);
+            }
+        }
     }
 
     /// Blood through `sprout` and every sprout it grew from.
@@ -151,12 +209,11 @@ impl Tree {
     }
 }
 
-/// Every sprout still growing, where every sprout ever started, and which of
-/// them carry blood.
+/// Every sprout still growing, every sprout ever started, and which of them
+/// carry blood.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct Vessels {
     tips: Vec<Tip>,
-    origins: Vec<(u32, u32)>,
     tree: Tree,
 }
 
@@ -173,19 +230,26 @@ impl Vessels {
         &self.tips
     }
 
-    /// How many sprouts have started, growing or not.
+    /// How many sprouts have started, growing or not, standing or not.
     pub(crate) fn sprouted(&self) -> usize {
-        self.origins.len()
+        self.tree.sprouts.len()
     }
 
-    /// Move every tip, then let the wall reading the most VEGF sprout, at
-    /// most once. Returns whether any vessel was laid, which is when cells
-    /// may have lost pixels to it.
+    /// How many sprouts have regressed.
+    pub(crate) fn regressed(&self) -> usize {
+        self.tree.sprouts.iter().filter(|s| s.regressed).count()
+    }
+
+    /// Move every tip, then take back every sprout that has gone too long
+    /// without blood, then let the wall reading the most VEGF sprout, at most
+    /// once. `mcs` is the step being taken. Returns whether any vessel was
+    /// laid, which is when cells may have lost pixels to it.
     pub(crate) fn grow(
         &mut self,
         lattice: &mut CpmLattice,
         vegf: &ScalarField,
         angiogenesis: &Angiogenesis,
+        mcs: u64,
     ) -> bool {
         if self.tree.owner.is_empty() {
             let (w, h) = lattice.dims();
@@ -196,20 +260,43 @@ impl Vessels {
         let tree = &mut self.tree;
         self.tips
             .retain_mut(|tip| advance(tip, lattice, vegf, angiogenesis, tree, &mut laid));
+        // Checked after the tips move, so that a sprout joining another
+        // vessel on its last step stands.
+        if let Some(after) = angiogenesis.regress_after {
+            self.regress_dry(lattice, after, mcs);
+        }
         if let Some(wall) = self.strongest_free_wall(lattice, vegf, angiogenesis.threshold) {
             let sprout = self.tree.sprouts.len();
-            self.tree.sprouts.push(Sprout {
-                parent: self.tree.owner(wall),
-                perfused: angiogenesis.perfusion == Perfusion::AtOnce,
-            });
+            self.tree.sprouts.push(Sprout::new(
+                self.tree.owner(wall),
+                angiogenesis.perfusion == Perfusion::AtOnce,
+                wall,
+                mcs,
+            ));
             self.tips.push(Tip::new(wall, sprout));
-            self.origins.push(wall);
         }
         laid
     }
 
+    /// Take back every sprout that started `after` steps or more before
+    /// `mcs` and carries no blood, and with it every sprout grown from it,
+    /// which carries none either: blood reaching one would have reached
+    /// what it grew from.
+    fn regress_dry(&mut self, lattice: &mut CpmLattice, after: u64, mcs: u64) {
+        for i in 0..self.tree.sprouts.len() {
+            let sprout = &self.tree.sprouts[i];
+            let due = sprout.started.saturating_add(after) <= mcs;
+            if due && !sprout.perfused && !sprout.regressed {
+                self.tree.regress(lattice, i);
+            }
+        }
+        let sprouts = &self.tree.sprouts;
+        self.tips.retain(|tip| !sprouts[tip.sprout].regressed);
+    }
+
     /// The vessel pixel open to the tissue that reads the most VEGF, at
-    /// least `threshold`, and is far enough from every tip and every origin.
+    /// least `threshold`, and is far enough from every tip and from where
+    /// every sprout still standing started.
     /// Ties go to the first in reading order.
     fn strongest_free_wall(
         &self,
@@ -235,10 +322,9 @@ impl Vessels {
                     .iter()
                     .any(|&(i, j)| lattice.occupant(i, j) != OBSTACLE);
                 let crowded = self.tips.iter().any(|t| near(x, y, (t.x, t.y)))
-                    || self
-                        .origins
-                        .iter()
-                        .any(|&(ox, oy)| near(x, y, (f64::from(ox), f64::from(oy))));
+                    || self.tree.sprouts.iter().any(|s| {
+                        !s.regressed && near(x, y, (f64::from(s.origin.0), f64::from(s.origin.1)))
+                    });
                 if open && !crowded {
                     best = Some(((x, y), level));
                 }
@@ -305,6 +391,11 @@ fn advance(
 
 fn distance((ax, ay): (u32, u32), (bx, by): (u32, u32)) -> f64 {
     (f64::from(ax) - f64::from(bx)).hypot(f64::from(ay) - f64::from(by))
+}
+
+fn squared_distance((ax, ay): (u32, u32), (bx, by): (u32, u32)) -> i64 {
+    let (dx, dy) = (i64::from(ax) - i64::from(bx), i64::from(ay) - i64::from(by));
+    dx * dx + dy * dy
 }
 
 /// The first pixel of vessel, in reading order, that a disc laid at `centre`
@@ -374,10 +465,11 @@ mod tests {
             speed: 0.5,
             reach: 20.0,
             perfusion: Perfusion::AtOnce,
+            regress_after: None,
         };
         let mut vessels = Vessels::default();
-        for _ in 0..40 {
-            vessels.grow(&mut lattice, &field, &call);
+        for mcs in 0..40 {
+            vessels.grow(&mut lattice, &field, &call, mcs);
         }
         assert_eq!(
             vessels.sprouted(),
@@ -403,10 +495,11 @@ mod tests {
             speed: 0.5,
             reach: 20.0,
             perfusion: Perfusion::AtOnce,
+            regress_after: None,
         };
         let mut vessels = Vessels::default();
-        for _ in 0..40 {
-            assert!(!vessels.grow(&mut lattice, &field, &call));
+        for mcs in 0..40 {
+            assert!(!vessels.grow(&mut lattice, &field, &call, mcs));
         }
         assert_eq!(vessels.sprouted(), 0);
         assert_eq!(vessel(&lattice), before);
@@ -421,12 +514,10 @@ mod tests {
             speed: 0.5,
             reach: 20.0,
             perfusion: Perfusion::OnJoining,
+            regress_after: None,
         };
         let mut tree = Tree {
-            sprouts: vec![Sprout {
-                parent: None,
-                perfused: false,
-            }],
+            sprouts: vec![Sprout::new(None, false, (24, 20), 0)],
             owner: vec![None; 80 * 40],
             width: 80,
         };
@@ -461,10 +552,11 @@ mod tests {
                 speed: 0.5,
                 reach: 20.0,
                 perfusion,
+                regress_after: None,
             };
             let mut vessels = Vessels::default();
-            for _ in 0..40 {
-                vessels.grow(&mut lattice, &field, &call);
+            for mcs in 0..40 {
+                vessels.grow(&mut lattice, &field, &call, mcs);
             }
             assert_eq!(
                 lattice.occupant(32, 20),
@@ -477,5 +569,109 @@ mod tests {
                 "the vessel laid at the start always does"
             );
         }
+    }
+
+    /// A sprout that never joins anything regresses `regress_after` steps
+    /// after it started, and the wall it left may sprout again.
+    #[test]
+    fn a_blind_sprout_regresses_and_gives_its_pixels_back() {
+        let (mut lattice, field) = calling_from_the_right();
+        let before = lattice.grid.clone();
+        let call = Angiogenesis {
+            threshold: field.concentration_at(25, 20) * 0.9,
+            speed: 0.5,
+            reach: 20.0,
+            perfusion: Perfusion::OnJoining,
+            regress_after: Some(20),
+        };
+        let mut vessels = Vessels::default();
+        for mcs in 0..20 {
+            vessels.grow(&mut lattice, &field, &call, mcs);
+        }
+        assert!(vessel(&lattice) > vessel_count(&before), "the sprout grew");
+        assert_eq!(vessels.regressed(), 0, "and stands until its time is up");
+        vessels.grow(&mut lattice, &field, &call, 20);
+        assert_eq!(vessels.regressed(), 1);
+        assert_eq!(
+            lattice.grid, before,
+            "every pixel it laid is given back, and only those"
+        );
+        assert_eq!(vessels.sprouted(), 2, "the wall it left sprouted again");
+        assert_eq!(vessels.tips().len(), 1, "and only the new tip grows");
+    }
+
+    fn vessel_count(grid: &ndarray::Array2<u32>) -> usize {
+        grid.iter().filter(|&&p| p == OBSTACLE).count()
+    }
+
+    /// A tree laid by hand: sprout 0 to the right of the vessel and sprout
+    /// 1 grown from it, neither carrying blood; sprout 2 above the vessel and
+    /// sprout 3 below sprout 0, overlapping it, both carrying blood.
+    fn a_tree_laid_by_hand() -> (CpmLattice, Vessels) {
+        let mut lattice = CpmLattice::new(80, 40, 10.0).unwrap();
+        lattice.add_obstacle_disc(Pos2 { x: 20, y: 20 }, 4);
+        let mut tree = Tree {
+            sprouts: vec![
+                Sprout::new(None, false, (24, 20), 0),
+                Sprout::new(Some(0), false, (29, 18), 15),
+                Sprout::new(None, true, (20, 16), 0),
+                Sprout::new(None, true, (24, 22), 0),
+            ],
+            owner: vec![None; 80 * 40],
+            width: 80,
+        };
+        let discs: [(usize, &[(u32, u32)]); 4] = [
+            (0, &[(26, 20), (27, 20), (28, 20), (29, 20), (30, 20)]),
+            (1, &[(29, 16), (29, 15), (29, 14)]),
+            (2, &[(20, 13), (20, 12), (20, 11)]),
+            (3, &[(26, 24), (27, 24)]),
+        ];
+        for (sprout, centres) in discs {
+            for &centre in centres {
+                tree.lay(&mut lattice, centre, sprout);
+            }
+        }
+        (
+            lattice,
+            Vessels {
+                tips: Vec::new(),
+                tree,
+            },
+        )
+    }
+
+    #[test]
+    fn a_sprout_regresses_with_what_grew_from_it_and_leaves_what_another_laid() {
+        let (mut lattice, mut vessels) = a_tree_laid_by_hand();
+        let laid = lattice.grid.clone();
+        vessels.regress_dry(&mut lattice, 20, 19);
+        assert_eq!(lattice.grid, laid, "nothing is due before step 20");
+
+        vessels.regress_dry(&mut lattice, 20, 20);
+        let regressed: Vec<bool> = vessels.tree.sprouts.iter().map(|s| s.regressed).collect();
+        assert_eq!(
+            regressed,
+            [true, true, false, false],
+            "sprout 1 goes with sprout 0 although its own time is not up"
+        );
+        assert_eq!(
+            lattice.occupant(30, 20),
+            0,
+            "sprout 0's vessel is given back"
+        );
+        assert_eq!(lattice.occupant(29, 14), 0, "and sprout 1's");
+        assert_eq!(lattice.occupant(20, 11), OBSTACLE, "sprout 2 carries blood");
+        assert_eq!(
+            lattice.occupant(27, 22),
+            OBSTACLE,
+            "sprout 0 laid this pixel first, inside a disc sprout 3 laid too"
+        );
+        assert_eq!(vessels.tree.owner((27, 22)), Some(3), "which now holds it");
+        assert_eq!(
+            lattice.occupant(23, 20),
+            OBSTACLE,
+            "the vessel the scenario laid never regresses"
+        );
+        assert!(vessels.carries_blood(27, 22));
     }
 }

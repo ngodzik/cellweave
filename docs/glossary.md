@@ -32,6 +32,8 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Clone** (6). Every cell descended from one mutated ancestor with no further mutation in between. The first cell founds clone 0.
 
+**Co-option** (16). A tumour growing along the vessels already there instead of calling new ones. In some tumours the co-opted vessels then regress.
+
 **Common random numbers** (10). Comparing two configurations under the same seeds, pair by pair, so the history they share drops out and what differs is what differs between them.
 
 **Contact energy, J** (1). What a piece of boundary between two cells of given kinds costs.
@@ -48,7 +50,7 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Crowding** (7). How squeezed a cell is: how far below its reference size it sits, as a fraction of it. An input every network can read, like oxygen.
 
-**Determinism** (1, 9, 14, 16). The same seed gives the same simulation, byte for byte. Checked on every push.
+**Determinism** (1, 9, 14, 16, 17). The same seed gives the same simulation, byte for byte. Checked on every push.
 
 **Differentiation** (7). A cell giving up dividing to become a specialised cell. In an epithelium, a basal cell that commits leaves the layer. Here, a chance per step set by the network's differentiation node.
 
@@ -64,7 +66,7 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **EGF** (2). Epidermal growth factor, the growth signal. A hardcoded input for every cell today.
 
-**Emergence** (6, 7, 12, 14, 16). Behaviour that follows from the model without any rule naming it. The necrotic core, the compact cell, the cord's thickness.
+**Emergence** (6, 7, 12, 14, 17). Behaviour that follows from the model without any rule naming it. The necrotic core, the compact cell, the cord's thickness.
 
 **Endothelial cell** (14). A cell of the thin layer that lines every blood vessel. The cells that sprout.
 
@@ -134,11 +136,13 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **PDE** (3). Partial differential equation: rates of change in time and space. Oxygen is one.
 
-**Perfusion** (14). Blood flowing through a vessel. Here a sprout carries blood, and oxygen, from its first pixel, or only once its tip has joined another vessel and closed a loop.
+**Perfusion** (14, 16). Blood flowing through a vessel. Here a sprout carries blood, and oxygen, from its first pixel, or only once its tip has joined another vessel and closed a loop.
 
 **Pixel** (1). One square of the lattice, about a micrometre, carrying one identity and one oxygen value.
 
 **Proliferating** (4). Alive, cycling, dividing. The default fate under enough oxygen.
+
+**Pruning** (16). A vessel network removing some of its segments, usually those carrying the least blood, after growing more than it keeps.
 
 **Public good** (15). Something everyone nearby can use and nobody can keep to themselves, such as a factor a cell secretes into the space around it.
 
@@ -149,6 +153,8 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 **Red-black** (3). An order for an SOR sweep: the grid coloured like a chessboard, every red pixel updated from its black neighbours, then every black one from the new reds. Each colour can be updated in parallel.
 
 **Refuge** (8, 10). Where a stress does not reach: here the hypoxic, quiescent edge of the cord, the cells it is used up before reaching.
+
+**Regression** (16). A vessel segment disappearing: its channel collapses and its cells move into the vessels that stay. Here a sprout that still carries no blood a set number of steps after it started is taken back, with every sprout grown from it.
 
 **Relaxation** (3). Iterating a field until it stops moving: its steady state.
 
@@ -170,7 +176,7 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Sister fates, r** (12). What the two cells of one division do next. r is the chance both divide, which equals the chance both leave; a quarter if sisters were independent, below a quarter when they tend to do opposite things, as in the mouse and in the sheet.
 
-**Snapshot** (4, 16). A file listing every living cell's state and the oxygen it reads, one per interval.
+**Snapshot** (4, 17). A file listing every living cell's state and the oxygen it reads, one per interval.
 
 **SOR** (3). Successive over-relaxation, the sweep that solves for a steady state in about L passes rather than L².
 

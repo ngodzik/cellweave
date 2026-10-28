@@ -49,6 +49,8 @@ pub struct Measurements {
     pub perfused: u64,
     /// Sprouts still growing.
     pub sprouts: usize,
+    /// Sprouts that have regressed so far, for carrying no blood too long.
+    pub regressed: usize,
     /// Equivalent radius of everything the tissue covers, in pixels: living,
     /// necrotic and departing cells, and the vessel they surround if there is
     /// one.
@@ -172,6 +174,7 @@ impl<S: SimState> Simulation<S> {
             vessel: vessel_area,
             perfused,
             sprouts: self.sprouts().len(),
+            regressed: self.regressed(),
             tissue_radius,
             necrotic_radius,
             viable_depth,
