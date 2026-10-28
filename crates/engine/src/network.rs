@@ -346,6 +346,12 @@ impl Network {
         self.reference_volume
     }
 
+    /// The names of the nodes, in the order the specification lists them,
+    /// which is also the order of a snapshot's protein levels.
+    pub fn node_names(&self) -> &[String] {
+        &self.names
+    }
+
     /// The node the specification named as survival. A cell whose survival
     /// collapses is necrotic.
     pub fn survival(&self) -> f64 {
@@ -586,8 +592,9 @@ impl SignalingNetwork for Network {
     fn mechanics(&self) -> CellMechanics {
         let growth = self.state.values[self.growth].0;
         let m = self.mechanics;
-        let target = (f64::from(self.reference_volume) * (1.0 + m.growth_coefficient * growth))
-            .max(0.0) as u32;
+        let ratio = 1.0 + m.growth_coefficient * growth;
+        let ratio = m.max_target.map_or(ratio, |max| ratio.min(max));
+        let target = (f64::from(self.reference_volume) * ratio).max(0.0) as u32;
         CellMechanics {
             target_volume: Volume(target),
             lambda_volume: m.lambda_volume,
@@ -702,8 +709,25 @@ mod tests {
                 j_medium: 1.0,
                 j_self_base: 1.0,
                 j_self_from_growth: 0.0,
+                max_target: None,
             }),
         }
+    }
+
+    #[test]
+    fn a_ceiling_caps_the_target_however_high_the_growth() {
+        let mut spec: NetworkSpec = toml::from_str(RAS_ERK).unwrap();
+        if let Some(m) = spec.mechanics.as_mut() {
+            m.max_target = Some(1.2);
+        }
+        let mut capped = Network::from_spec(&spec, 200).unwrap();
+        let mut free = ras_erk();
+        for _ in 0..40 {
+            capped.step(TimeStep(1.0), &at(0.8, 0.2));
+            free.step(TimeStep(1.0), &at(0.8, 0.2));
+        }
+        assert_eq!(free.mechanics().target_volume, Volume(299));
+        assert_eq!(capped.mechanics().target_volume, Volume(240));
     }
 
     #[test]

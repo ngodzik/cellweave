@@ -284,6 +284,14 @@ impl Simulation<Configured> {
                 scenario.rewiring
             )));
         }
+        if let Some(max) = spec.mechanics.and_then(|m| m.max_target)
+            && (max.is_nan() || max < DIVISION_RATIO)
+        {
+            return Err(CellweaveError::Config(format!(
+                "the network caps a cell's target at {max} times its reference size, and a \
+                 cell divides at {DIVISION_RATIO}; no cell could ever divide"
+            )));
+        }
         let mut lattice = CpmLattice::new(scenario.width, scenario.height, scenario.temperature)
             .map_err(|e| CellweaveError::Config(e.to_string()))?;
         let cx = scenario.width / 2;
@@ -1177,6 +1185,62 @@ mod tests {
         );
         assert_eq!(real, without);
         assert_eq!(grid, other_grid);
+    }
+
+    #[test]
+    fn coverage_counts_the_living_whose_lineage_carries_a_change() {
+        let (mut sim, _) = Simulation::new(mutating(), &spec())
+            .unwrap()
+            .start()
+            .unwrap();
+        for _ in 0..100 {
+            sim.step().unwrap();
+        }
+        let sizes = sim.clone_sizes();
+        let living: usize = sizes.iter().sum();
+        let coverage = sim.coverage();
+        assert_eq!(coverage.len(), 5, "one share per node");
+        assert!(coverage.iter().any(|(_, share)| *share > 0.0));
+        for (node, share) in coverage {
+            let carries = |c: usize| {
+                let mut at = sim.clones().get(c);
+                while let Some(record) = at {
+                    if record.mutation.as_ref().is_some_and(|m| m.node == node) {
+                        return true;
+                    }
+                    at = record.parent.and_then(|p| sim.clones().get(p.0 as usize));
+                }
+                false
+            };
+            let carrying: usize = (0..sizes.len())
+                .filter(|&c| carries(c))
+                .map(|c| sizes[c])
+                .sum();
+            assert_eq!(share, carrying as f64 / living as f64, "{node}");
+        }
+    }
+
+    #[test]
+    fn a_suppressed_mutation_is_not_carried() {
+        let scenario = Scenario {
+            suppress: (1..1000).map(CloneId).collect(),
+            ..mutating()
+        };
+        let (mut sim, _) = Simulation::new(scenario, &spec()).unwrap().start().unwrap();
+        for _ in 0..100 {
+            sim.step().unwrap();
+        }
+        assert!(sim.clones().len() > 3, "clones were founded");
+        assert!(sim.coverage().iter().all(|(_, share)| *share == 0.0));
+    }
+
+    #[test]
+    fn a_ceiling_below_the_division_ratio_is_refused() {
+        let mut spec = spec();
+        if let Some(m) = spec.mechanics.as_mut() {
+            m.max_target = Some(1.2);
+        }
+        assert!(Simulation::new(scenario(OxygenSource::Bath), &spec).is_err());
     }
 
     #[test]

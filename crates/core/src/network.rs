@@ -175,6 +175,12 @@ pub struct MechanicsSpec {
     pub j_self_base: f64,
     /// How much a low growth node stiffens adhesion.
     pub j_self_from_growth: f64,
+    /// The largest target a cell asks for, as a multiple of its reference
+    /// volume, however high its growth node. Left out, there is none: a cell
+    /// with more growth signal tries to be larger, and presses harder on its
+    /// neighbours.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_target: Option<f64>,
 }
 
 /// A whole hypothesis: the nodes, what each node is for, and how the network

@@ -1,0 +1,22 @@
+# The epithelium of epithelium.toml, in which no cell presses harder than a
+# normal one.
+#
+# In epithelium.toml a cell tries to be as large as its growth node says, so a
+# clone that turns the growth pathway up tries to be larger, squeezes its
+# neighbours and makes them leave: it competes by size. Here a cell asks for at
+# most 1.5 times its reference size, which is what a normal cell asks for, so a
+# stronger growth signal no longer buys size, and a clone can only win by
+# leaving the layer less often than its neighbours do.
+#
+# Everything else is epithelium.toml. The mechanics are restated whole because a
+# file that changes them replaces them whole.
+
+extends = "epithelium.toml"
+
+[mechanics]
+growth_coefficient = 1.5
+lambda_volume = 50.0
+j_medium = 16.0
+j_self_base = 2.0
+j_self_from_growth = 8.0
+max_target = 1.5

@@ -57,6 +57,9 @@ struct Outcome {
     response: Option<f64>,
     /// The latest mutations of the clone holding the most living cells.
     leading: String,
+    /// For each node, the share of the living whose lineage carries a change
+    /// to it, as [`Simulation::coverage`] measures it.
+    coverage: Vec<(String, f64)>,
 }
 
 /// Mutations shown for the leading clone, the latest ones.
@@ -141,6 +144,7 @@ fn run(arm: &Arm, index: usize, seed: u64) -> Result<Outcome> {
         resistant,
         response,
         leading,
+        coverage: sim.coverage(),
     })
 }
 
@@ -159,12 +163,12 @@ pub fn campaign(arms: &[Arm], seeds: RangeInclusive<u64>, dir: &Path) -> Result<
     outcomes.sort_by_key(|o| (o.seed, o.arm));
 
     let mut csv = String::from(
-        "seed,arm,end_mcs,reached_edge,living,cycling,quiescent,clones,nadir,resistant,response,leading\n",
+        "seed,arm,end_mcs,reached_edge,living,cycling,quiescent,clones,nadir,resistant,response,leading,coverage\n",
     );
     for o in &outcomes {
         let _ = writeln!(
             csv,
-            "{},{},{},{},{},{},{},{},{},{},{},{}",
+            "{},{},{},{},{},{},{},{},{},{},{},{},{}",
             o.seed,
             arms[o.arm].name,
             o.end_mcs,
@@ -176,7 +180,13 @@ pub fn campaign(arms: &[Arm], seeds: RangeInclusive<u64>, dir: &Path) -> Result<
             o.nadir.map_or_else(String::new, |n| n.to_string()),
             o.resistant.map_or_else(String::new, |r| format!("{r:.4}")),
             o.response.map_or_else(String::new, |r| format!("{r:.4}")),
-            o.leading
+            o.leading,
+            o.coverage
+                .iter()
+                .filter(|(_, share)| *share > 0.0)
+                .map(|(node, share)| format!("{node}={share:.4}"))
+                .collect::<Vec<_>>()
+                .join(" ")
         );
     }
     fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
@@ -205,6 +215,31 @@ pub fn campaign(arms: &[Arm], seeds: RangeInclusive<u64>, dir: &Path) -> Result<
             );
         }
         text.push('\n');
+        // Every node any run of this arm carries a change to, with the
+        // share of the living that carries it, seed by seed.
+        let nodes: Vec<&str> = mine
+            .iter()
+            .flat_map(|o| o.coverage.iter())
+            .filter(|(_, share)| *share > 0.0)
+            .map(|(node, _)| node.as_str())
+            .fold(Vec::new(), |mut seen, node| {
+                if !seen.contains(&node) {
+                    seen.push(node);
+                }
+                seen
+            });
+        for node in nodes {
+            let shares: Vec<f64> = mine
+                .iter()
+                .map(|o| {
+                    o.coverage
+                        .iter()
+                        .find(|(n, _)| n == node)
+                        .map_or(0.0, |(_, share)| *share)
+                })
+                .collect();
+            let _ = writeln!(text, "    carrying a change to {node}: {}", spread(&shares));
+        }
     }
     if arms.len() == 2 {
         let pairs: Vec<(&Outcome, &Outcome)> = outcomes
