@@ -117,6 +117,12 @@ fn describe(ui: &mut egui::Ui, experiment: &Experiment) {
         (Seeding::Single, OxygenSource::Vessel { radius }) => {
             format!("one cell, oxygen from a vessel of radius {radius}")
         }
+        (Seeding::Single, OxygenSource::Capillary { radius }) => {
+            format!(
+                "one cell, oxygen from a capillary {} pixels wide",
+                2 * radius + 1
+            )
+        }
     };
     ui.strong(&experiment.label);
     ui.label(format!(

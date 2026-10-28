@@ -338,6 +338,16 @@ mod tests {
     }
 
     #[test]
+    fn a_capillary_is_a_table_with_a_radius() {
+        let cfg = SimConfig::from_toml(
+            "width = 50\nheight = 50\nmcs = 10\ntemperature = 10.0\nsnapshot_interval = 5\noutput_dir = \"o\"\n\n[oxygen_source]\nkind = \"capillary\"\nradius = 3\n",
+        )
+        .unwrap();
+        assert_eq!(cfg.oxygen_source, OxygenSource::Capillary { radius: 3 });
+        assert!(cfg.oxygen_source.is_vessel());
+    }
+
+    #[test]
     fn a_vessel_is_a_table_with_a_radius() {
         let cfg = SimConfig::from_toml(
             "width = 50\nheight = 50\nmcs = 10\ntemperature = 10.0\nsnapshot_interval = 5\noutput_dir = \"o\"\n\n[oxygen_source]\nkind = \"vessel\"\nradius = 6\n",

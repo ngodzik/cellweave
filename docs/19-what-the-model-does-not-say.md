@@ -1,4 +1,4 @@
-# 18. What the model does not say
+# 19. What the model does not say
 
 The placeholders, the missing units, and why emergence is the whole point.
 
@@ -37,6 +37,7 @@ What is a placeholder today, gathered from the chapters:
 | lesion | NOTCH's baseline at 0.7 or 0.3 of its rate; 15 pixels around the centre; at step 4000 | fitter than a normal cell, less fit than a NOTCH-loss clone, about seven cells, in a sheet already covered by mutant clones |
 | a silent patch | every living cell within 30 pixels of a point to the right of the vessel, at step 120; read at step 300 | a patch placed before the first sprout, large enough to matter: with the marked network it holds more than half the tumour at step 300 |
 | vessels | a wall sprouts at VEGF 0.5; VEGF's reach 30 pixels; tips a pixel per step, 16 pixels apart; new vessel 5 pixels across, perfused at once or once joined, regressing after 100 steps without blood when told to; cells in the way crushed, or pushed along straight lines when told to | a cord whose cells starve calls vessels to them within a few hundred steps, in a 300 pixel box |
+| a capillary | seven pixels wide, a quarter of the way down a 300 pixel box; uptake 0.0001; a wall sprouts at VEGF 0.3 | a layer as deep as the cord's sleeve, and walls that sprout at all |
 
 ## What is not there
 

@@ -375,8 +375,22 @@ impl Simulation<Configured> {
         let cx = scenario.width / 2;
         let cy = scenario.height / 2;
 
-        if let OxygenSource::Vessel { radius } = scenario.oxygen_source {
-            lattice.add_obstacle_disc(Pos2 { x: cx, y: cy }, radius);
+        match scenario.oxygen_source {
+            OxygenSource::Bath => {}
+            OxygenSource::Vessel { radius } => {
+                lattice.add_obstacle_disc(Pos2 { x: cx, y: cy }, radius);
+            }
+            OxygenSource::Capillary { radius } => {
+                for x in 0..scenario.width {
+                    lattice.add_obstacle_disc(
+                        Pos2 {
+                            x,
+                            y: capillary_row(scenario.height),
+                        },
+                        radius,
+                    );
+                }
+            }
         }
         let first = match scenario.seeding {
             Seeding::Single => match scenario.oxygen_source {
@@ -386,6 +400,14 @@ impl Simulation<Configured> {
                     Pos2 {
                         x: cx + radius + 8,
                         y: cy,
+                    },
+                    8,
+                ),
+                OxygenSource::Capillary { radius } => lattice.add_cell(
+                    CellKind::Tumor,
+                    Pos2 {
+                        x: cx,
+                        y: capillary_row(scenario.height) + radius + 8,
                     },
                     8,
                 ),
@@ -419,7 +441,7 @@ impl Simulation<Configured> {
                 }
                 // A vessel would leave blocks with no pixel at all, cells that
                 // exist only to be counted as born and gone.
-                if let OxygenSource::Vessel { .. } = scenario.oxygen_source {
+                if scenario.oxygen_source.is_vessel() {
                     return Err(CellweaveError::Config(
                         "a sheet is a layer of normal tissue with nothing inside it; \
                          it cannot be laid around a vessel"
@@ -486,7 +508,7 @@ impl Simulation<Configured> {
         let initial = match scenario.oxygen_source {
             _ if scenario.oxygen_uptake == 0.0 => 1.0,
             OxygenSource::Bath => 1.0,
-            OxygenSource::Vessel { .. } => 0.0,
+            OxygenSource::Vessel { .. } | OxygenSource::Capillary { .. } => 0.0,
         };
         let oxygen = ScalarField::new(
             scenario.width,
@@ -538,9 +560,7 @@ impl Simulation<Configured> {
         let vegf = match scenario.angiogenesis {
             None => None,
             Some(a) => {
-                if !matches!(scenario.oxygen_source, OxygenSource::Vessel { .. })
-                    || scenario.oxygen_uptake == 0.0
-                {
+                if !scenario.oxygen_source.is_vessel() || scenario.oxygen_uptake == 0.0 {
                     return Err(CellweaveError::Config(
                         "vessels grow from a vessel, and this scenario has none that feeds \
                          anything; give it a vessel and oxygen uptake"
@@ -1174,7 +1194,7 @@ impl<S: SimState> Simulation<S> {
         field.release_all();
         match self.scenario.oxygen_source {
             OxygenSource::Bath => hold_medium_bath(field, &self.lattice, level),
-            OxygenSource::Vessel { .. } => {
+            OxygenSource::Vessel { .. } | OxygenSource::Capillary { .. } => {
                 apply_background_uptake(field, &self.lattice, exposure.uptake);
                 hold_vessels_at(field, &self.lattice, level, |x, y| {
                     self.vessels.carries_blood(x, y)
@@ -1210,7 +1230,7 @@ impl<S: SimState> Simulation<S> {
         self.oxygen.release_all();
         match self.scenario.oxygen_source {
             OxygenSource::Bath => hold_medium_bath(&mut self.oxygen, &self.lattice, 1.0),
-            OxygenSource::Vessel { .. } => {
+            OxygenSource::Vessel { .. } | OxygenSource::Capillary { .. } => {
                 apply_background_uptake(&mut self.oxygen, &self.lattice, uptake);
                 hold_vessels_at(&mut self.oxygen, &self.lattice, 1.0, |x, y| {
                     self.vessels.carries_blood(x, y)
@@ -1227,8 +1247,12 @@ impl<S: SimState> Simulation<S> {
             let id = lattice.occupant(x, y);
             id != 0 && id != OBSTACLE
         };
+        // Along a capillary the left and right sides of the box cut through a
+        // layer that goes on beyond them, the way the plane cuts through a
+        // cord; only the edges away from the capillary bound the tissue.
+        let sides = !matches!(self.scenario.oxygen_source, OxygenSource::Capillary { .. });
         (0..w).any(|x| is_cell(x, 0) || is_cell(x, h - 1))
-            || (0..h).any(|y| is_cell(0, y) || is_cell(w - 1, y))
+            || (sides && (0..h).any(|y| is_cell(0, y) || is_cell(w - 1, y)))
     }
 
     /// Index of the step last taken, which labels what is read off the
@@ -1373,6 +1397,12 @@ impl<S: SimState> Simulation<S> {
     pub fn crushed(&self) -> u64 {
         self.crushed
     }
+}
+
+/// The row a capillary lying across the box runs along: a quarter of the way
+/// down, so that the tissue growing below it has most of the box.
+pub fn capillary_row(height: u32) -> u32 {
+    height / 4
 }
 
 /// The decay rate that gives VEGF the reach a scenario states.
@@ -1918,5 +1948,35 @@ mod tests {
             .filter(|&(&now, &seen)| seen && now != 0 && now != OBSTACLE)
             .count();
         assert!(refilled > 0, "and cells moved in where it was");
+    }
+
+    #[test]
+    fn a_capillary_lies_across_the_box_and_the_tissue_grows_below_it() {
+        let (mut sim, _) =
+            Simulation::new(scenario(OxygenSource::Capillary { radius: 2 }), &spec())
+                .unwrap()
+                .start()
+                .unwrap();
+        let row = capillary_row(80);
+        let lattice = sim.lattice();
+        assert_eq!(lattice.occupant(0, row), OBSTACLE, "from the left side");
+        assert_eq!(lattice.occupant(79, row), OBSTACLE, "to the right side");
+        assert_ne!(
+            lattice.occupant(40, row + 2 + 8),
+            0,
+            "the first cell below it"
+        );
+        for _ in 0..100 {
+            sim.step().unwrap();
+        }
+        let above = (0..row.saturating_sub(2))
+            .flat_map(|y| (0..80).map(move |x| (x, y)))
+            .any(|(x, y)| {
+                let id = sim.lattice().occupant(x, y);
+                id != 0 && id != OBSTACLE
+            });
+        assert!(!above, "nothing crosses the capillary");
+        let m = sim.measure();
+        assert!(m.vessel > 0 && m.viable_depth > 0.0, "{m:?}");
     }
 }

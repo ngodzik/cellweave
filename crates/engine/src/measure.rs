@@ -66,6 +66,8 @@ pub struct Measurements {
     /// a ring outside the core: the tissue radius less the core's. From a
     /// vessel, it arrives at the wall and the living tissue is a sleeve
     /// around it: the radius of vessel and living together, less the vessel's.
+    /// From a capillary lying across the box, it is a layer along one side of
+    /// it: the living area over the number of columns living cells hold.
     /// Either way it is the depth diffusion can feed, which is the number a
     /// pathologist reads off a section. A sheet has no supply to measure
     /// from, and there the number means nothing.
@@ -99,6 +101,7 @@ impl<S: SimState> Simulation<S> {
         let (mut cycling, mut quiescent, mut necrotic) = (0, 0, 0);
         let (mut differentiating, mut apoptotic) = (0, 0);
         let (mut living_area, mut necrotic_area, mut leaving_area) = (0u64, 0u64, 0u64);
+        let mut living = vec![false; lattice.cell_count() + 1];
         for (id, record) in lattice.cell_records() {
             if record.volume.0 == 0 {
                 continue;
@@ -108,10 +111,12 @@ impl<S: SimState> Simulation<S> {
                 Some(Fate::Cycling) => {
                     cycling += 1;
                     living_area += area;
+                    living[id.0 as usize] = true;
                 }
                 Some(Fate::Quiescent) => {
                     quiescent += 1;
                     living_area += area;
+                    living[id.0 as usize] = true;
                 }
                 Some(Fate::Necrotic) => {
                     necrotic += 1;
@@ -132,7 +137,7 @@ impl<S: SimState> Simulation<S> {
         // A bath has no vessel, and nothing grows one there.
         let (vessel_area, perfused) = match self.scenario().oxygen_source {
             OxygenSource::Bath => (0, 0),
-            OxygenSource::Vessel { .. } => {
+            OxygenSource::Vessel { .. } | OxygenSource::Capillary { .. } => {
                 let (w, h) = lattice.dims();
                 let vessel: Vec<(u32, u32)> = (0..h)
                     .flat_map(|y| (0..w).map(move |x| (x, y)))
@@ -153,6 +158,22 @@ impl<S: SimState> Simulation<S> {
             OxygenSource::Bath => tissue_radius - necrotic_radius,
             OxygenSource::Vessel { .. } => {
                 equivalent_radius(vessel_area + living_area) - equivalent_radius(vessel_area)
+            }
+            OxygenSource::Capillary { .. } => {
+                let (w, h) = lattice.dims();
+                let columns = (0..w)
+                    .filter(|&x| {
+                        (0..h).any(|y| {
+                            let id = lattice.occupant(x, y);
+                            id != OBSTACLE && living.get(id as usize).copied().unwrap_or(false)
+                        })
+                    })
+                    .count();
+                if columns == 0 {
+                    0.0
+                } else {
+                    living_area as f64 / columns as f64
+                }
             }
         };
 
