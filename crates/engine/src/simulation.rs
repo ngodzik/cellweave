@@ -13,8 +13,8 @@ use std::marker::PhantomData;
 
 use cellweave_core::{
     Angiogenesis, CellId, CellInputs, CellKind, CellSnapshot, CellweaveError, CloneId,
-    Concentration, Exposure, NetworkSpec, OxygenSource, Perfusion, Pos2, Seeding, SignalingNetwork,
-    SimSnapshot, TimeStep, Volume,
+    Concentration, DiffusionField, Exposure, Immunity, NetworkSpec, OxygenSource, Perfusion, Pos2,
+    Seeding, SignalingNetwork, SimSnapshot, TimeStep, Volume,
 };
 use rand::rngs::StdRng;
 use rand::{RngExt, SeedableRng};
@@ -134,6 +134,19 @@ const VEGF_DIFFUSION: f64 = OXYGEN_DIFFUSION;
 /// the oxygen's tolerance is relative to its uptake.
 const VEGF_TOLERANCE: f64 = 0.01;
 
+/// Radius of an immune cell where it arrives, in pixels: a disc of 13
+/// pixels, about a third of a tumour cell's area, a lymphocyte being small.
+const IMMUNE_RADIUS: u32 = 2;
+
+/// The size an immune cell keeps to, in pixels.
+const IMMUNE_VOLUME: u32 = 13;
+
+/// How firmly an immune cell keeps to its size: loosely, since a crawling
+/// lymphocyte changes shape as it goes. A tumour cell's 50 would hold so
+/// small a cell still, every pixel it gained or lost costing more than the
+/// chemokine's pull could pay.
+const IMMUNE_LAMBDA: f64 = 2.0;
+
 /// What a simulation is asked to be: the box, its temperature, where the oxygen
 /// comes from, and the seed.
 ///
@@ -194,6 +207,21 @@ pub struct Scenario {
     /// Vessels that grow towards the tissue that calls for them. Left out,
     /// the vessel stays as it was laid and nothing reads what cells secrete.
     pub angiogenesis: Option<Angiogenesis>,
+    /// Immune cells that come for the tumour. Left out, none do.
+    pub immunity: Option<Immunity>,
+}
+
+/// One immune cell in the tissue.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ImmuneCell {
+    /// Its slot, one less than its identifier.
+    slot: usize,
+    /// The step it arrived at.
+    arrived: u64,
+    /// How many tumour cells it can still kill.
+    kills_left: u32,
+    /// Whether it has died, exhausted or old, and is breaking up.
+    dying: bool,
 }
 
 /// Clones whose founding mutation is undone, at one step, in every living
@@ -335,6 +363,12 @@ pub struct Simulation<S: SimState> {
     gone: u64,
     /// Cells a growing vessel took every pixel of.
     crushed: u64,
+    /// The chemokine living tumour cells secrete, when immune cells come.
+    chemokine: Option<ScalarField>,
+    /// The immune cells in the tissue, dying ones included.
+    immune: Vec<ImmuneCell>,
+    /// Tumour cells immune cells have killed.
+    killed: u64,
     _state: PhantomData<S>,
 }
 
@@ -657,6 +691,51 @@ impl Simulation<Configured> {
             }
         };
 
+        let chemokine = match scenario.immunity {
+            None => None,
+            Some(im) => {
+                if !scenario.oxygen_source.is_vessel() || scenario.oxygen_uptake == 0.0 {
+                    return Err(CellweaveError::Config(
+                        "immune cells arrive through vessels carrying blood, and this \
+                         scenario has none that feeds anything; give it a vessel and oxygen \
+                         uptake"
+                            .into(),
+                    ));
+                }
+                let chance = |p: f64| p.is_finite() && p > 0.0 && p <= 1.0;
+                if !chance(im.arrival) || !chance(im.kill) {
+                    return Err(CellweaveError::Config(format!(
+                        "immune arrival {} and kill {} are chances per step; each must be \
+                         above zero and at most one",
+                        im.arrival, im.kill
+                    )));
+                }
+                if im.kills == 0 || im.lifetime == 0 {
+                    return Err(CellweaveError::Config(
+                        "an immune cell that can kill nothing, or lives no step, does nothing; \
+                         give it kills and a lifetime"
+                            .into(),
+                    ));
+                }
+                if !(im.reach.is_finite() && im.reach > 0.0)
+                    || !(im.chemotaxis.is_finite() && im.chemotaxis >= 0.0)
+                {
+                    return Err(CellweaveError::Config(format!(
+                        "the chemokine's reach is {} pixels and the pull up it {}; the reach \
+                         must be above zero and the pull not below it",
+                        im.reach, im.chemotaxis
+                    )));
+                }
+                Some(ScalarField::new(
+                    scenario.width,
+                    scenario.height,
+                    VEGF_DIFFUSION,
+                    VEGF_DIFFUSION / (im.reach * im.reach),
+                    0.0,
+                )?)
+            }
+        };
+
         let mut vessels = Vessels::default();
         if let OxygenSource::Capillary { radius } = scenario.oxygen_source {
             let flowing = scenario
@@ -692,6 +771,9 @@ impl Simulation<Configured> {
             born: cells as u64,
             gone: 0,
             crushed: 0,
+            chemokine,
+            immune: Vec::new(),
+            killed: 0,
             _state: PhantomData,
         })
     }
@@ -738,6 +820,9 @@ impl Simulation<Configured> {
             born: self.born,
             gone: self.gone,
             crushed: self.crushed,
+            chemokine: self.chemokine,
+            immune: self.immune,
+            killed: self.killed,
             _state: PhantomData,
         };
         Ok((running, sweeps))
@@ -875,6 +960,10 @@ impl Simulation<Running> {
             }
         }
 
+        // 3b. Immune cells arrive, kill what they touch, and die; then the
+        //     chemokine settles and they are set to climb it.
+        self.immune_respond(mcs)?;
+
         // 4. Advance CPM.
         self.lattice.monte_carlo_step(&mut self.rng);
 
@@ -948,6 +1037,191 @@ impl Simulation<Running> {
             }
         }
         Ok(())
+    }
+
+    /// With immunity: maybe one immune cell arrives through a vessel wall
+    /// carrying blood; each immune cell touching a living tumour cell may
+    /// kill one; one exhausted or past its lifetime dies and breaks up; and
+    /// the chemokine living tumour cells secrete settles, for the immune
+    /// cells to climb. Nothing happens, and nothing is drawn, without it.
+    fn immune_respond(&mut self, mcs: u64) -> Result<(), CellweaveError> {
+        let (Some(immunity), Some(_)) = (self.scenario.immunity, self.chemokine.as_ref()) else {
+            return Ok(());
+        };
+        if mcs < immunity.from {
+            return Ok(());
+        }
+        if self.rng.random::<f64>() < immunity.arrival {
+            self.immune_arrives(immunity, mcs);
+        }
+        self.immune_kill(immunity, mcs);
+        let decay = VEGF_DIFFUSION / (immunity.reach * immunity.reach);
+        let mut per_cell = vec![0.0; self.networks.len() + 1];
+        for (i, slot) in self.networks.iter().enumerate() {
+            if slot.is_some() && self.lattice.cell_kind(cell_of(i)) == Some(CellKind::Tumor) {
+                per_cell[i + 1] = decay;
+            }
+        }
+        let Some(field) = self.chemokine.as_mut() else {
+            return Ok(());
+        };
+        apply_production(field, &self.lattice, &per_cell);
+        field
+            .relax(TimeStep(1.0), VEGF_TOLERANCE * decay, OXYGEN_MAX_STEPS)
+            .map_err(|e| CellweaveError::Simulation(format!("chemokine at MCS {mcs}: {e}")))?;
+        let (w, h) = self.lattice.dims();
+        let values = (0..h)
+            .flat_map(|y| (0..w).map(move |x| (x, y)))
+            .map(|(x, y)| field.concentration_at(x, y))
+            .collect();
+        self.lattice.attract_immune(values, immunity.chemotaxis);
+        Ok(())
+    }
+
+    /// One immune cell arrives beside a vessel wall carrying blood, at a
+    /// place drawn among all such places; none if there is none.
+    fn immune_arrives(&mut self, immunity: Immunity, mcs: u64) {
+        let lattice = &self.lattice;
+        let (w, h) = lattice.dims();
+        let beside_blood = |x: u32, y: u32| {
+            lattice.occupant(x, y) != OBSTACLE
+                && [
+                    (x.wrapping_sub(1), y),
+                    (x + 1, y),
+                    (x, y.wrapping_sub(1)),
+                    (x, y + 1),
+                ]
+                .iter()
+                .any(|&(i, j)| {
+                    i < w
+                        && j < h
+                        && lattice.occupant(i, j) == OBSTACLE
+                        && self.vessels.carries_blood(i, j)
+                })
+        };
+        let places: Vec<(u32, u32)> = (0..h)
+            .flat_map(|y| (0..w).map(move |x| (x, y)))
+            .filter(|&(x, y)| beside_blood(x, y))
+            .collect();
+        if places.is_empty() {
+            return;
+        }
+        let pick = (self.rng.random::<f64>() * places.len() as f64) as usize;
+        let (x, y) = places[pick.min(places.len() - 1)];
+        let Some(id) = self
+            .lattice
+            .seed_cell(CellKind::Immune, Pos2 { x, y }, IMMUNE_RADIUS)
+        else {
+            return;
+        };
+        self.lattice
+            .set_volume_target(id, Volume(IMMUNE_VOLUME), IMMUNE_LAMBDA);
+        self.networks.push(None);
+        self.lineage.push(CloneId(0));
+        self.immune.push(ImmuneCell {
+            slot: self.networks.len() - 1,
+            arrived: mcs,
+            kills_left: immunity.kills,
+            dying: false,
+        });
+        // A cell it arrived on top of may have been left with nothing; it
+        // dies of it, though no vessel crushed it.
+        for i in 0..self.networks.len() {
+            let id = cell_of(i);
+            let emptied = self.networks[i].is_some()
+                && matches!(
+                    self.lattice.cell_kind(id),
+                    Some(CellKind::Tumor | CellKind::Normal)
+                )
+                && self.lattice.volume(id).is_some_and(|v| v.0 == 0);
+            if emptied {
+                self.lattice.set_kind(id, CellKind::Necrotic);
+                self.lives.left(i);
+            }
+        }
+    }
+
+    /// Each immune cell touching a living tumour cell may kill the one of
+    /// them with the lowest identifier not killed already this step: it
+    /// starts apoptosis. One exhausted or past its lifetime dies and breaks
+    /// up, and one broken up, or squeezed out of every pixel, is gone.
+    fn immune_kill(&mut self, immunity: Immunity, mcs: u64) {
+        if self.immune.is_empty() {
+            return;
+        }
+        let lattice = &self.lattice;
+        let (w, h) = lattice.dims();
+        let mut which = vec![usize::MAX; lattice.cell_count() + 1];
+        for (k, cell) in self.immune.iter().enumerate() {
+            if !cell.dying {
+                which[cell.slot + 1] = k;
+            }
+        }
+        let mut touching: Vec<Vec<u32>> = vec![Vec::new(); self.immune.len()];
+        for y in 0..h {
+            for x in 0..w {
+                let id = lattice.occupant(x, y);
+                let Some(&k) = which.get(id as usize).filter(|&&k| k != usize::MAX) else {
+                    continue;
+                };
+                for (i, j) in [
+                    (x + 1, y),
+                    (x, y + 1),
+                    (x.wrapping_sub(1), y),
+                    (x, y.wrapping_sub(1)),
+                ] {
+                    if i >= w || j >= h {
+                        continue;
+                    }
+                    let other = lattice.occupant(i, j);
+                    let alive = matches!(
+                        self.fate(CellId(other)),
+                        Some(Fate::Cycling | Fate::Quiescent)
+                    ) && lattice.cell_kind(CellId(other)) == Some(CellKind::Tumor);
+                    if other != id
+                        && other != 0
+                        && other != OBSTACLE
+                        && alive
+                        && !touching[k].contains(&other)
+                    {
+                        touching[k].push(other);
+                    }
+                }
+            }
+        }
+        for (k, targets) in touching.iter_mut().enumerate() {
+            targets.sort_unstable();
+            let cell = self.immune[k];
+            let id = cell_of(cell.slot);
+            if cell.dying {
+                let volume = self.lattice.volume(id).map_or(0, |v| v.0);
+                let target = Volume(volume.saturating_sub(FRAGMENTATION_RATE));
+                self.lattice.set_volume_target(id, target, IMMUNE_LAMBDA);
+                continue;
+            }
+            if cell.kills_left == 0 || mcs.saturating_sub(cell.arrived) >= immunity.lifetime {
+                self.immune[k].dying = true;
+                self.lattice.set_kind(id, CellKind::Apoptotic);
+                continue;
+            }
+            // Another immune cell may have killed it earlier this step.
+            let Some(&victim) = targets
+                .iter()
+                .find(|&&v| self.lattice.cell_kind(CellId(v)) == Some(CellKind::Tumor))
+            else {
+                continue;
+            };
+            if self.rng.random::<f64>() < immunity.kill {
+                self.lattice.set_kind(CellId(victim), CellKind::Apoptotic);
+                self.lives.left(victim as usize - 1);
+                self.immune[k].kills_left -= 1;
+                self.killed += 1;
+            }
+        }
+        // One with no pixel left, broken up or squeezed out, is gone.
+        let lattice = &self.lattice;
+        self.immune
+            .retain(|c| lattice.volume(cell_of(c.slot)).is_some_and(|v| v.0 > 0));
     }
 
     /// Split every cell, tumour or normal, that has grown past the division
@@ -1314,9 +1588,16 @@ impl<S: SimState> Simulation<S> {
     fn touches_the_edge(&self) -> bool {
         let lattice = &self.lattice;
         let (w, h) = lattice.dims();
+        // Only a cell carrying a network is tissue: an immune cell wandering
+        // to the edge, alive or breaking up, is not the tissue reaching it.
         let is_cell = |x: u32, y: u32| {
             let id = lattice.occupant(x, y);
-            id != 0 && id != OBSTACLE
+            id != 0
+                && id != OBSTACLE
+                && self
+                    .networks
+                    .get(id as usize - 1)
+                    .is_some_and(Option::is_some)
         };
         // Along a capillary the left and right sides of the box cut through a
         // layer that goes on beyond them, the way the plane cuts through a
@@ -1453,7 +1734,10 @@ impl<S: SimState> Simulation<S> {
             .filter(|(_, r)| {
                 !matches!(
                     r.kind,
-                    CellKind::Necrotic | CellKind::Differentiated | CellKind::Apoptotic
+                    CellKind::Necrotic
+                        | CellKind::Differentiated
+                        | CellKind::Apoptotic
+                        | CellKind::Immune
                 ) && r.volume.0 > 0
             })
             .count()
@@ -1476,6 +1760,22 @@ impl<S: SimState> Simulation<S> {
     /// dying, or shed after differentiating.
     pub fn gone(&self) -> u64 {
         self.gone
+    }
+
+    /// The immune cells in the tissue, not counting those dying.
+    pub fn immune_cells(&self) -> usize {
+        self.immune.iter().filter(|c| !c.dying).count()
+    }
+
+    /// Tumour cells immune cells have killed so far.
+    pub fn killed(&self) -> u64 {
+        self.killed
+    }
+
+    /// The chemokine living tumour cells secrete, as it was last settled,
+    /// when immune cells come for them.
+    pub fn chemokine(&self) -> Option<&ScalarField> {
+        self.chemokine.as_ref()
     }
 
     /// Cells a growing vessel left with no pixel at all, which died of it.
@@ -1553,6 +1853,7 @@ mod tests {
             lesion: None,
             revert: None,
             angiogenesis: None,
+            immunity: None,
         }
     }
 
@@ -1935,6 +2236,7 @@ mod tests {
             run(growing(1e9)),
             run(Scenario {
                 angiogenesis: None,
+                immunity: None,
                 ..growing(1e9)
             })
         );
@@ -2153,5 +2455,73 @@ mod tests {
         assert!(pruning(Perfusion::Flow, None, 0.02).is_err());
         assert!(pruning(Perfusion::Flow, Some(100), 0.0).is_err());
         assert!(pruning(Perfusion::Flow, Some(100), 0.02).is_ok());
+    }
+
+    fn immune(from: u64, arrival: f64, kill: f64) -> Scenario {
+        Scenario {
+            immunity: Some(Immunity {
+                from,
+                arrival,
+                kill,
+                kills: 3,
+                lifetime: 100,
+                chemotaxis: 200.0,
+                reach: 10.0,
+            }),
+            ..scenario(OxygenSource::Vessel { radius: 4 })
+        }
+    }
+
+    #[test]
+    fn immune_cells_come_only_through_a_vessel_and_only_from_their_step() {
+        let refused =
+            |s: Scenario| matches!(Simulation::new(s, &spec()), Err(CellweaveError::Config(_)));
+        let mut bath = immune(0, 0.5, 0.5);
+        bath.oxygen_source = OxygenSource::Bath;
+        assert!(refused(bath));
+        assert!(refused(immune(0, 0.0, 0.5)));
+        assert!(refused(immune(0, 0.5, 1.5)));
+        let (mut sim, _) = Simulation::new(immune(30, 1.0, 1.0), &spec())
+            .unwrap()
+            .start()
+            .unwrap();
+        for _ in 0..30 {
+            sim.step().unwrap();
+        }
+        assert_eq!(sim.immune_cells(), 0, "none before step 30");
+        sim.step().unwrap();
+        assert_eq!(
+            sim.immune_cells(),
+            1,
+            "one arrives at step 30, the chance being one"
+        );
+    }
+
+    #[test]
+    fn an_immune_cell_kills_the_tumour_cell_it_touches() {
+        let (mut sim, _) = Simulation::new(immune(0, 1.0, 1.0), &spec())
+            .unwrap()
+            .start()
+            .unwrap();
+        for _ in 0..60 {
+            sim.step().unwrap();
+            if sim.killed() > 0 {
+                break;
+            }
+        }
+        assert!(
+            sim.killed() > 0,
+            "the first tumour cell sits by the vessel they arrive through"
+        );
+        let tumour = sim
+            .lattice()
+            .cell_records()
+            .filter(|(_, r)| matches!(r.kind, CellKind::Tumor | CellKind::Normal) && r.volume.0 > 0)
+            .count();
+        assert_eq!(
+            sim.living(),
+            tumour,
+            "immune cells are not counted among the living"
+        );
     }
 }

@@ -211,6 +211,9 @@ fn run(config: SimConfig, config_path: Option<&str>) -> Result<()> {
     if let Some(vessels) = vessels(&sim) {
         eprintln!("{vessels}");
     }
+    if let Some(immunity) = immunity(&sim) {
+        eprintln!("{immunity}");
+    }
     if let Some(sisters) = sisters(&sim) {
         eprintln!("{sisters}");
     }
@@ -358,6 +361,17 @@ fn vessels<S: cellweave_engine::simulation::SimState>(sim: &Simulation<S>) -> Op
         m.sprouts,
         m.vessel,
         sim.crushed()
+    ))
+}
+
+/// The immune cells in the tissue and the tumour cells they killed, or
+/// `None` when no immune cell comes.
+fn immunity<S: cellweave_engine::simulation::SimState>(sim: &Simulation<S>) -> Option<String> {
+    sim.scenario().immunity?;
+    Some(format!(
+        "immunity: {} immune cells in the tissue, {} tumour cells killed",
+        sim.immune_cells(),
+        sim.killed()
     ))
 }
 

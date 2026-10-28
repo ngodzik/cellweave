@@ -51,6 +51,10 @@ pub struct Measurements {
     pub sprouts: usize,
     /// Sprouts that have regressed so far, for carrying no blood too long.
     pub regressed: usize,
+    /// Immune cells in the tissue, not counting those dying.
+    pub immune: usize,
+    /// Tumour cells immune cells have killed so far.
+    pub killed: u64,
     /// Equivalent radius of everything the tissue covers, in pixels: living,
     /// necrotic and departing cells, and the vessel they surround if there is
     /// one.
@@ -196,6 +200,8 @@ impl<S: SimState> Simulation<S> {
             perfused,
             sprouts: self.sprouts().len(),
             regressed: self.regressed(),
+            immune: self.immune_cells(),
+            killed: self.killed(),
             tissue_radius,
             necrotic_radius,
             viable_depth,
@@ -283,6 +289,7 @@ mod tests {
             lesion: None,
             revert: None,
             angiogenesis: None,
+            immunity: None,
         }
     }
 

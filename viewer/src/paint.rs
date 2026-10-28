@@ -7,7 +7,7 @@
 use bevy::asset::RenderAssetUsages;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
-use cellweave_core::{CellId, CloneId, DiffusionField, Seeding, SignalingNetwork};
+use cellweave_core::{CellId, CellKind, CloneId, DiffusionField, Seeding, SignalingNetwork};
 use cellweave_engine::cpm::OBSTACLE;
 use cellweave_engine::simulation::Running;
 use cellweave_engine::{CpmLattice, Fate, Simulation};
@@ -38,6 +38,10 @@ pub const DIFFERENTIATING: LinearRgba = LinearRgba::rgb(0.55, 0.45, 0.28);
 /// A cell in apoptosis, breaking up: violet, the colour of nothing else on
 /// the canvas, so that where the stress is killing reads at a glance.
 pub const APOPTOTIC: LinearRgba = LinearRgba::rgb(0.50, 0.14, 0.62);
+/// An immune cell: an icy white no other cell takes, so a killer stands out
+/// in any view.
+pub const IMMUNE: LinearRgba = LinearRgba::rgb(0.75, 0.95, 1.0);
+
 /// A lesion's cells in the clone view: a pale gold no clone's hue reaches,
 /// so an early tumour stands out from the patchwork of clones around it.
 pub const LESION: LinearRgba = LinearRgba::rgb(1.0, 0.82, 0.45);
@@ -253,6 +257,13 @@ pub fn block(
 
 /// The colour a cell is filled with, before its membrane is drawn.
 pub fn cell_colour(sim: &Simulation<Running>, id: CellId, view: View) -> LinearRgba {
+    // An immune cell carries no network and so has no fate: it is drawn by
+    // what it is, and dimmed once it is breaking up.
+    match sim.lattice().cell_kind(id) {
+        Some(CellKind::Immune) => return IMMUNE,
+        Some(CellKind::Apoptotic) if sim.fate(id).is_none() => return IMMUNE * 0.3,
+        _ => {}
+    }
     let Some(fate) = sim.fate(id) else {
         return NECROTIC;
     };

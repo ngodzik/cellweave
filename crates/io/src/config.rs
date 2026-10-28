@@ -1,7 +1,7 @@
 //! TOML simulation configuration.
 
 use cellweave_core::{
-    Angiogenesis, CellweaveError, CloneId, Exposure, NetworkSpec, OxygenSource, Seeding,
+    Angiogenesis, CellweaveError, CloneId, Exposure, Immunity, NetworkSpec, OxygenSource, Seeding,
 };
 use cellweave_engine::simulation::{DEFAULT_SEED, Lesion, Scenario};
 use serde::{Deserialize, Serialize};
@@ -85,6 +85,10 @@ pub struct SimConfig {
     /// the vessel stays as it was laid, and the run is the one it always was.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub angiogenesis: Option<Angiogenesis>,
+    /// Immune cells that come for the tumour. Left out, none do, and the run
+    /// is the one it always was.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub immunity: Option<Immunity>,
 }
 
 /// A lesion as a configuration states it: its network by file name, where
@@ -169,6 +173,7 @@ impl SimConfig {
             lesion,
             revert: None,
             angiogenesis: self.angiogenesis,
+            immunity: self.immunity,
         })
     }
 
@@ -282,6 +287,7 @@ impl Default for SimConfig {
             hours_per_step: None,
             lesion: None,
             angiogenesis: None,
+            immunity: None,
         }
     }
 }

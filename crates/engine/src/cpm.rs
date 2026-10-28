@@ -43,6 +43,17 @@ pub struct ContactEnergy {
     pub normal_necrotic: f64,
     /// J(Necrotic, Necrotic).
     pub necrotic_necrotic: f64,
+    /// J(Medium, Immune).
+    pub medium_immune: f64,
+    /// J(Tumor, Immune): low, since an immune cell holds on to the tumour
+    /// cell it is killing.
+    pub tumor_immune: f64,
+    /// J(Normal, Immune).
+    pub normal_immune: f64,
+    /// J(Necrotic, Immune).
+    pub necrotic_immune: f64,
+    /// J(Immune, Immune): high, so that immune cells do not clump.
+    pub immune_immune: f64,
 }
 
 impl Default for ContactEnergy {
@@ -58,6 +69,14 @@ impl Default for ContactEnergy {
             normal_normal: 6.0,
             normal_necrotic: 12.0,
             necrotic_necrotic: 8.0,
+            // An immune cell crawls through stroma, sticks to the tumour cells
+            // it hunts less than they stick to each other, and keeps away from
+            // other immune cells.
+            medium_immune: 12.0,
+            tumor_immune: 6.0,
+            normal_immune: 11.0,
+            necrotic_immune: 10.0,
+            immune_immune: 16.0,
         }
     }
 }
@@ -80,6 +99,11 @@ impl ContactEnergy {
             (2, 2) => self.normal_normal,
             (2, 3) => self.normal_necrotic,
             (3, 3) => self.necrotic_necrotic,
+            (0, 4) => self.medium_immune,
+            (1, 4) => self.tumor_immune,
+            (2, 4) => self.normal_immune,
+            (3, 4) => self.necrotic_immune,
+            (4, 4) => self.immune_immune,
             // Ordering above makes every other pair impossible.
             _ => 0.0,
         }
@@ -95,6 +119,7 @@ impl ContactEnergy {
             // A cell breaking up holds on to its neighbours no better than a
             // dead one.
             CellKind::Necrotic | CellKind::Apoptotic => 3,
+            CellKind::Immune => 4,
         }
     }
 }
@@ -139,6 +164,9 @@ pub struct CpmLattice {
     pub contact: ContactEnergy,
     /// Current Monte Carlo step.
     pub mcs: u64,
+    /// A field immune cells climb, row by row, and how strongly; `None`
+    /// until a scenario with immune cells sets it.
+    pull: Option<(Vec<f64>, f64)>,
 }
 
 impl CpmLattice {
@@ -161,6 +189,7 @@ impl CpmLattice {
             temperature,
             contact: ContactEnergy::default(),
             mcs: 0,
+            pull: None,
         })
     }
 
@@ -333,6 +362,54 @@ impl CpmLattice {
         true
     }
 
+    /// Let immune cells climb `field`, one value per pixel row by row, with
+    /// `strength`: extending one pixel up a difference of one saves that
+    /// much energy. Set every step, since the field moves with the tissue.
+    pub fn attract_immune(&mut self, field: Vec<f64>, strength: f64) {
+        self.pull = Some((field, strength));
+    }
+
+    /// Place a cell of `kind` on every pixel within `radius` of `centre`
+    /// that is not an obstacle, taking pixels from whatever cells held them
+    /// as a growing vessel does, and keeping their records true. Returns the
+    /// new cell, or `None` if it would hold no pixel at all.
+    pub fn seed_cell(&mut self, kind: CellKind, centre: Pos2, radius: u32) -> Option<CellId> {
+        let id = self.cells.len() as u32;
+        let r2 = i64::from(radius * radius);
+        let rows = centre.y.saturating_sub(radius)..(centre.y + radius + 1).min(self.height);
+        let cols = centre.x.saturating_sub(radius)..(centre.x + radius + 1).min(self.width);
+        let mut taken = Vec::new();
+        for row in rows {
+            for col in cols.clone() {
+                let (dx, dy) = (
+                    i64::from(col) - i64::from(centre.x),
+                    i64::from(row) - i64::from(centre.y),
+                );
+                if dx * dx + dy * dy <= r2 && self.grid[[row as usize, col as usize]] != OBSTACLE {
+                    taken.push((row as usize, col as usize));
+                }
+            }
+        }
+        if taken.is_empty() {
+            return None;
+        }
+        for &(row, col) in &taken {
+            let was = self.grid[[row, col]];
+            if was != 0 {
+                self.cells[was as usize].volume.0 -= 1;
+            }
+            self.grid[[row, col]] = id;
+        }
+        let volume = Volume(taken.len() as u32);
+        self.cells.push(CellRecord {
+            kind,
+            volume,
+            target_volume: volume,
+            lambda_volume: 50.0,
+        });
+        Some(CellId(id))
+    }
+
     /// Give an obstacle pixel back to the medium, where a vessel was taken
     /// back, for cells to move into. Any other pixel is left as it is.
     pub fn clear_obstacle(&mut self, x: u32, y: u32) {
@@ -373,7 +450,15 @@ impl CpmLattice {
             return;
         }
 
-        let delta = self.delta_h(row, col, src, dst);
+        let mut delta = self.delta_h(row, col, src, dst);
+        // Chemotaxis: an immune cell extending up the field's gradient, from
+        // the neighbour it holds to the pixel it takes, saves energy.
+        if let Some((field, strength)) = &self.pull
+            && self.kind(dst) == CellKind::Immune
+        {
+            let at = |r: u32, c: u32| field[r as usize * self.width as usize + c as usize];
+            delta -= strength * (at(row, col) - at(nr, nc));
+        }
         let accept = if delta <= 0.0 {
             true
         } else {
@@ -986,5 +1071,49 @@ mod tests {
         assert_eq!(lat.volume(id).unwrap().0, 17 * 20 - 11);
         assert_eq!(left(&lat), free - 2, "the two pushed went left");
         assert!(records_match_grid(&lat));
+    }
+
+    #[test]
+    fn a_cell_seeded_over_another_takes_its_pixels_and_keeps_the_records_true() {
+        let mut lat = CpmLattice::new(30, 30, 10.0).unwrap();
+        let host = lat.add_cell(CellKind::Tumor, Pos2 { x: 15, y: 15 }, 6);
+        let before = lat.volume(host).unwrap().0;
+        let guest = lat
+            .seed_cell(CellKind::Immune, Pos2 { x: 15, y: 15 }, 2)
+            .unwrap();
+        assert_eq!(lat.volume(guest).unwrap().0, 13);
+        assert_eq!(lat.volume(host).unwrap().0, before - 13);
+        assert!(records_match_grid(&lat));
+    }
+
+    #[test]
+    fn an_immune_cell_climbs_the_field_it_is_pulled_up() {
+        let mut lat = CpmLattice::new(60, 20, 10.0).unwrap();
+        let id = lat
+            .seed_cell(CellKind::Immune, Pos2 { x: 20, y: 10 }, 2)
+            .unwrap();
+        let field: Vec<f64> = (0..20)
+            .flat_map(|_| (0..60).map(|x| f64::from(x) / 60.0))
+            .collect();
+        let centre_x = |lat: &CpmLattice| {
+            let pixels: Vec<u32> = (0..20)
+                .flat_map(|y| (0..60).map(move |x| (x, y)))
+                .filter(|&(x, y)| lat.occupant(x, y) == id.0)
+                .map(|(x, _)| x)
+                .collect();
+            f64::from(pixels.iter().sum::<u32>()) / pixels.len() as f64
+        };
+        let start = centre_x(&lat);
+        lat.set_volume_target(id, Volume(13), 2.0);
+        lat.attract_immune(field, 400.0);
+        let mut rng = StdRng::seed_from_u64(7);
+        for _ in 0..200 {
+            lat.monte_carlo_step(&mut rng);
+        }
+        assert!(
+            centre_x(&lat) > start + 5.0,
+            "from {start} to {}",
+            centre_x(&lat)
+        );
     }
 }

@@ -180,6 +180,15 @@ fn census(ui: &mut egui::Ui, runner: &Runner, sheet: bool, exposed: bool) {
                 ),
             );
         }
+        if runner.experiment.scenario.immunity.is_some() {
+            row(
+                "immune",
+                format!(
+                    "{} in the tissue, {} tumour cells killed",
+                    c.immune, c.killed
+                ),
+            );
+        }
         // Once a lesion has appeared, how much of it is left, down to none.
         if runner.history.iter().any(|m| m.lesion > 0) {
             row("lesion", c.lesion.to_string());
@@ -251,6 +260,9 @@ fn colouring(ui: &mut egui::Ui, view: &mut View, experiment: &Experiment) {
                     swatch(ui, paint::APOPTOTIC, "apoptotic");
                 }
                 swatch(ui, paint::VESSEL, "vessel");
+                if experiment.scenario.immunity.is_some() {
+                    swatch(ui, paint::IMMUNE, "immune");
+                }
                 if experiment
                     .scenario
                     .angiogenesis
