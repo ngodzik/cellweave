@@ -178,6 +178,7 @@ fn retarget_one(runner: &Runner, view: View, glow: &mut Glow) {
         .collect();
     let oxygen = sim.oxygen();
     let stress = sim.stress();
+    let vegf = sim.vegf();
     let (w, h) = lattice.dims();
     for y in 0..h {
         for x in 0..w {
@@ -196,6 +197,10 @@ fn retarget_one(runner: &Runner, view: View, glow: &mut Glow) {
                 _ if view == View::Stress => {
                     let s = stress.map_or(0.0, |f| f.concentration_at(x, y)) as f32;
                     paint::ramp(s) * CYCLING_GLOW
+                }
+                _ if view == View::Vegf => {
+                    let v = vegf.map_or(0.0, |f| f.concentration_at(x, y)) as f32;
+                    paint::ramp(v) * CYCLING_GLOW
                 }
                 _ => per_cell
                     .get(id as usize)

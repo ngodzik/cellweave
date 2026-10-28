@@ -83,9 +83,10 @@ fn main() -> Result<()> {
             "oxygen" => paint::View::Oxygen,
             "clone" => paint::View::Clone,
             "stress" => paint::View::Stress,
+            "vegf" => paint::View::Vegf,
             other => {
                 return Err(anyhow!(
-                    "--view {other}: expected fate, oxygen, clone or stress"
+                    "--view {other}: expected fate, oxygen, clone, stress or vegf"
                 ));
             }
         },
