@@ -68,13 +68,16 @@ pub enum View {
     Stress,
 }
 
-/// The texture the tissue is painted into, and the material that shows it.
-#[derive(Resource)]
+/// The texture one run's tissue is painted into, and the material that
+/// shows it.
+#[derive(Component)]
 pub struct Canvas {
     /// Written by [`repaint`].
     pub image: Handle<Image>,
     /// Shows the image as the surface's colour.
     pub material: Handle<StandardMaterial>,
+    /// The generation last painted, and the view it was painted in.
+    pub seen: Option<(u64, View)>,
 }
 
 /// A blank canvas for a lattice of this size, kept on the CPU so it can be
@@ -93,35 +96,35 @@ pub fn canvas(width: u32, height: u32) -> Image {
     )
 }
 
-/// Repaint the canvas when the simulation moved or the view changed.
+/// Repaint each run's canvas when its simulation moved or the view changed.
 ///
-/// A view changed while the simulation is away in the task pool is painted
+/// A view changed while a simulation is away in the task pool is painted
 /// when it comes back.
 pub fn repaint(
-    runner: Res<Runner>,
+    mut sides: Query<(&Runner, &mut Canvas)>,
     view: Res<View>,
-    canvas: Option<Res<Canvas>>,
     mut images: ResMut<Assets<Image>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    mut seen: Local<Option<(u64, View)>>,
 ) {
-    let Some(canvas) = canvas else { return };
-    let Some(sim) = runner.idle() else { return };
-    let now = (runner.generation(), *view);
-    if *seen == Some(now) {
-        return;
+    for (runner, mut canvas) in &mut sides {
+        let Some(sim) = runner.idle() else { continue };
+        let now = (runner.generation(), *view);
+        if canvas.seen == Some(now) {
+            continue;
+        }
+        let Some(mut image) = images.get_mut(&canvas.image) else {
+            continue;
+        };
+        let Some(data) = image.data.as_mut() else {
+            continue;
+        };
+        paint(sim, *view, data);
+        // An image changed under a material does not always reach the
+        // material's bind group; touching the material makes it pick the new
+        // texture up.
+        let _ = materials.get_mut(&canvas.material);
+        canvas.seen = Some(now);
     }
-    let Some(mut image) = images.get_mut(&canvas.image) else {
-        return;
-    };
-    let Some(data) = image.data.as_mut() else {
-        return;
-    };
-    paint(sim, *view, data);
-    // An image changed under a material does not always reach the material's
-    // bind group; touching the material makes it pick the new texture up.
-    let _ = materials.get_mut(&canvas.material);
-    *seen = Some(now);
 }
 
 /// Paint the whole lattice into `out`, an sRGB RGBA buffer [`SCALE`] times

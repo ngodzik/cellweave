@@ -33,9 +33,10 @@ pub struct Orbit {
 
 impl Orbit {
     /// Tilted enough to see the tissue as a surface, close enough that the
-    /// whole box fills most of the window.
-    pub fn framing(scenario: &Scenario) -> Self {
-        let size = scenario.width.max(scenario.height) as f32;
+    /// whole box, or `sides` boxes side by side, fill most of the window.
+    pub fn framing(scenario: &Scenario, sides: usize) -> Self {
+        let wide = scenario.width as f32 * sides.max(1) as f32;
+        let size = wide.max(scenario.height as f32);
         Self {
             yaw: 0.0,
             pitch: 0.8,

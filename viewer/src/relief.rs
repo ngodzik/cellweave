@@ -39,8 +39,8 @@ const VESSEL_HEIGHT: f32 = 9.0;
 /// eight, a change is nine tenths done in under a third of a second.
 const EASE: f32 = 8.0;
 
-/// The surface, and where it is heading.
-#[derive(Resource)]
+/// One run's surface, and where it is heading.
+#[derive(Component)]
 pub struct Relief {
     /// The mesh being reshaped.
     pub mesh: Handle<Mesh>,
@@ -119,15 +119,16 @@ fn at(x: usize, y: usize, w: usize, h: usize, lift: f32) -> [f32; 3] {
     ]
 }
 
-/// Work out the heights of the latest state, when there is a new one.
-pub fn retarget(runner: Res<Runner>, relief: Option<ResMut<Relief>>) {
-    let Some(mut relief) = relief else { return };
-    let Some(sim) = runner.idle() else { return };
-    if relief.seen == Some(runner.generation()) {
-        return;
+/// Work out the heights of each run's latest state, when there is a new one.
+pub fn retarget(mut sides: Query<(&Runner, &mut Relief)>) {
+    for (runner, mut relief) in &mut sides {
+        let Some(sim) = runner.idle() else { continue };
+        if relief.seen == Some(runner.generation()) {
+            continue;
+        }
+        relief.seen = Some(runner.generation());
+        relief.target = heights(sim);
     }
-    relief.seen = Some(runner.generation());
-    relief.target = heights(sim);
 }
 
 /// The height of every pixel: zero in the medium, and inside a cell or the
@@ -236,25 +237,29 @@ fn heights(sim: &Simulation<Running>) -> Vec<f32> {
 /// H raises or flattens the relief, unless egui is taking the keys.
 pub fn toggle(
     keys: Res<ButtonInput<KeyCode>>,
-    relief: Option<ResMut<Relief>>,
+    mut reliefs: Query<&mut Relief>,
     mut contexts: bevy_egui::EguiContexts,
 ) -> Result {
     if contexts.ctx_mut()?.egui_wants_keyboard_input() {
         return Ok(());
     }
-    if let Some(mut relief) = relief
-        && keys.just_pressed(KeyCode::KeyH)
-    {
-        relief.raised = !relief.raised;
+    if keys.just_pressed(KeyCode::KeyH) {
+        for mut relief in &mut reliefs {
+            relief.raised = !relief.raised;
+        }
     }
     Ok(())
 }
 
-/// Ease the surface towards its target, and rebuild the mesh from it.
-pub fn animate(time: Res<Time>, relief: Option<ResMut<Relief>>, mut meshes: ResMut<Assets<Mesh>>) {
-    let Some(mut relief) = relief else { return };
-    let relief = &mut *relief;
+/// Ease each surface towards its target, and rebuild its mesh from it.
+pub fn animate(time: Res<Time>, mut reliefs: Query<&mut Relief>, mut meshes: ResMut<Assets<Mesh>>) {
     let k = 1.0 - (-EASE * time.delta_secs()).exp();
+    for mut relief in &mut reliefs {
+        animate_one(k, &mut relief, &mut meshes);
+    }
+}
+
+fn animate_one(k: f32, relief: &mut Relief, meshes: &mut Assets<Mesh>) {
     let lift_goal = if relief.raised { 1.0 } else { 0.0 };
     let mut moving = (relief.lift - lift_goal).abs() > 1e-3;
     relief.lift += (lift_goal - relief.lift) * k;
