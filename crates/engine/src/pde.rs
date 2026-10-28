@@ -39,6 +39,8 @@ pub struct ScalarField {
     held: Vec<bool>,
     /// Sink per pixel, what the tissue takes up per unit time.
     uptake: Vec<f64>,
+    /// Source per pixel, what the tissue secretes per unit time.
+    production: Vec<f64>,
     /// Scratch: breadth-first frontier for the bath fill.
     frontier: Vec<(u32, u32)>,
 }
@@ -89,6 +91,7 @@ impl ScalarField {
             source: 0.0,
             held: vec![false; n],
             uptake: vec![0.0; n],
+            production: vec![0.0; n],
             frontier: Vec::new(),
         })
     }
@@ -112,6 +115,24 @@ impl ScalarField {
         }
         let i = self.idx(x, y);
         self.uptake[i] = rate.max(0.0);
+    }
+
+    /// Set how much one pixel secretes per unit time.
+    ///
+    /// The mirror of [`ScalarField::set_uptake`]: a source in the equation,
+    /// on every step, rather than an amount added once. Coordinates outside
+    /// the grid are ignored.
+    pub fn set_production(&mut self, x: u32, y: u32, rate: f64) {
+        if x >= self.width || y >= self.height {
+            return;
+        }
+        let i = self.idx(x, y);
+        self.production[i] = rate.max(0.0);
+    }
+
+    /// Forget every source, before what the tissue secretes is read in again.
+    pub fn clear_production(&mut self) {
+        self.production.fill(0.0);
     }
 
     /// Set every pixel to `value`, as when what supplies a field is cut off
@@ -195,6 +216,7 @@ impl ScalarField {
         let (width, height) = (self.width, self.height);
         let (d, decay, source) = (self.d, self.decay, self.source);
         let (values, held, uptake) = (&self.values, &self.held, &self.uptake);
+        let production = &self.production;
         let at = |x: u32, y: u32| values[y as usize * width as usize + x as usize];
 
         let moved = self
@@ -232,7 +254,10 @@ impl ScalarField {
                         sum += at(x, y + 1);
                         real += 1.0;
                     }
-                    let balanced = (d * sum + source - uptake[i]) / (real * d + decay);
+                    // A pixel that secretes nothing adds an exact zero, so a
+                    // field without production balances as it always did.
+                    let balanced =
+                        (d * sum + source + production[i] - uptake[i]) / (real * d + decay);
                     let after = ((1.0 - omega) * before + omega * balanced).max(0.0);
                     *out = after;
                     moved = moved.max((after - before).abs());
@@ -396,7 +421,8 @@ impl DiffusionField for ScalarField {
                     continue;
                 }
                 let lap = self.laplacian(x, y);
-                let change = self.d * lap - self.decay * c + self.source - self.uptake[i];
+                let change = self.d * lap - self.decay * c + self.source + self.production[i]
+                    - self.uptake[i];
                 // The floor is physics, not a safety net: tissue cannot take up
                 // what is not there. Diffusion and decay alone never go below
                 // zero, the stability check sees to that.

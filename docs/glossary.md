@@ -4,6 +4,10 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Adhesion** (1). Cells sticking to each other through surface proteins. Modelled as a lower contact energy between cells of the same kind.
 
+**Anastomosis** (14). Two vessels joining. Here a sprout's tip that comes within a pixel of another vessel joins it and stops.
+
+**Angiogenesis** (14). New blood vessels growing from existing ones, towards tissue that calls for them with VEGF.
+
 **Anoxia** (2). Oxygen so low the cell cannot make energy. Below 15% of the source's level in cellweave, damage to survival begins.
 
 **Apoptosis** (2, 4, 8). Programmed, orderly cell death that a cell starts itself: it packs itself into fragments its neighbours clear. Here a chance per step set by the network's apoptosis node.
@@ -44,7 +48,7 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Crowding** (7). How squeezed a cell is: how far below its reference size it sits, as a fraction of it. An input every network can read, like oxygen.
 
-**Determinism** (1, 9, 14). The same seed gives the same simulation, byte for byte. Checked on every push.
+**Determinism** (1, 9, 14, 15). The same seed gives the same simulation, byte for byte. Checked on every push.
 
 **Differentiation** (7). A cell giving up dividing to become a specialised cell. In an epithelium, a basal cell that commits leaves the layer. Here, a chance per step set by the network's differentiation node.
 
@@ -60,7 +64,9 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **EGF** (2). Epidermal growth factor, the growth signal. A hardcoded input for every cell today.
 
-**Emergence** (6, 7, 12, 14). Behaviour that follows from the model without any rule naming it. The necrotic core, the compact cell, the cord's thickness.
+**Emergence** (6, 7, 12, 14, 15). Behaviour that follows from the model without any rule naming it. The necrotic core, the compact cell, the cord's thickness.
+
+**Endothelial cell** (14). A cell of the thin layer that lines every blood vessel. The cells that sprout.
 
 **Energy, Hamiltonian, H** (1). The number every configuration of the lattice has, which the Monte Carlo lowers.
 
@@ -92,11 +98,11 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Lethal stress** (8). An abstract agent that comes in where oxygen does, is taken up by the cells it reaches, and raises what the network says it raises. Stands for nothing in particular.
 
-**Loss of function** (11). A mutation that stops a gene's product from working, rather than turning it up or down. Here a lost term, through rewiring.
-
 **Lineage reference volume** (4). The size a lineage divides at, inherited unchanged. How a cell type keeps its size across generations.
 
 **Lineage tracing** (7, 12). Marking cells with a heritable label and following what their descendants become. A sheet labels every cell as its own clone.
+
+**Loss of function** (11). A mutation that stops a gene's product from working, rather than turning it up or down. Here a lost term, through rewiring.
 
 **Medium** (1, 3). Empty pixels, identity 0. Liquid in a bath; stroma around a vessel.
 
@@ -158,11 +164,15 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Sister fates, r** (12). What the two cells of one division do next. r is the chance both divide, which equals the chance both leave; a quarter if sisters were independent, below a quarter when they tend to do opposite things, as in the mouse and in the sheet.
 
-**Snapshot** (4, 14). A file listing every living cell's state and the oxygen it reads, one per interval.
+**Snapshot** (4, 15). A file listing every living cell's state and the oxygen it reads, one per interval.
 
 **SOR** (3). Successive over-relaxation, the sweep that solves for a steady state in about L passes rather than L².
 
 **Spheroid** (5). A ball of tumour cells grown in liquid. Starves from the inside past a few hundred micrometres.
+
+**Sprout** (14). A new vessel growing out of the wall of an existing one, led by a tip cell.
+
+**Stalk cell** (14). An endothelial cell behind the tip of a sprout, which divides and makes the new vessel's tube. Not modelled as a cell here: the tip lays vessel behind it.
 
 **Steady state, equilibrium** (3). A field that has stopped changing. Where oxygen always is, at the scale of a cell's decisions.
 
@@ -172,13 +182,15 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Temperature, T** (1). How often a costly move is accepted anyway. The noise knob.
 
+**Tip cell** (14). The endothelial cell leading a sprout. It climbs the VEGF gradient and does not divide. Here a point that moves up the gradient.
+
 **Turnover** (5). Births balancing deaths in a population of steady size.
 
 **Uptake, u** (3). What a pixel of tissue takes up per unit time. A sink in the field's equation.
 
-**VEGF** (2). Vascular endothelial growth factor, the call for new vessels. Computed, unused.
+**VEGF** (2, 14). Vascular endothelial growth factor, the call for new vessels. Secreted into a field that diffuses and decays where vessels can grow; computed and unheard elsewhere.
 
-**Vessel** (3, 5). An obstacle disc held at full oxygen in the middle of the box.
+**Vessel** (3, 5, 14). Obstacle pixels held at full oxygen: a disc in the middle of the box, and whatever has grown from it.
 
 **Viable depth** (5). How far living tissue reaches from where its oxygen comes in: from the edge inward in a spheroid, from the wall outward around a vessel.
 

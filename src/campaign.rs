@@ -17,8 +17,8 @@ use std::path::Path;
 
 use anyhow::{Context, Result, bail};
 use cellweave_core::NetworkSpec;
-use cellweave_engine::Simulation;
 use cellweave_engine::simulation::Scenario;
+use cellweave_engine::{DEPTH_SHARE, Simulation};
 use rayon::prelude::*;
 
 /// Fraction of the exposure's intensity a cell's response is measured at.
@@ -66,6 +66,14 @@ struct Outcome {
     /// The first step at whose end no cell of the lesion was left, if it was
     /// lost. A lineage with no living cell cannot come back.
     lesion_lost_at: Option<u64>,
+    /// Dead cells not yet resorbed, at the end.
+    necrotic: usize,
+    /// Pixels of vessel at the end, and sprouts ever started, when the
+    /// configuration has a vessel.
+    vessel: Option<(u64, usize)>,
+    /// How far living tissue reaches from its nearest vessel at the end, as
+    /// [`Simulation::depth_from_vessels`] reads it.
+    depth: Option<f64>,
 }
 
 /// Mutations shown for the leading clone, the latest ones.
@@ -161,6 +169,9 @@ fn run(arm: &Arm, index: usize, seed: u64) -> Result<Outcome> {
         coverage: sim.coverage(),
         lesion: lesion_at.map(|_| m.lesion),
         lesion_lost_at,
+        necrotic: m.necrotic,
+        vessel: (m.vessel > 0).then_some((m.vessel, sim.sprouted())),
+        depth: sim.depth_from_vessels(DEPTH_SHARE),
     })
 }
 
@@ -179,12 +190,12 @@ pub fn campaign(arms: &[Arm], seeds: RangeInclusive<u64>, dir: &Path) -> Result<
     outcomes.sort_by_key(|o| (o.seed, o.arm));
 
     let mut csv = String::from(
-        "seed,arm,end_mcs,reached_edge,living,cycling,quiescent,clones,nadir,resistant,response,leading,lesion,lesion_lost_at,coverage\n",
+        "seed,arm,end_mcs,reached_edge,living,cycling,quiescent,clones,nadir,resistant,response,leading,lesion,lesion_lost_at,necrotic,vessel,sprouted,depth,coverage\n",
     );
     for o in &outcomes {
         let _ = writeln!(
             csv,
-            "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
+            "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
             o.seed,
             arms[o.arm].name,
             o.end_mcs,
@@ -199,6 +210,10 @@ pub fn campaign(arms: &[Arm], seeds: RangeInclusive<u64>, dir: &Path) -> Result<
             o.leading,
             o.lesion.map_or_else(String::new, |n| n.to_string()),
             o.lesion_lost_at.map_or_else(String::new, |s| s.to_string()),
+            o.necrotic,
+            o.vessel.map_or_else(String::new, |(v, _)| v.to_string()),
+            o.vessel.map_or_else(String::new, |(_, s)| s.to_string()),
+            o.depth.map_or_else(String::new, |d| format!("{d:.1}")),
             o.coverage
                 .iter()
                 .filter(|(_, share)| *share > 0.0)
@@ -233,6 +248,28 @@ pub fn campaign(arms: &[Arm], seeds: RangeInclusive<u64>, dir: &Path) -> Result<
             );
         }
         text.push('\n');
+        let vessel: Vec<f64> = mine
+            .iter()
+            .filter_map(|o| o.vessel)
+            .map(|(v, _)| v as f64)
+            .collect();
+        if !vessel.is_empty() {
+            let sprouted: Vec<f64> = mine
+                .iter()
+                .filter_map(|o| o.vessel)
+                .map(|(_, s)| s as f64)
+                .collect();
+            let necrotic: Vec<f64> = mine.iter().map(|o| o.necrotic as f64).collect();
+            let depth: Vec<f64> = mine.iter().filter_map(|o| o.depth).collect();
+            let _ = writeln!(
+                text,
+                "    necrotic {}, vessel pixels {}, sprouts {}, living tissue within {} px of a vessel",
+                spread(&necrotic),
+                spread(&vessel),
+                spread(&sprouted),
+                spread(&depth)
+            );
+        }
         if let Some(at) = arm.scenario.lesion.as_ref().map(|l| l.at) {
             let kept = mine
                 .iter()
@@ -309,6 +346,21 @@ pub fn campaign(arms: &[Arm], seeds: RangeInclusive<u64>, dir: &Path) -> Result<
             "    more lesion cells at the end: {}",
             tally(&pairs, |o| o.lesion.map(|n| n as f64))
         );
+        if pairs
+            .iter()
+            .all(|(a, b)| a.depth.is_some() && b.depth.is_some())
+        {
+            let _ = writeln!(
+                text,
+                "    more necrotic at the end: {}",
+                tally(&pairs, |o| Some(o.necrotic as f64))
+            );
+            let _ = writeln!(
+                text,
+                "    living tissue reaching further from a vessel: {}",
+                tally(&pairs, |o| o.depth)
+            );
+        }
     }
     Ok(text)
 }

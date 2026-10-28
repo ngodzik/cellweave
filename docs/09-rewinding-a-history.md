@@ -26,7 +26,7 @@ flowchart LR
 
 ### What seed 42's cord was made of
 
-`cellweave --config examples/cord-evolving.toml --attribute` takes the evolving cord of chapter 6. In the real history the cord escapes hypoxic arrest and touches the edge of the box at step 2451, and the clone holding the most cells at the end, clone 28, carries six mutations. The prediction, written before the code: the two VEGF mutations (VEGF, vascular endothelial growth factor, is read by nothing in this network) have exactly no effect, and without the HIF-1α mutation the cord does not escape.
+`cellweave --config examples/cord-evolving.toml --attribute` takes the evolving cord of chapter 6. In the real history the cord escapes hypoxic arrest and touches the edge of the box at step 2451, and the clone holding the most cells at the end, clone 28, carries six mutations. The prediction, written before the code: the two VEGF mutations (VEGF, vascular endothelial growth factor, is read by nothing in this configuration, whose vessel does not grow) have exactly no effect, and without the HIF-1α mutation the cord does not escape.
 
 | suppressed | founded | mutation | the counterfactual |
 |---|---|---|---|

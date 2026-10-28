@@ -208,6 +208,9 @@ fn run(config: SimConfig, config_path: Option<&str>) -> Result<()> {
             config.hours_per_step.unwrap_or_default()
         );
     }
+    if let Some(vessels) = vessels(&sim) {
+        eprintln!("{vessels}");
+    }
     if let Some(sisters) = sisters(&sim) {
         eprintln!("{sisters}");
     }
@@ -328,6 +331,23 @@ fn summarise(measured: &[Measurements]) -> Option<String> {
         per_hundred(last.born - first.born),
         per_hundred(last.gone - first.gone),
         interval,
+    ))
+}
+
+/// How the vessels grew, when they could.
+fn vessels<S: cellweave_engine::simulation::SimState>(sim: &Simulation<S>) -> Option<String> {
+    sim.vegf()?;
+    let m = sim.measure();
+    let depth = sim
+        .depth_from_vessels(cellweave_engine::DEPTH_SHARE)
+        .map_or_else(String::new, |d| {
+            format!("; living tissue within {d:.1} px of a vessel")
+        });
+    Some(format!(
+        "vessels: {} sprouts started, {} still growing, {} pixels of vessel{depth}",
+        sim.sprouted(),
+        m.sprouts,
+        m.vessel
     ))
 }
 

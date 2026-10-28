@@ -42,6 +42,11 @@ pub struct Measurements {
     pub clones: usize,
     /// Living cells descended from the scenario's lesion, zero without one.
     pub lesion: usize,
+    /// Pixels of vessel: the one the scenario laid, and whatever has grown
+    /// from it.
+    pub vessel: u64,
+    /// Sprouts still growing.
+    pub sprouts: usize,
     /// Equivalent radius of everything the tissue covers, in pixels: living,
     /// necrotic and departing cells, and the vessel they surround if there is
     /// one.
@@ -69,6 +74,11 @@ impl Measurements {
         self.cycling + self.quiescent
     }
 }
+
+/// Share of the living pixels [`Simulation::depth_from_vessels`] is read at
+/// when a run reports it: nearly all of them, but not the odd cell squeezed
+/// out to where no vessel feeds it.
+pub const DEPTH_SHARE: f64 = 0.95;
 
 /// The radius of a disc of `area` pixels.
 fn equivalent_radius(area: u64) -> f64 {
@@ -115,6 +125,7 @@ impl<S: SimState> Simulation<S> {
             }
         }
 
+        // A bath has no vessel, and nothing grows one there.
         let vessel_area = match self.scenario().oxygen_source {
             OxygenSource::Bath => 0,
             OxygenSource::Vessel { .. } => {
@@ -151,10 +162,60 @@ impl<S: SimState> Simulation<S> {
             gone: self.gone(),
             clones: self.clone_sizes().iter().filter(|&&n| n > 0).count(),
             lesion: self.lesion_cells(),
+            vessel: vessel_area,
+            sprouts: self.sprouts().len(),
             tissue_radius,
             necrotic_radius,
             viable_depth,
         }
+    }
+}
+
+impl<S: SimState> Simulation<S> {
+    /// How far living tissue reaches from its nearest vessel, in pixels: the
+    /// distance within which `share` of the living pixels lie. `None` when
+    /// there is no vessel or nothing living.
+    ///
+    /// A tumour cord is a sleeve of living tissue around a vessel, as thick
+    /// as diffusion can feed. Where vessels grow, this says whether the
+    /// tissue grew thicker sleeves or more of them.
+    pub fn depth_from_vessels(&self, share: f64) -> Option<f64> {
+        let lattice = self.lattice();
+        let (w, h) = lattice.dims();
+        let pixels = || (0..h).flat_map(move |y| (0..w).map(move |x| (x, y)));
+        let vessel: Vec<(i64, i64)> = pixels()
+            .filter(|&(x, y)| lattice.occupant(x, y) == OBSTACLE)
+            .map(|(x, y)| (i64::from(x), i64::from(y)))
+            .collect();
+        if vessel.is_empty() {
+            return None;
+        }
+        let mut depths: Vec<f64> = pixels()
+            .filter(|&(x, y)| {
+                let id = lattice.occupant(x, y);
+                id != 0
+                    && id != OBSTACLE
+                    && matches!(
+                        self.fate(cellweave_core::CellId(id)),
+                        Some(Fate::Cycling | Fate::Quiescent)
+                    )
+            })
+            .map(|(x, y)| {
+                let (x, y) = (i64::from(x), i64::from(y));
+                let nearest = vessel
+                    .iter()
+                    .map(|&(vx, vy)| (vx - x).pow(2) + (vy - y).pow(2))
+                    .min()
+                    .unwrap_or(0);
+                (nearest as f64).sqrt()
+            })
+            .collect();
+        if depths.is_empty() {
+            return None;
+        }
+        depths.sort_by(f64::total_cmp);
+        let at = ((depths.len() - 1) as f64 * share.clamp(0.0, 1.0)).round() as usize;
+        Some(depths[at])
     }
 }
 
@@ -189,6 +250,7 @@ mod tests {
             exposure: None,
             lesion: None,
             revert: None,
+            angiogenesis: None,
         }
     }
 

@@ -59,6 +59,30 @@ pub fn apply_background_uptake(field: &mut ScalarField, lattice: &CpmLattice, ra
     }
 }
 
+/// Make every pixel of every cell secrete what `per_cell` says that cell
+/// does, indexed by identifier.
+///
+/// The field's sources are rewritten from scratch, like its sinks, so a cell
+/// that died or moved since the last call stops secreting where it no longer
+/// is. A cell missing from `per_cell` secretes nothing.
+pub fn apply_production(field: &mut ScalarField, lattice: &CpmLattice, per_cell: &[f64]) {
+    field.clear_production();
+    let (w, h) = lattice.dims();
+    for y in 0..h {
+        for x in 0..w {
+            let id = lattice.occupant(x, y);
+            if id == 0 || id == OBSTACLE {
+                continue;
+            }
+            if let Some(&rate) = per_cell.get(id as usize)
+                && rate > 0.0
+            {
+                field.set_production(x, y, rate);
+            }
+        }
+    }
+}
+
 /// Hold every obstacle pixel at `value`, which makes the obstacle a source.
 ///
 /// A vessel is an obstacle that emits: cells cannot enter it, and it keeps the
