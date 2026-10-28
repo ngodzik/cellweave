@@ -1,4 +1,4 @@
-# 12. What the model does not say
+# 13. What the model does not say
 
 The placeholders, the missing units, and why emergence is the whole point.
 
@@ -10,11 +10,11 @@ This is not a stylistic preference. It is what makes a result mean something. If
 
 The thresholds of chapter 4 are the closest thing to rules: 0.25 on survival, 0.45 on the hypoxia response, 1.4 on volume. They are the points where a continuous signal becomes a discrete fate, and no model avoids them. What they do not do is say where in space a fate lands. That is the test of whether a threshold is a rule in disguise: does it decide a location, or only a level?
 
-## No units
+## Few units
 
-A pixel is roughly a micrometre, judged by a cell of radius 8 against a real tumour cell of 15 to 20 micrometres across. A lattice step is roughly an hour, judged by a cell dividing in about twenty of them against a real cycle of a day. Roughly, in both cases, and nothing in the code fixes either. Until they are fixed, `D = 0.2` cannot be compared to the measured diffusion coefficient of oxygen in tissue, an uptake of `0.0003` cannot be compared to a measured consumption rate, and a cord fifty pixels deep cannot be compared to a cord 150 micrometres deep. Every number that depends on a unit is a placeholder.
+A pixel is roughly a micrometre, judged by a cell of radius 8 against a real tumour cell of 15 to 20 micrometres across. A lattice step is roughly an hour, judged by a cell dividing in about twenty of them against a real cycle of a day. Roughly, in both cases, and nothing in the code fixes either for the tumour. Until they are fixed, `D = 0.2` cannot be compared to the measured diffusion coefficient of oxygen in tissue, an uptake of `0.0003` cannot be compared to a measured consumption rate, and a cord fifty pixels deep cannot be compared to a cord 150 micrometres deep. Every number that depends on a unit is a placeholder.
 
-**Calibration** is the work of fixing those units and then adjusting the constants until the model reproduces a measured result: the depth of a real cord, the size at which a real spheroid of a given cell line develops a core, the doubling time of that line. It has not started. When it does, the two experiments in chapter 5 are the ones to reproduce first, because their numbers are on record.
+**Calibration** is the work of fixing those units and then adjusting the constants until the model reproduces a measured result. For the sheet it has started: chapter 12 fixes a step at about 0.6 hours against the division rate of the mouse oesophagus, and checks two laws of clone sizes and the coordination of sisters. For the tumour it has not: the depth of a real cord, the size at which a real spheroid of a given cell line develops a core and the doubling time of that line are the results to reproduce first, because their numbers are on record.
 
 ## The list
 
@@ -33,6 +33,7 @@ What is a placeholder today, gathered from the chapters:
 | lethal stress | intensity 1; uptake 0.0001; p53 and caspase rates; caspase half way at p53 of 0.4; fragmentation 8 pixels per step | continuous exposure empties the cord against its vessel and leaves a refuge, a periodic one lets it grow back |
 | epithelium | NOTCH near 0.01 per step, raised by crowding half way at 60% of reference size; shedding 6 pixels per step; cells 10 pixels across; mutation rate 1 in 100 | the layer turns over in a few hundred steps and holds its size on a 200 pixel grid |
 | competition | a ceiling on the size a cell asks for at 1.5 times its reference, what a normal cell asks for; three mutations in ten rewiring | a growth signal buys no size, and a NOTCH term can be lost outright |
+| units | 0.6 hours per step for the sheet | a living cell divides about every 97 steps, a mouse oesophageal basal cell every 2.4 days |
 
 ## What is not there
 

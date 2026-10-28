@@ -25,6 +25,7 @@ use crate::cpm::{CpmLattice, OBSTACLE};
 use crate::evolution::CloneRecord;
 use crate::network::Network;
 use crate::pde::ScalarField;
+use crate::sisters::{Lives, SisterFates};
 
 /// The seed every run uses unless told otherwise.
 ///
@@ -245,6 +246,8 @@ pub struct Simulation<S: SimState> {
     /// The network every first cell started with, unmutated, kept as the
     /// yardstick a mutant's response is measured against.
     pristine: Network,
+    /// What each cell a division made did next, and its sister.
+    lives: Lives,
     oxygen: ScalarField,
     /// The lethal stress, when the scenario exposes the tissue to one.
     stress: Option<ScalarField>,
@@ -443,6 +446,7 @@ impl Simulation<Configured> {
             lineage,
             clones,
             pristine: seed_network,
+            lives: Lives::new(cells),
             oxygen,
             stress,
             stress_level: 0.0,
@@ -483,6 +487,7 @@ impl Simulation<Configured> {
             lineage: self.lineage,
             clones: self.clones,
             pristine: self.pristine,
+            lives: self.lives,
             oxygen: self.oxygen,
             stress: self.stress,
             stress_level: self.stress_level,
@@ -587,6 +592,7 @@ impl Simulation<Running> {
                 }
                 Some(_) if net.survival() < DEATH_THRESHOLD => {
                     self.lattice.set_kind(id, CellKind::Necrotic);
+                    self.lives.left(i);
                 }
                 // Each drawn only for a network that has the role, so a
                 // network without it takes exactly the draws it took before
@@ -597,6 +603,7 @@ impl Simulation<Running> {
                         .is_some_and(|chance| self.rng.random::<f64>() < chance) =>
                 {
                     self.lattice.set_kind(id, CellKind::Apoptotic);
+                    self.lives.left(i);
                 }
                 Some(_)
                     if net
@@ -604,6 +611,7 @@ impl Simulation<Running> {
                         .is_some_and(|chance| self.rng.random::<f64>() < chance) =>
                 {
                     self.lattice.set_kind(id, CellKind::Differentiated);
+                    self.lives.left(i);
                 }
                 Some(_) => {
                     let m = net.mechanics();
@@ -726,6 +734,7 @@ impl Simulation<Running> {
                 }
                 self.networks.push(daughter);
                 self.lineage.push(clone);
+                self.lives.divided(i, self.networks.len() - 1);
                 born += 1;
             }
         }
@@ -898,6 +907,12 @@ impl<S: SimState> Simulation<S> {
     /// The network the first cells started with, before any mutation.
     pub fn pristine(&self) -> &Network {
         &self.pristine
+    }
+
+    /// Pairs of sisters, by what both did next: divided again or left. Only
+    /// pairs whose two next events have both happened are counted.
+    pub fn sister_fates(&self) -> SisterFates {
+        self.lives.fates()
     }
 
     /// Every clone founded so far, the founding clone first, indexed by

@@ -44,7 +44,7 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Crowding** (7). How squeezed a cell is: how far below its reference size it sits, as a fraction of it. An input every network can read, like oxygen.
 
-**Determinism** (1, 9, 12). The same seed gives the same simulation, byte for byte. Checked on every push.
+**Determinism** (1, 9, 13). The same seed gives the same simulation, byte for byte. Checked on every push.
 
 **Differentiation** (7). A cell giving up dividing to become a specialised cell. In an epithelium, a basal cell that commits leaves the layer. Here, a chance per step set by the network's differentiation node.
 
@@ -58,7 +58,7 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **EGF** (2). Epidermal growth factor, the growth signal. A hardcoded input for every cell today.
 
-**Emergence** (6, 7, 12). Behaviour that follows from the model without any rule naming it. The necrotic core, the compact cell, the cord's thickness.
+**Emergence** (6, 7, 12, 13). Behaviour that follows from the model without any rule naming it. The necrotic core, the compact cell, the cord's thickness.
 
 **Energy, Hamiltonian, H** (1). The number every configuration of the lattice has, which the Monte Carlo lowers.
 
@@ -94,7 +94,7 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Lineage reference volume** (4). The size a lineage divides at, inherited unchanged. How a cell type keeps its size across generations.
 
-**Lineage tracing** (7). Marking cells with a heritable label and following what their descendants become. A sheet labels every cell as its own clone.
+**Lineage tracing** (7, 12). Marking cells with a heritable label and following what their descendants become. A sheet labels every cell as its own clone.
 
 **Medium** (1, 3). Empty pixels, identity 0. Liquid in a bath; stroma around a vessel.
 
@@ -110,7 +110,7 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Necrotic core** (5). The dead centre of a spheroid too large for oxygen to reach.
 
-**Neutral drift** (7). Clones winning and losing by chance alone, when no cell is better than another. The number of clones falls and the survivors grow.
+**Neutral drift** (7, 12). Clones winning and losing by chance alone, when no cell is better than another. The number of clones falls and the survivors grow.
 
 **NOTCH, NOTCH1** (7, 11). A receptor that pushes a basal cell to differentiate. Its loss lets a clone keep more cells in the basal layer; mutated in 12 to 80% of the cells of a middle-aged or elderly oesophagus. Here NOTCH clones cover the layer only when cells do not press and a mutation can lose NOTCH's baseline.
 
@@ -150,7 +150,11 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Selection** (6). Variants leaving more descendants because of what they do where they are. Nobody chooses the winner.
 
-**Snapshot** (4, 12). A file listing every living cell's state and the oxygen it reads, one per interval.
+**Single progenitor model** (12). Every dividing basal cell alike; a division makes two dividing cells, two differentiating ones, or one of each, by chance and on average one of each.
+
+**Sister fates, r** (12). What the two cells of one division do next. r is the chance both divide, which equals the chance both leave; a quarter if sisters were independent, below a quarter when they tend to do opposite things, as in the mouse and in the sheet.
+
+**Snapshot** (4, 13). A file listing every living cell's state and the oxygen it reads, one per interval.
 
 **SOR** (3). Successive over-relaxation, the sweep that solves for a steady state in about L passes rather than L².
 

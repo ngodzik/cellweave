@@ -20,6 +20,10 @@ output_dir = "output-epithelium-mutating"
 oxygen_uptake = 0.0
 mutation_rate = 0.01
 network = "networks/epithelium.toml"
+# A living cell here divides about once every 97 steps; a basal cell of the
+# mouse oesophagus, about once every 2.4 days (chapter 12). So a step stands
+# for about 0.6 hours, and 6000 steps for about 150 days of a mouse's life.
+hours_per_step = 0.6
 
 [seeding]
 kind = "sheet"
