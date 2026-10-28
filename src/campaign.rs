@@ -60,6 +60,12 @@ struct Outcome {
     /// For each node, the share of the living whose lineage carries a change
     /// to it, as [`Simulation::coverage`] measures it.
     coverage: Vec<(String, f64)>,
+    /// Living cells descended from the lesion at the end, when the
+    /// configuration places one.
+    lesion: Option<usize>,
+    /// The first step at whose end no cell of the lesion was left, if it was
+    /// lost. A lineage with no living cell cannot come back.
+    lesion_lost_at: Option<u64>,
 }
 
 /// Mutations shown for the leading clone, the latest ones.
@@ -88,7 +94,9 @@ fn run(arm: &Arm, index: usize, seed: u64) -> Result<Outcome> {
         ..arm.scenario.clone()
     };
     let exposure = scenario.exposure;
+    let lesion_at = scenario.lesion.as_ref().map(|l| l.at);
     let (mut sim, _) = Simulation::new(scenario, &arm.spec)?.start()?;
+    let mut lesion_lost_at = None;
     let mut nadir: Option<usize> = None;
     let mut reached_edge = false;
     for _ in 0..arm.steps {
@@ -96,6 +104,12 @@ fn run(arm: &Arm, index: usize, seed: u64) -> Result<Outcome> {
         if exposure.is_some_and(|e| step.mcs >= e.start) {
             let living = sim.living();
             nadir = Some(nadir.map_or(living, |n| n.min(living)));
+        }
+        if lesion_lost_at.is_none()
+            && lesion_at.is_some_and(|at| step.mcs >= at)
+            && sim.lesion_cells() == 0
+        {
+            lesion_lost_at = Some(step.mcs);
         }
         if step.reached_edge {
             reached_edge = true;
@@ -145,6 +159,8 @@ fn run(arm: &Arm, index: usize, seed: u64) -> Result<Outcome> {
         response,
         leading,
         coverage: sim.coverage(),
+        lesion: lesion_at.map(|_| m.lesion),
+        lesion_lost_at,
     })
 }
 
@@ -163,12 +179,12 @@ pub fn campaign(arms: &[Arm], seeds: RangeInclusive<u64>, dir: &Path) -> Result<
     outcomes.sort_by_key(|o| (o.seed, o.arm));
 
     let mut csv = String::from(
-        "seed,arm,end_mcs,reached_edge,living,cycling,quiescent,clones,nadir,resistant,response,leading,coverage\n",
+        "seed,arm,end_mcs,reached_edge,living,cycling,quiescent,clones,nadir,resistant,response,leading,lesion,lesion_lost_at,coverage\n",
     );
     for o in &outcomes {
         let _ = writeln!(
             csv,
-            "{},{},{},{},{},{},{},{},{},{},{},{},{}",
+            "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
             o.seed,
             arms[o.arm].name,
             o.end_mcs,
@@ -181,6 +197,8 @@ pub fn campaign(arms: &[Arm], seeds: RangeInclusive<u64>, dir: &Path) -> Result<
             o.resistant.map_or_else(String::new, |r| format!("{r:.4}")),
             o.response.map_or_else(String::new, |r| format!("{r:.4}")),
             o.leading,
+            o.lesion.map_or_else(String::new, |n| n.to_string()),
+            o.lesion_lost_at.map_or_else(String::new, |s| s.to_string()),
             o.coverage
                 .iter()
                 .filter(|(_, share)| *share > 0.0)
@@ -215,6 +233,26 @@ pub fn campaign(arms: &[Arm], seeds: RangeInclusive<u64>, dir: &Path) -> Result<
             );
         }
         text.push('\n');
+        if let Some(at) = arm.scenario.lesion.as_ref().map(|l| l.at) {
+            let kept = mine
+                .iter()
+                .filter(|o| o.lesion.is_some_and(|n| n > 0))
+                .count();
+            let lost: Vec<f64> = mine
+                .iter()
+                .filter_map(|o| o.lesion_lost_at)
+                .map(|s| (s - at) as f64)
+                .collect();
+            let _ = write!(
+                text,
+                "    lesion: still there at the end in {kept} of {n}, lost in {}",
+                lost.len()
+            );
+            if !lost.is_empty() {
+                let _ = write!(text, ", steps after it appeared: {}", spread(&lost));
+            }
+            text.push('\n');
+        }
         // Every node any run of this arm carries a change to, with the
         // share of the living that carries it, seed by seed.
         let nodes: Vec<&str> = mine
@@ -265,6 +303,11 @@ pub fn campaign(arms: &[Arm], seeds: RangeInclusive<u64>, dir: &Path) -> Result<
             text,
             "    weaker response, more resistant: {}",
             tally(&pairs, |o| o.response.map(|r| -r))
+        );
+        let _ = writeln!(
+            text,
+            "    more lesion cells at the end: {}",
+            tally(&pairs, |o| o.lesion.map(|n| n as f64))
         );
     }
     Ok(text)

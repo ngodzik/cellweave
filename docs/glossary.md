@@ -56,7 +56,7 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Driver** (9). A mutation that gave the cells carrying it an advantage the tumour grew from. Here, one whose suppression changes the history.
 
-**Early tumour, lesion** (13). A microscopic patch of abnormal cells that has only just formed. Here a patch of the sheet placed at one step, carrying a network of its own.
+**Early tumour, lesion** (13). A microscopic patch of abnormal cells that has only just formed. Here a patch of the sheet placed at one step, carrying a network of its own. Whether it survives depends on its fitness relative to the clones around it, within a window.
 
 **EGF** (2). Epidermal growth factor, the growth signal. A hardcoded input for every cell today.
 

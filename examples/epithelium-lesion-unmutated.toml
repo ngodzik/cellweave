@@ -1,0 +1,34 @@
+# The lesion of epithelium-lesion.toml, placed in the same sheet with the same
+# luck but none of its mutant clones.
+#
+# Every mutation founded before step 4000, when the lesion appears, is drawn
+# exactly as in epithelium-lesion.toml and not made (chapter 9): the sheet
+# draws the same numbers, and every cell around the lesion carries the normal
+# network. Mutation goes on from step 4000, in the lesion too, as in the other
+# file. Under one seed the two are paired (chapter 10):
+#
+#   cellweave --config examples/epithelium-lesion.toml --seeds 1-20 \
+#       --versus examples/epithelium-lesion-unmutated.toml
+
+width = 200
+height = 200
+mcs = 6000
+temperature = 10.0
+snapshot_interval = 100
+output_dir = "output-epithelium-lesion-unmutated"
+oxygen_uptake = 0.0
+mutation_rate = 0.01
+rewiring = 0.3
+suppress_before = 4000
+network = "networks/epithelium-no-pressing.toml"
+# A step of the sheet is about 0.6 hours (chapter 12).
+hours_per_step = 0.6
+
+[seeding]
+kind = "sheet"
+side = 10
+
+[lesion]
+network = "networks/lesion.toml"
+at = 4000
+radius = 15.0

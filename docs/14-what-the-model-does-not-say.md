@@ -34,7 +34,7 @@ What is a placeholder today, gathered from the chapters:
 | epithelium | NOTCH near 0.01 per step, raised by crowding half way at 60% of reference size; shedding 6 pixels per step; cells 10 pixels across; mutation rate 1 in 100 | the layer turns over in a few hundred steps and holds its size on a 200 pixel grid |
 | competition | a ceiling on the size a cell asks for at 1.5 times its reference, what a normal cell asks for; three mutations in ten rewiring | a growth signal buys no size, and a NOTCH term can be lost outright |
 | units | 0.6 hours per step for the sheet | a living cell divides about every 97 steps, a mouse oesophageal basal cell every 2.4 days |
-| lesion | NOTCH's baseline at 0.7 of its rate; 15 pixels around the centre; at step 4000 | fitter than a normal cell, less fit than a NOTCH-loss clone, about seven cells, in a sheet already covered by mutant clones |
+| lesion | NOTCH's baseline at 0.7 or 0.3 of its rate; 15 pixels around the centre; at step 4000 | fitter than a normal cell, less fit than a NOTCH-loss clone, about seven cells, in a sheet already covered by mutant clones |
 
 ## What is not there
 

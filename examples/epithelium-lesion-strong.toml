@@ -1,0 +1,29 @@
+# The fitter lesion of networks/lesion-strong.toml in the ageing sheet of
+# epithelium-lesion.toml: the same sheet, the same step, the same place, NOTCH's
+# baseline at 0.3 of its rate instead of 0.7. Compare it with
+# epithelium-lesion-strong-unmutated.toml, seed by seed (chapter 13):
+#
+#   cellweave --config examples/epithelium-lesion-strong.toml --seeds 1-20 \
+#       --versus examples/epithelium-lesion-strong-unmutated.toml
+
+width = 200
+height = 200
+mcs = 6000
+temperature = 10.0
+snapshot_interval = 100
+output_dir = "output-epithelium-lesion-strong"
+oxygen_uptake = 0.0
+mutation_rate = 0.01
+rewiring = 0.3
+network = "networks/epithelium-no-pressing.toml"
+# A step of the sheet is about 0.6 hours (chapter 12).
+hours_per_step = 0.6
+
+[seeding]
+kind = "sheet"
+side = 10
+
+[lesion]
+network = "networks/lesion-strong.toml"
+at = 4000
+radius = 15.0

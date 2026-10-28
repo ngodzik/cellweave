@@ -28,6 +28,7 @@ fn sheet(size: u32) -> Scenario {
         seed: DEFAULT_SEED,
         mutation_rate: 0.0,
         suppress: Vec::new(),
+        suppress_before: None,
         rewiring: 0.0,
         seeding: Seeding::Sheet { side: 10 },
         exposure: None,
