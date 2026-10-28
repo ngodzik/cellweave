@@ -146,6 +146,12 @@ pub enum Perfusion {
     /// Once its tip has joined another vessel, closing a loop blood can flow
     /// round. Until then a sprout is a blind end and carries nothing.
     OnJoining,
+    /// Wherever pressure drives it. Blood enters the capillary at its left
+    /// end and leaves at its right, and runs through every vessel with a
+    /// difference of pressure across it, as Poiseuille's law shares it out.
+    /// A blind end carries nothing, and neither does a loop closed on a
+    /// blind end. Needs a capillary.
+    Flow,
 }
 
 /// When an exposure is on.

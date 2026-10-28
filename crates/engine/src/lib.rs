@@ -9,6 +9,7 @@
 pub mod coupling;
 pub mod cpm;
 pub mod evolution;
+mod flow;
 pub mod measure;
 pub mod network;
 pub mod pde;

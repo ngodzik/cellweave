@@ -1,0 +1,24 @@
+# capillary-angiogenic.toml, with blood only through loops (chapter 19).
+#
+# A sprout carries blood once its tip has joined another vessel, as in
+# cord-angiogenic-joining.toml. The twin of capillary-flow.toml, which lets
+# pressure decide instead. Everything else is capillary-angiogenic.toml.
+
+width = 300
+height = 300
+mcs = 1500
+temperature = 10.0
+snapshot_interval = 100
+output_dir = "output-capillary-joining"
+oxygen_uptake = 0.0001
+network = "networks/ras-erk.toml"
+
+[oxygen_source]
+kind = "capillary"
+radius = 3
+
+[angiogenesis]
+threshold = 0.3
+speed = 1.0
+reach = 30.0
+perfusion = "on_joining"

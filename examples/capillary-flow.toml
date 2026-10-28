@@ -1,0 +1,27 @@
+# capillary-angiogenic.toml, with blood flowing as pressure drives it
+# (chapter 19).
+#
+# Blood enters the capillary at the left side of the box and leaves at the
+# right, and runs through every vessel with a difference of pressure across
+# it, as Poiseuille's law shares it out. A blind end carries nothing, and
+# neither does a loop closed on a blind end. Everything else is
+# capillary-angiogenic.toml.
+
+width = 300
+height = 300
+mcs = 1500
+temperature = 10.0
+snapshot_interval = 100
+output_dir = "output-capillary-flow"
+oxygen_uptake = 0.0001
+network = "networks/ras-erk.toml"
+
+[oxygen_source]
+kind = "capillary"
+radius = 3
+
+[angiogenesis]
+threshold = 0.3
+speed = 1.0
+reach = 30.0
+perfusion = "flow"

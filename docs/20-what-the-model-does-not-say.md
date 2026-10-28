@@ -1,4 +1,4 @@
-# 19. What the model does not say
+# 20. What the model does not say
 
 The placeholders, the missing units, and why emergence is the whole point.
 
@@ -38,6 +38,7 @@ What is a placeholder today, gathered from the chapters:
 | a silent patch | every living cell within 30 pixels of a point to the right of the vessel, at step 120; read at step 300 | a patch placed before the first sprout, large enough to matter: with the marked network it holds more than half the tumour at step 300 |
 | vessels | a wall sprouts at VEGF 0.5; VEGF's reach 30 pixels; tips a pixel per step, 16 pixels apart; new vessel 5 pixels across, perfused at once or once joined, regressing after 100 steps without blood when told to; cells in the way crushed, or pushed along straight lines when told to | a cord whose cells starve calls vessels to them within a few hundred steps, in a 300 pixel box |
 | a capillary | seven pixels wide, a quarter of the way down a 300 pixel box; uptake 0.0001; a wall sprouts at VEGF 0.3 | a layer as deep as the cord's sleeve, and walls that sprout at all |
+| flow | Poiseuille's law in two dimensions, conductance as the fourth power of the radius over the length; pressure 1 at the inlet, 0 at the outlet; a vessel carries blood above a millionth of the capillary's own flow | blood goes where a difference of pressure sends it, and nowhere else |
 
 ## What is not there
 

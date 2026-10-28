@@ -188,6 +188,10 @@ jobs:
           mv output-cord-angiogenic-pushing pushing-a
           ./target/release/cellweave --config examples/cord-angiogenic-pushing.toml --mcs 250
           mv output-cord-angiogenic-pushing pushing-b
+          RAYON_NUM_THREADS=1 ./target/release/cellweave --config examples/capillary-flow.toml --mcs 250
+          mv output-capillary-flow flow-a
+          ./target/release/cellweave --config examples/capillary-flow.toml --mcs 250
+          mv output-capillary-flow flow-b
           ./target/release/cellweave --config examples/cord-mutant.toml --mcs 200
 
       - name: Compare the runs
@@ -201,6 +205,7 @@ jobs:
           diff --recursive joining-a joining-b
           diff --recursive regressing-a regressing-b
           diff --recursive pushing-a pushing-b
+          diff --recursive flow-a flow-b
           # The mutant only has to run: it is here so that a network file with a
           # different topology is exercised, not just the built-in one.
           test -s output-cord-mutant/snapshot_000000.json

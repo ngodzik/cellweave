@@ -28,7 +28,7 @@ use crate::evolution::CloneRecord;
 use crate::network::Network;
 use crate::pde::ScalarField;
 use crate::sisters::{Lives, SisterFates};
-use crate::vessels::{Tip, Vessels};
+use crate::vessels::{Capillary, Tip, Vessels};
 
 /// The seed every run uses unless told otherwise.
 ///
@@ -594,6 +594,15 @@ impl Simulation<Configured> {
                             .into(),
                     ));
                 }
+                if a.perfusion == Perfusion::Flow
+                    && !matches!(scenario.oxygen_source, OxygenSource::Capillary { .. })
+                {
+                    return Err(CellweaveError::Config(
+                        "blood flows as pressure drives it from where it enters a capillary \
+                         to where it leaves; give the scenario a capillary"
+                            .into(),
+                    ));
+                }
                 if a.regress_after.is_some() && a.perfusion == Perfusion::AtOnce {
                     return Err(CellweaveError::Config(
                         "a sprout regresses when it carries no blood, and with perfusion at \
@@ -619,6 +628,15 @@ impl Simulation<Configured> {
             }
         };
 
+        let mut vessels = Vessels::default();
+        if let OxygenSource::Capillary { radius } = scenario.oxygen_source {
+            vessels.lie_along(Capillary {
+                row: capillary_row(scenario.height),
+                width: scenario.width,
+                radius,
+            });
+        }
+
         Ok(Self {
             rng: StdRng::seed_from_u64(scenario.seed),
             scenario,
@@ -633,7 +651,7 @@ impl Simulation<Configured> {
             stress,
             stress_level: 0.0,
             vegf,
-            vessels: Vessels::default(),
+            vessels,
             first,
             next_mcs: 0,
             born: cells as u64,
@@ -1978,5 +1996,35 @@ mod tests {
         assert!(!above, "nothing crosses the capillary");
         let m = sim.measure();
         assert!(m.vessel > 0 && m.viable_depth > 0.0, "{m:?}");
+    }
+
+    #[test]
+    fn blood_flows_as_pressure_drives_it_only_through_a_capillary() {
+        let flowing = |oxygen_source: OxygenSource| {
+            let mut s = growing(0.3);
+            s.oxygen_source = oxygen_source;
+            s.angiogenesis = s.angiogenesis.map(|a| Angiogenesis {
+                perfusion: Perfusion::Flow,
+                ..a
+            });
+            s
+        };
+        assert!(matches!(
+            Simulation::new(flowing(OxygenSource::Vessel { radius: 4 }), &spec()),
+            Err(CellweaveError::Config(_))
+        ));
+        let (mut sim, _) = Simulation::new(flowing(OxygenSource::Capillary { radius: 2 }), &spec())
+            .unwrap()
+            .start()
+            .unwrap();
+        for _ in 0..200 {
+            if sim.step().unwrap().reached_edge {
+                break;
+            }
+        }
+        let m = sim.measure();
+        assert!(m.perfused <= m.vessel);
+        let row = capillary_row(100);
+        assert!(sim.carries_blood(50, row), "the capillary always does");
     }
 }

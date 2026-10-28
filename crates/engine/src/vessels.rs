@@ -17,14 +17,23 @@
 //! for long enough regresses, with every sprout grown from it: its vessel is
 //! taken back, and the wall it started from may sprout again.
 //!
+//! With a capillary lying in the plane, blood may instead flow as pressure
+//! drives it: in at the capillary's left end, out at its right, through
+//! every loop with a difference of pressure across it, by Poiseuille's law
+//! (see `flow`). A blind end then carries nothing, and so does a loop closed
+//! on a blind end.
+//!
 //! Nothing here is drawn at random. Which wall sprouts is the one reading the
 //! most VEGF, and where a tip goes is where the gradient points, so a run
 //! with vessels that may grow is the run without them, to the last bit, until
 //! the first sprout lays its first pixel.
 
+use std::collections::BTreeMap;
+
 use cellweave_core::{Angiogenesis, DiffusionField, InTheWay, Perfusion, Pos2};
 
 use crate::cpm::{CpmLattice, OBSTACLE};
+use crate::flow::{self, Segment};
 use crate::pde::ScalarField;
 
 /// Radius of the vessel a tip lays behind it, in pixels.
@@ -46,6 +55,11 @@ const SPROUT_SPACING: f64 = 16.0;
 /// looks ahead for another vessel. A tip turns slowly, so older discs are
 /// out of its reach.
 const TRAIL_KEPT: usize = 4;
+
+/// Flow through a vessel, as a share of what the capillary alone carries,
+/// below which it counts as carrying no blood. Far below any real flow, far
+/// above the rounding of the solve.
+const FLOWING: f64 = 1e-6;
 
 /// A tip only looks for another vessel once this far from where it
 /// sprouted, in pixels, clear of the vessel it came from.
@@ -79,6 +93,28 @@ impl Tip {
     }
 }
 
+/// Where a sprout's tip joined another vessel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Join {
+    /// The sprout it joined, or `None` for the vessel the scenario laid.
+    host: Option<usize>,
+    /// Where along it: the index of the host's disc it met, or for the
+    /// vessel the scenario laid, the column of the pixel it met.
+    at: u32,
+}
+
+/// A capillary lying across the box, which blood enters at its left end and
+/// leaves at its right.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Capillary {
+    /// The row it runs along.
+    pub row: u32,
+    /// Its length, the width of the box.
+    pub width: u32,
+    /// Half its width.
+    pub radius: u32,
+}
+
 /// The vessel one tip laid.
 #[derive(Debug, Clone)]
 struct Sprout {
@@ -88,12 +124,18 @@ struct Sprout {
     perfused: bool,
     /// The wall pixel it started from.
     origin: (u32, u32),
-    /// The step it started at.
-    started: u64,
     /// Centre of every disc of vessel it laid.
     centres: Vec<(u32, u32)>,
     /// Whether it has regressed and its vessel been taken back.
     regressed: bool,
+    /// Where its tip joined another vessel, if it has.
+    joined: Option<Join>,
+    /// The step since which it has carried no blood: when it started, or
+    /// when the flow through it last stopped.
+    dry_since: u64,
+    /// When blood flows as pressure drives it, the flow through each of its
+    /// discs, as a share of what the capillary alone carries.
+    flow: Vec<f64>,
 }
 
 impl Sprout {
@@ -102,10 +144,27 @@ impl Sprout {
             parent,
             perfused,
             origin,
-            started,
             centres: Vec::new(),
             regressed: false,
+            joined: None,
+            dry_since: started,
+            flow: Vec::new(),
         }
+    }
+
+    /// Distance along it from where it started to each point of it: its
+    /// origin, then the centre of each disc.
+    fn arc(&self) -> Vec<f64> {
+        let mut along = Vec::with_capacity(self.centres.len() + 1);
+        let mut total = 0.0;
+        let mut last = self.origin;
+        along.push(0.0);
+        for &c in &self.centres {
+            total += distance(last, c);
+            along.push(total);
+            last = c;
+        }
+        along
     }
 }
 
@@ -117,7 +176,19 @@ struct Tree {
     /// vessel the scenario laid and for every pixel that is not vessel.
     /// Empty until the first sprout.
     owner: Vec<Option<usize>>,
+    /// By pixel, for one a sprout laid: the index of the disc that laid it.
+    disc: Vec<u32>,
     width: u32,
+    /// The capillary blood flows through, when it flows as pressure drives
+    /// it rather than by the rule of `Perfusion`.
+    capillary: Option<Capillary>,
+    /// Whether blood flows as pressure drives it.
+    flowing: bool,
+    /// Joins and regressions so far: the network blood flows through changes
+    /// only with them.
+    changes: u64,
+    /// The value of `changes` the flow was last solved for.
+    solved: u64,
 }
 
 impl Tree {
@@ -127,6 +198,10 @@ impl Tree {
 
     fn owner(&self, pixel: (u32, u32)) -> Option<usize> {
         self.owner.get(self.index(pixel)).copied().flatten()
+    }
+
+    fn disc_at(&self, pixel: (u32, u32)) -> u32 {
+        self.disc.get(self.index(pixel)).copied().unwrap_or(0)
     }
 
     /// Lay a disc of vessel for `sprout` at `centre`, and remember which
@@ -164,9 +239,11 @@ impl Tree {
             }
             None => lattice.add_obstacle_disc(at, r),
         }
+        let disc = self.sprouts[sprout].centres.len() as u32;
         for pixel in fresh {
             let i = self.index(pixel);
             self.owner[i] = Some(sprout);
+            self.disc[i] = disc;
         }
         self.sprouts[sprout].centres.push(centre);
     }
@@ -186,23 +263,28 @@ impl Tree {
         }
         let r2 = i64::from(VESSEL_RADIUS * VESSEL_RADIUS);
         let width = self.width as usize;
-        for (i, owner) in self.owner.iter_mut().enumerate() {
+        for (i, (owner, disc)) in self.owner.iter_mut().zip(&mut self.disc).enumerate() {
             if !owner.is_some_and(|s| going[s]) {
                 continue;
             }
             let pixel = ((i % width) as u32, (i / width) as u32);
-            let keeper = self.sprouts.iter().position(|other| {
-                !other.regressed
-                    && other
-                        .centres
-                        .iter()
-                        .any(|&c| squared_distance(c, pixel) <= r2)
+            let keeper = self.sprouts.iter().enumerate().find_map(|(s, other)| {
+                if other.regressed {
+                    return None;
+                }
+                other
+                    .centres
+                    .iter()
+                    .position(|&c| squared_distance(c, pixel) <= r2)
+                    .map(|k| (s, k as u32))
             });
-            *owner = keeper;
+            *owner = keeper.map(|(s, _)| s);
+            *disc = keeper.map_or(0, |(_, k)| k);
             if keeper.is_none() {
                 lattice.clear_obstacle(pixel.0, pixel.1);
             }
         }
+        self.changes += 1;
     }
 
     /// Blood through `sprout` and every sprout it grew from.
@@ -215,7 +297,172 @@ impl Tree {
     }
 
     fn carries_blood(&self, pixel: (u32, u32)) -> bool {
-        self.owner(pixel).is_none_or(|s| self.sprouts[s].perfused)
+        match self.owner(pixel) {
+            None => true,
+            Some(s) if self.flowing => self.flow_at(s, self.disc_at(pixel)) > FLOWING,
+            Some(s) => self.sprouts[s].perfused,
+        }
+    }
+
+    /// The flow through disc `disc` of `sprout`, as a share of what the
+    /// capillary alone carries; zero unless blood flows as pressure drives it.
+    fn flow_at(&self, sprout: usize, disc: u32) -> f64 {
+        self.sprouts[sprout]
+            .flow
+            .get(disc as usize)
+            .copied()
+            .unwrap_or(0.0)
+    }
+
+    /// Solve the flow through the network, if it changed since the last
+    /// solve, and with it which sprouts carry blood. `mcs` is the step being
+    /// taken: a sprout the flow has just left is dry from then.
+    fn solve_flow(&mut self, mcs: u64) {
+        let Some(capillary) = self.capillary else {
+            return;
+        };
+        if !self.flowing || self.changes == self.solved {
+            return;
+        }
+        self.solved = self.changes;
+        let (segments, placed, held, nodes) = self.network(capillary);
+        let pressure = flow::pressures(nodes, &segments, &held);
+        let q = flow::flows(&segments, &pressure);
+        let alone = flow::conductance(
+            f64::from(capillary.radius),
+            f64::from(capillary.width.saturating_sub(1)),
+        );
+        for sprout in &mut self.sprouts {
+            sprout.flow = vec![0.0; sprout.centres.len()];
+        }
+        for (&(line, u, v), q) in placed.iter().zip(&q) {
+            if line == 0 {
+                continue;
+            }
+            // Position k along a sprout is its origin for 0 and its disc k - 1
+            // after; a disc at a junction belongs to both segments it joins.
+            let share = q.abs() / alone;
+            let flow = &mut self.sprouts[line - 1].flow;
+            for k in u.min(v).max(1)..=u.max(v) {
+                if let Some(f) = flow.get_mut(k as usize - 1) {
+                    *f = f.max(share);
+                }
+            }
+        }
+        for sprout in &mut self.sprouts {
+            let wet = !sprout.regressed && sprout.flow.iter().any(|&f| f > FLOWING);
+            if sprout.perfused && !wet {
+                sprout.dry_since = mcs;
+            }
+            sprout.perfused = wet;
+        }
+    }
+
+    /// The network: segments between junctions; for each segment, the line
+    /// it lies along and between which positions; the junctions held at a
+    /// pressure; and how many junctions there are. Line 0 is the capillary,
+    /// where a position is a column, and line `s + 1` is sprout `s`, where
+    /// position 0 is its origin and position `k + 1` its disc `k`.
+    #[allow(clippy::type_complexity)]
+    fn network(
+        &self,
+        capillary: Capillary,
+    ) -> (
+        Vec<Segment>,
+        Vec<(usize, u32, u32)>,
+        Vec<(usize, f64)>,
+        usize,
+    ) {
+        let lines = self.sprouts.len() + 1;
+        let mut at: Vec<BTreeMap<u32, usize>> = vec![BTreeMap::new(); lines];
+        let mut nodes = 0;
+        let mut same: Vec<(usize, usize)> = Vec::new();
+        let mut node = |at: &mut Vec<BTreeMap<u32, usize>>, line: usize, pos: u32| -> usize {
+            *at[line].entry(pos).or_insert_with(|| {
+                nodes += 1;
+                nodes - 1
+            })
+        };
+        let line_of = |host: Option<usize>| host.map_or(0, |s| s + 1);
+        let inlet = node(&mut at, 0, 0);
+        let outlet = node(&mut at, 0, capillary.width.saturating_sub(1));
+        let standing = |host: Option<usize>| host.is_none_or(|h| !self.sprouts[h].regressed);
+        for (s, sprout) in self.sprouts.iter().enumerate() {
+            if sprout.regressed || !standing(sprout.parent) {
+                continue;
+            }
+            let start = match sprout.parent {
+                None => sprout.origin.0,
+                Some(_) => self.disc_at(sprout.origin) + 1,
+            };
+            let joint = node(&mut at, line_of(sprout.parent), start);
+            if let Some(&mine) = at[s + 1].get(&0) {
+                same.push((mine, joint));
+            }
+            at[s + 1].insert(0, joint);
+            let end = sprout.centres.len() as u32;
+            match sprout.joined {
+                Some(j) if standing(j.host) && end > 0 => {
+                    // On the capillary a join is at a column; on a sprout, at
+                    // a disc, which is one position along from its origin.
+                    let along = match j.host {
+                        None => j.at,
+                        Some(_) => j.at + 1,
+                    };
+                    let joint = node(&mut at, line_of(j.host), along);
+                    if let Some(&mine) = at[s + 1].get(&end) {
+                        same.push((mine, joint));
+                    }
+                    at[s + 1].insert(end, joint);
+                }
+                _ => {
+                    node(&mut at, s + 1, end);
+                }
+            }
+        }
+        // Junctions that are one place, reached two ways, become one.
+        let mut root: Vec<usize> = (0..nodes).collect();
+        fn find(root: &mut [usize], mut n: usize) -> usize {
+            while root[n] != n {
+                root[n] = root[root[n]];
+                n = root[n];
+            }
+            n
+        }
+        for (a, b) in same {
+            let (ra, rb) = (find(&mut root, a), find(&mut root, b));
+            if ra != rb {
+                root[ra.max(rb)] = ra.min(rb);
+            }
+        }
+        let mut segments = Vec::new();
+        let mut placed = Vec::new();
+        let capillary_radius = f64::from(capillary.radius);
+        let sprout_radius = f64::from(VESSEL_RADIUS);
+        for (line, positions) in at.iter().enumerate() {
+            let arc = (line > 0).then(|| self.sprouts[line - 1].arc());
+            let mut previous: Option<(u32, usize)> = None;
+            for (&pos, &n) in positions {
+                if let Some((p, m)) = previous {
+                    let (length, radius) = match &arc {
+                        None => (f64::from(pos - p), capillary_radius),
+                        Some(arc) => (arc[pos as usize] - arc[p as usize], sprout_radius),
+                    };
+                    segments.push(Segment {
+                        a: find(&mut root, m),
+                        b: find(&mut root, n),
+                        conductance: flow::conductance(radius, length),
+                    });
+                    placed.push((line, p, pos));
+                }
+                previous = Some((pos, n));
+            }
+        }
+        let held = vec![
+            (find(&mut root, inlet), 1.0),
+            (find(&mut root, outlet), 0.0),
+        ];
+        (segments, placed, held, nodes)
     }
 }
 
@@ -233,6 +480,12 @@ impl Vessels {
     /// pixel that is not vessel.
     pub(crate) fn carries_blood(&self, x: u32, y: u32) -> bool {
         self.tree.carries_blood((x, y))
+    }
+
+    /// Let blood flow through `capillary`, in at its left end and out at
+    /// its right, when the scenario says it flows as pressure drives it.
+    pub(crate) fn lie_along(&mut self, capillary: Capillary) {
+        self.tree.capillary = Some(capillary);
     }
 
     /// The tips still growing.
@@ -264,12 +517,15 @@ impl Vessels {
         if self.tree.owner.is_empty() {
             let (w, h) = lattice.dims();
             self.tree.owner = vec![None; w as usize * h as usize];
+            self.tree.disc = vec![0; w as usize * h as usize];
             self.tree.width = w;
+            self.tree.flowing = angiogenesis.perfusion == Perfusion::Flow;
         }
         let mut laid = false;
         let tree = &mut self.tree;
         self.tips
             .retain_mut(|tip| advance(tip, lattice, vegf, angiogenesis, tree, &mut laid));
+        self.tree.solve_flow(mcs);
         // Checked after the tips move, so that a sprout joining another
         // vessel on its last step stands.
         if let Some(after) = angiogenesis.regress_after {
@@ -288,14 +544,14 @@ impl Vessels {
         laid
     }
 
-    /// Take back every sprout that started `after` steps or more before
-    /// `mcs` and carries no blood, and with it every sprout grown from it,
-    /// which carries none either: blood reaching one would have reached
-    /// what it grew from.
+    /// Take back every sprout that has carried no blood for `after` steps or
+    /// more by `mcs`, since it started or since the flow through it stopped,
+    /// and with it every sprout grown from it, which carries none either:
+    /// blood reaching one would have reached what it grew from.
     fn regress_dry(&mut self, lattice: &mut CpmLattice, after: u64, mcs: u64) {
         for i in 0..self.tree.sprouts.len() {
             let sprout = &self.tree.sprouts[i];
-            let due = sprout.started.saturating_add(after) <= mcs;
+            let due = sprout.dry_since.saturating_add(after) <= mcs;
             if due && !sprout.perfused && !sprout.regressed {
                 self.tree.regress(lattice, i);
             }
@@ -393,10 +649,20 @@ fn advance(
     tree.lay(lattice, centre, tip.sprout, push);
     *laid = true;
     if let Some(pixel) = met {
-        // A loop closes through both sprouts and whatever each grew from.
-        tree.perfuse(tip.sprout);
-        if let Some(other) = tree.owner(pixel) {
-            tree.perfuse(other);
+        let host = tree.owner(pixel);
+        let at = match host {
+            None => pixel.0,
+            Some(_) => tree.disc_at(pixel),
+        };
+        tree.sprouts[tip.sprout].joined = Some(Join { host, at });
+        tree.changes += 1;
+        // A loop closes through both sprouts and whatever each grew from,
+        // unless blood goes only where pressure drives it.
+        if !tree.flowing {
+            tree.perfuse(tip.sprout);
+            if let Some(other) = host {
+                tree.perfuse(other);
+            }
         }
     }
     tip.trail.push(centre);
@@ -539,7 +805,9 @@ mod tests {
         let mut tree = Tree {
             sprouts: vec![Sprout::new(None, false, (24, 20), 0)],
             owner: vec![None; 80 * 40],
+            disc: vec![0; 80 * 40],
             width: 80,
+            ..Tree::default()
         };
         let mut tip = Tip::new((24, 20), 0);
         let mut laid = false;
@@ -640,7 +908,9 @@ mod tests {
                 Sprout::new(None, true, (24, 22), 0),
             ],
             owner: vec![None; 80 * 40],
+            disc: vec![0; 80 * 40],
             width: 80,
+            ..Tree::default()
         };
         let discs: [(usize, &[(u32, u32)]); 4] = [
             (0, &[(26, 20), (27, 20), (28, 20), (29, 20), (30, 20)]),
@@ -732,5 +1002,169 @@ mod tests {
                 assert_eq!(left, 0, "crushed, it has nothing left");
             }
         }
+    }
+
+    /// A capillary along row 10 of an 80 by 40 box, a bypass from column 20
+    /// back to column 40, a blind sprout down from column 60, and a loop from
+    /// the blind sprout back onto itself.
+    fn a_network_laid_by_hand() -> (CpmLattice, Tree) {
+        let mut lattice = CpmLattice::new(80, 40, 10.0).unwrap();
+        for x in 0..80 {
+            lattice.add_obstacle_disc(Pos2 { x, y: 10 }, 2);
+        }
+        let mut tree = Tree {
+            sprouts: Vec::new(),
+            owner: vec![None; 80 * 40],
+            disc: vec![0; 80 * 40],
+            width: 80,
+            capillary: Some(Capillary {
+                row: 10,
+                width: 80,
+                radius: 2,
+            }),
+            flowing: true,
+            changes: 0,
+            solved: 0,
+        };
+        let sprout =
+            |tree: &mut Tree, lattice: &mut CpmLattice, origin: (u32, u32), path: &[(u32, u32)]| {
+                let parent = tree.owner(origin);
+                tree.sprouts.push(Sprout::new(parent, false, origin, 0));
+                let s = tree.sprouts.len() - 1;
+                for &c in path {
+                    tree.lay(lattice, c, s, None);
+                }
+                s
+            };
+        let line = |from: (u32, u32), to: (u32, u32)| -> Vec<(u32, u32)> {
+            let n = from.0.abs_diff(to.0).max(from.1.abs_diff(to.1));
+            (1..=n)
+                .map(|k| {
+                    let t = f64::from(k) / f64::from(n);
+                    let x = f64::from(from.0) + t * (f64::from(to.0) - f64::from(from.0));
+                    let y = f64::from(from.1) + t * (f64::from(to.1) - f64::from(from.1));
+                    (x.round() as u32, y.round() as u32)
+                })
+                .collect()
+        };
+        let bypass: Vec<(u32, u32)> = [
+            line((20, 12), (20, 25)),
+            line((20, 25), (40, 25)),
+            line((40, 25), (40, 15)),
+        ]
+        .concat();
+        let s = sprout(&mut tree, &mut lattice, (20, 12), &bypass);
+        tree.sprouts[s].joined = Some(Join { host: None, at: 40 });
+        let blind = sprout(&mut tree, &mut lattice, (60, 12), &line((60, 12), (60, 30)));
+        let loop_back: Vec<(u32, u32)> = [
+            line((62, 18), (70, 18)),
+            line((70, 18), (70, 26)),
+            line((70, 26), (65, 26)),
+        ]
+        .concat();
+        let s = sprout(&mut tree, &mut lattice, (62, 18), &loop_back);
+        let at = tree.disc_at((62, 26));
+        tree.sprouts[s].joined = Some(Join {
+            host: Some(blind),
+            at,
+        });
+        tree.changes += 1;
+        (lattice, tree)
+    }
+
+    #[test]
+    fn blood_flows_through_a_bypass_and_not_through_a_blind_end() {
+        let (_, mut tree) = a_network_laid_by_hand();
+        tree.solve_flow(0);
+        assert!(tree.carries_blood((5, 10)), "the capillary itself");
+        assert!(tree.carries_blood((30, 25)), "the bypass");
+        assert!(!tree.carries_blood((60, 28)), "the blind sprout");
+        assert!(
+            !tree.carries_blood((70, 22)),
+            "a loop closed on a blind end has no difference of pressure across it"
+        );
+        let through = tree.flow_at(0, 20);
+        assert!(
+            through > 0.0 && through < 1.0,
+            "the bypass takes a share of the capillary's flow: {through}"
+        );
+        let perfused: Vec<bool> = tree.sprouts.iter().map(|s| s.perfused).collect();
+        assert_eq!(perfused, [true, false, false]);
+    }
+
+    #[test]
+    fn a_narrower_vessel_takes_less_of_the_flow() {
+        // The same bypass, against a capillary twice as wide: its share of
+        // the flow shrinks, by Poiseuille's fourth power.
+        let (_, mut narrow) = a_network_laid_by_hand();
+        narrow.solve_flow(0);
+        let (_, mut wide) = a_network_laid_by_hand();
+        wide.capillary = wide.capillary.map(|c| Capillary { radius: 4, ..c });
+        wide.solve_flow(0);
+        assert!(wide.flow_at(0, 20) < narrow.flow_at(0, 20) / 4.0);
+    }
+
+    #[test]
+    fn a_sprout_the_flow_leaves_is_dry_from_then() {
+        let (mut lattice, mut tree) = a_network_laid_by_hand();
+        tree.solve_flow(5);
+        assert!(tree.sprouts[0].perfused);
+        // Taking back the capillary end it joined at: without it the bypass
+        // is a blind end, and stops carrying blood at step 9.
+        tree.sprouts[0].joined = None;
+        tree.changes += 1;
+        tree.solve_flow(9);
+        assert!(!tree.sprouts[0].perfused);
+        assert_eq!(tree.sprouts[0].dry_since, 9);
+        let mut vessels = Vessels {
+            tips: Vec::new(),
+            tree,
+        };
+        vessels.regress_dry(&mut lattice, 10, 18);
+        assert!(!vessels.tree.sprouts[0].regressed, "dry for 9 steps only");
+        vessels.regress_dry(&mut lattice, 10, 19);
+        assert!(vessels.tree.sprouts[0].regressed);
+    }
+
+    #[test]
+    fn a_join_at_a_blind_sprouts_first_disc_makes_it_carry_blood() {
+        // A blind sprout down from column 60, and a tip from column 75 that
+        // comes back along to meet its first disc: blood runs from column
+        // 60 down that first disc, through the second sprout, to column 75.
+        let (mut lattice, mut tree) = a_network_laid_by_hand();
+        tree.sprouts.truncate(2);
+        let blind = 1;
+        tree.sprouts.push(Sprout::new(None, false, (75, 12), 0));
+        let s = tree.sprouts.len() - 1;
+        for c in [
+            (75, 14),
+            (75, 15),
+            (74, 15),
+            (72, 15),
+            (70, 15),
+            (68, 15),
+            (66, 15),
+            (64, 15),
+        ] {
+            tree.lay(&mut lattice, c, s, None);
+        }
+        let first = tree.sprouts[blind].centres[0];
+        let at = tree.disc_at(first);
+        assert_eq!(
+            at, 0,
+            "the pixel met was laid by the blind sprout's first disc"
+        );
+        tree.sprouts[s].joined = Some(Join {
+            host: Some(blind),
+            at,
+        });
+        tree.changes += 1;
+        tree.solve_flow(0);
+        assert!(
+            tree.flow_at(blind, 0) > FLOWING,
+            "its first disc carries blood"
+        );
+        assert!(tree.sprouts[blind].perfused);
+        assert!(tree.flow_at(blind, 10) <= FLOWING, "and beyond it, nothing");
     }
 }
