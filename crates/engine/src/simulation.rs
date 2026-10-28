@@ -20,7 +20,7 @@ use rand::rngs::StdRng;
 use rand::{RngExt, SeedableRng};
 
 use crate::coupling::{
-    apply_background_uptake, apply_production, apply_uptake, hold_medium_bath, hold_obstacles_at,
+    apply_background_uptake, apply_production, apply_uptake, hold_medium_bath, hold_vessels_at,
     mean_per_cell,
 };
 use crate::cpm::{CpmLattice, OBSTACLE};
@@ -1153,7 +1153,9 @@ impl<S: SimState> Simulation<S> {
             OxygenSource::Bath => hold_medium_bath(field, &self.lattice, level),
             OxygenSource::Vessel { .. } => {
                 apply_background_uptake(field, &self.lattice, exposure.uptake);
-                hold_obstacles_at(field, &self.lattice, level);
+                hold_vessels_at(field, &self.lattice, level, |x, y| {
+                    self.vessels.carries_blood(x, y)
+                });
             }
         }
         let (tolerance, max_sweeps) = if level == self.stress_level {
@@ -1187,7 +1189,9 @@ impl<S: SimState> Simulation<S> {
             OxygenSource::Bath => hold_medium_bath(&mut self.oxygen, &self.lattice, 1.0),
             OxygenSource::Vessel { .. } => {
                 apply_background_uptake(&mut self.oxygen, &self.lattice, uptake);
-                hold_obstacles_at(&mut self.oxygen, &self.lattice, 1.0);
+                hold_vessels_at(&mut self.oxygen, &self.lattice, 1.0, |x, y| {
+                    self.vessels.carries_blood(x, y)
+                });
             }
         }
     }
@@ -1239,6 +1243,13 @@ impl<S: SimState> Simulation<S> {
     /// How many sprouts have started, growing or not.
     pub fn sprouted(&self) -> usize {
         self.vessels.sprouted()
+    }
+
+    /// Whether the vessel at `(x, y)` carries blood, and with it oxygen:
+    /// the vessel the scenario laid always does, a sprout once perfused.
+    /// Meaningless for a pixel that is not vessel.
+    pub fn carries_blood(&self, x: u32, y: u32) -> bool {
+        self.vessels.carries_blood(x, y)
     }
 
     /// The oxygen field, as it was last settled.
@@ -1355,6 +1366,7 @@ fn cell_of(i: usize) -> CellId {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cellweave_core::Perfusion;
 
     fn spec() -> NetworkSpec {
         toml::from_str(include_str!("../../../examples/networks/ras-erk.toml"))
@@ -1726,6 +1738,7 @@ mod tests {
                 threshold,
                 speed: 1.0,
                 reach: 15.0,
+                perfusion: Perfusion::AtOnce,
             }),
             width: 100,
             height: 100,
@@ -1804,6 +1817,7 @@ mod tests {
                 threshold: 0.3,
                 speed,
                 reach,
+                perfusion: Perfusion::AtOnce,
             });
             assert!(refused(s, &spec()), "speed {speed}, reach {reach}");
         }

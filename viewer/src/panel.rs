@@ -2,7 +2,7 @@
 
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
-use cellweave_core::{CloneId, OxygenSource, Seeding};
+use cellweave_core::{CloneId, OxygenSource, Perfusion, Seeding};
 use cellweave_engine::Measurements;
 use egui_plot::{Legend, Line, Plot, PlotPoints, Polygon};
 
@@ -163,7 +163,10 @@ fn census(ui: &mut egui::Ui, runner: &Runner, sheet: bool, exposed: bool) {
         if runner.experiment.scenario.angiogenesis.is_some() {
             row(
                 "vessel",
-                format!("{} px, {} sprouts growing", c.vessel, c.sprouts),
+                format!(
+                    "{} px, {} with blood, {} sprouts growing",
+                    c.vessel, c.perfused, c.sprouts
+                ),
             );
         }
         // Once a lesion has appeared, how much of it is left, down to none.
@@ -234,6 +237,13 @@ fn colouring(ui: &mut egui::Ui, view: &mut View, experiment: &Experiment) {
                     swatch(ui, paint::APOPTOTIC, "apoptotic");
                 }
                 swatch(ui, paint::VESSEL, "vessel");
+                if experiment
+                    .scenario
+                    .angiogenesis
+                    .is_some_and(|a| a.perfusion == Perfusion::OnJoining)
+                {
+                    swatch(ui, paint::DRY_VESSEL, "no blood yet");
+                }
             });
         }
         View::Protein(i) => {

@@ -134,6 +134,8 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **PDE** (3). Partial differential equation: rates of change in time and space. Oxygen is one.
 
+**Perfusion** (14). Blood flowing through a vessel. Here a sprout carries blood, and oxygen, from its first pixel, or only once its tip has joined another vessel and closed a loop.
+
 **Pixel** (1). One square of the lattice, about a micrometre, carrying one identity and one oxygen value.
 
 **Proliferating** (4). Alive, cycling, dividing. The default fate under enough oxygen.

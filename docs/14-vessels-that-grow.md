@@ -93,13 +93,50 @@ Why the vessels stopped was then guessed, and the guess tested. The living sleev
 How much a tumour gained followed how many sprouts it started, from a single one, which changed little, to six, which tripled the living. In this model a tumour does not switch from starving to fed: it is fed in proportion to the vessels it has managed to call.
 
 
+### Blood only through loops
+
+Blood flows through a vessel only if it can come in at one end and leave at the other. A sprout that has not joined anything is a blind end: blood cannot flow through it, and it brings nothing. A configuration may say so:
+
+```toml
+[angiogenesis]
+perfusion = "on_joining"   # the default is "at_once"
+```
+
+Each sprout then remembers which vessel it grew from. Until its tip joins another vessel it is an obstacle and nothing more: cells cannot enter it, and it supplies no oxygen. When its tip joins one, a loop closes through the two, and blood flows through the sprout, through every sprout it grew from, through the vessel it joined and through everything that one grew from. The vessel laid at the start always carries blood. `Simulation::carries_blood` says whether a pixel of vessel does, and `measurements.csv` has a `perfused` column beside `vessel`. In the viewer a sprout without blood is drawn dark and gives off no light, and turns red when its loop closes.
+
+`examples/cord-angiogenic-joining.toml` is `cord-angiogenic.toml` with `perfusion = "on_joining"`. Paired with it under the same seeds, the two are one run until the first sprout lays a pixel, which carries blood in one and not in the other.
+
+```bash
+cellweave --config examples/cord-angiogenic.toml --versus examples/cord-angiogenic-joining.toml --seeds 1-10 --mcs 300
+```
+
+Written before anything was run with it: (a) fewer living cells at step 300 when sprouts wait to join, in at least 8 pairs of 10; (b) still more than the plain cord of the first experiment under the same seed, in at least 6; (c) less than 60% of the vessel carrying blood at step 300, in the median.
+
+| seed | living, plain cord | at once | once joined | vessel pixels, at once | once joined | of which carrying blood | sprouts, at once | once joined |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 38 | 47 | 88 | 185 | 1424 | 73% | 1 | 11 |
+| 2 | 39 | 96 | 105 | 508 | 1409 | 90% | 5 | 10 |
+| 3 | 39 | 59 | 87 | 240 | 1840 | 62% | 2 | 11 |
+| 4 | 39 | 64 | 49 | 260 | 216 | 100% | 2 | 2 |
+| 5 | 37 | 45 | 54 | 144 | 201 | 100% | 1 | 2 |
+| 6 | 36 | 65 | 58 | 360 | 343 | 88% | 3 | 3 |
+| 7 | 39 | 125 | 68 | 874 | 1700 | 71% | 6 | 10 |
+| 8 | 36 | 92 | 106 | 493 | 1363 | 82% | 4 | 10 |
+| 9 | 37 | 41 | 38 | 124 | 144 | 78% | 1 | 1 |
+| 10 | 38 | 45 | 63 | 154 | 2106 | 19% | 1 | 12 |
+
+(a) **Failed**: the tumour whose sprouts had to join first had fewer living cells in only 4 pairs, and more in 6. (b) **Held**: more than the plain cord in all 10. (c) **Failed**: 80% of the vessel carried blood in the median.
+
+The tumour that had to wait for loops did not end up with less vessel but with far more: a median of 1386 pixels against 250, and of 10 sprouts against 2, with half as many necrotic cells (19 against 39). A sprout that carries no blood feeds nobody, so the cells around it go on starving and calling, and the walls go on sprouting, until sprouts meet and the loops close. Perfused at once, the first sprout quiets the cells around it before a second is needed. Making blood wait for a loop takes away the feedback that stops a tumour calling, and the tumour calls in more vessel than it would have needed. Seed 10 shows it at its most: twelve sprouts, only a fifth of the vessel carrying blood at step 300, and still more living cells than either of the other two cords under the same seed.
+
+
 ## Choices, and why
 
 **The vessel is an obstacle that grows.** A vessel was already a set of obstacle pixels held at full oxygen (chapter 5). New vessel is more of the same pixels, so everything that reads a vessel, the oxygen, the stress, the viewer, the measurements, reads the new vessel without a change.
 
 **A tip is a point, not a cell.** Tip and stalk cells are not modelled as cells of the lattice: the tip is a point that moves, and the tube is laid behind it. What the chapter asks is what new vessels do to a tumour, not how endothelial cells build them.
 
-**Perfused at once.** A real sprout carries blood once it has joined another vessel. Here a sprout grows from the vessel it left and is held at full oxygen from its first pixel, which is generous to the tumour. Making perfusion wait for anastomosis is the obvious next step, and would make a sprout that never joins anything useless.
+**Perfused at once, unless told otherwise.** A real sprout carries blood once it has joined another vessel. By default a sprout here is held at full oxygen from its first pixel, which is generous to the tumour, and is what the first experiment used. `perfusion = "on_joining"` makes it wait, as the last section does.
 
 **The speed is the fastest the model allows.** A tip may not move more than a pixel per step, or the vessel it lays has gaps. The cord has no calibrated step (chapter 12). If a cord cell's cycle stood for a day, the 110 steps or so a living cell takes to divide here would make a step about 13 minutes, and the measured 10 to 21 µm an hour would be 2 to 4 pixels per step, at about a micrometre per pixel. On that reading the model's sprouts are slower than real ones, not faster.
 
@@ -111,13 +148,15 @@ How much a tumour gained followed how many sprouts it started, from a single one
 
 `crates/engine/src/vessels.rs`: `Tip`, `VESSEL_RADIUS`, the spacing of sprouts, how a tip moves, lays vessel and joins another. `crates/core/src/types.rs`: `Angiogenesis`. `crates/core/src/network.rs`: the `angiogenic` field of `Roles`. `crates/engine/src/network.rs`: `Network::angiogenic`. `crates/engine/src/pde.rs`: `ScalarField::set_production`, a source per pixel. `crates/engine/src/coupling.rs`: `apply_production`. `crates/engine/src/simulation.rs`: the `angiogenesis` field of `Scenario`, the VEGF field and its reach, where a step settles it and grows the vessels, `Simulation::vegf`, `Simulation::sprouts`, `Simulation::sprouted`. `crates/engine/src/measure.rs`: the `vessel` and `sprouts` columns, `Simulation::depth_from_vessels`, `DEPTH_SHARE`. `src/campaign.rs`: the columns and the lines a campaign adds.
 
-`viewer/src/paint.rs`: the `Vegf` view. `viewer/src/panel.rs`: the vessel line.
+`crates/core/src/types.rs`: `Perfusion`. `crates/engine/src/vessels.rs`: which sprout laid each pixel, what it grew from, and the loop that perfuses them. `crates/engine/src/coupling.rs`: `hold_vessels_at`. `crates/engine/src/simulation.rs`: `Simulation::carries_blood`. `crates/engine/src/measure.rs`: the `perfused` column.
 
-`examples/cord-angiogenic.toml` and its twin `examples/cord-wide.toml`.
+`viewer/src/paint.rs`: the `Vegf` view, and `DRY_VESSEL` for a sprout without blood. `viewer/src/panel.rs`: the vessel line.
+
+`examples/cord-angiogenic.toml`, its twin `examples/cord-wide.toml`, and `examples/cord-angiogenic-joining.toml`.
 
 ## Still a placeholder
 
-The threshold, one absolute level of VEGF whatever the reach, which lets vessels sprout only in a narrow range of reach; the reach; the spacing of 16 pixels; the width of a new vessel. Vessels are perfused at once and never regress. There is no blood flow, so a vessel far from where it started carries as much oxygen as the one it came from. Endothelial cells are not cells, and there is only one kind of vessel. Everything is in two dimensions, where a real sprout can pass above or below the tissue in its way.
+The threshold, one absolute level of VEGF whatever the reach, which lets vessels sprout only in a narrow range of reach; the reach; the spacing of 16 pixels; the width of a new vessel. Vessels never regress, and with `perfusion = "on_joining"` any loop carries blood, however long and however it closed. There is no blood flow, so a vessel far from where it started carries as much oxygen as the one it came from. Endothelial cells are not cells, and there is only one kind of vessel. Everything is in two dimensions, where a real sprout can pass above or below the tissue in its way.
 
 ## References
 

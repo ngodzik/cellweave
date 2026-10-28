@@ -9,12 +9,18 @@
 //! below the threshold, when it reaches the edge of the box, or when it runs
 //! into another vessel and joins it.
 //!
+//! Each sprout remembers what it grew from. Blood flows through a new vessel
+//! either at once or, when the scenario says so, only once its tip has
+//! joined another vessel: then the sprout, and every sprout it grew from,
+//! carries blood, and so does the one it joined, and everything that one
+//! grew from.
+//!
 //! Nothing here is drawn at random. Which wall sprouts is the one reading the
 //! most VEGF, and where a tip goes is where the gradient points, so a run
 //! with vessels that may grow is the run without them, to the last bit, until
 //! the first sprout lays its first pixel.
 
-use cellweave_core::{Angiogenesis, DiffusionField, Pos2};
+use cellweave_core::{Angiogenesis, DiffusionField, Perfusion, Pos2};
 
 use crate::cpm::{CpmLattice, OBSTACLE};
 use crate::pde::ScalarField;
@@ -55,27 +61,113 @@ pub struct Tip {
     /// Centres of the last few discs of vessel it laid, the latest last, or
     /// its origin before it has laid any.
     trail: Vec<(u32, u32)>,
+    /// The sprout it leads.
+    sprout: usize,
 }
 
 impl Tip {
-    fn new(wall: (u32, u32)) -> Self {
+    fn new(wall: (u32, u32), sprout: usize) -> Self {
         Self {
             x: f64::from(wall.0),
             y: f64::from(wall.1),
             origin: wall,
             trail: vec![wall],
+            sprout,
         }
     }
 }
 
-/// Every sprout still growing, and where every sprout ever started.
+/// The vessel one tip laid.
+#[derive(Debug, Clone)]
+struct Sprout {
+    /// The sprout it grew from, or `None` for the vessel the scenario laid.
+    parent: Option<usize>,
+    /// Whether blood flows through it.
+    perfused: bool,
+}
+
+/// Which sprout laid each pixel of vessel, and which sprouts carry blood.
+#[derive(Debug, Clone, Default)]
+struct Tree {
+    sprouts: Vec<Sprout>,
+    /// By pixel, row by row: the sprout that laid it, or `None` for the
+    /// vessel the scenario laid and for every pixel that is not vessel.
+    /// Empty until the first sprout.
+    owner: Vec<Option<usize>>,
+    width: u32,
+}
+
+impl Tree {
+    fn index(&self, (x, y): (u32, u32)) -> usize {
+        y as usize * self.width as usize + x as usize
+    }
+
+    fn owner(&self, pixel: (u32, u32)) -> Option<usize> {
+        self.owner.get(self.index(pixel)).copied().flatten()
+    }
+
+    /// Lay a disc of vessel for `sprout` at `centre`, and remember which
+    /// pixels it made vessel.
+    fn lay(&mut self, lattice: &mut CpmLattice, centre: (u32, u32), sprout: usize) {
+        let (w, h) = lattice.dims();
+        let r = VESSEL_RADIUS;
+        let r2 = i64::from(r * r);
+        let rows = centre.1.saturating_sub(r)..(centre.1 + r + 1).min(h);
+        let cols = centre.0.saturating_sub(r)..(centre.0 + r + 1).min(w);
+        let fresh: Vec<(u32, u32)> = rows
+            .flat_map(|y| cols.clone().map(move |x| (x, y)))
+            .filter(|&(x, y)| {
+                let (dx, dy) = (
+                    i64::from(x) - i64::from(centre.0),
+                    i64::from(y) - i64::from(centre.1),
+                );
+                dx * dx + dy * dy <= r2 && lattice.occupant(x, y) != OBSTACLE
+            })
+            .collect();
+        lattice.add_obstacle_disc(
+            Pos2 {
+                x: centre.0,
+                y: centre.1,
+            },
+            r,
+        );
+        for pixel in fresh {
+            let i = self.index(pixel);
+            self.owner[i] = Some(sprout);
+        }
+    }
+
+    /// Blood through `sprout` and every sprout it grew from.
+    fn perfuse(&mut self, sprout: usize) {
+        let mut at = Some(sprout);
+        while let Some(i) = at {
+            self.sprouts[i].perfused = true;
+            at = self.sprouts[i].parent;
+        }
+    }
+
+    fn carries_blood(&self, pixel: (u32, u32)) -> bool {
+        self.owner(pixel).is_none_or(|s| self.sprouts[s].perfused)
+    }
+}
+
+/// Every sprout still growing, where every sprout ever started, and which of
+/// them carry blood.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct Vessels {
     tips: Vec<Tip>,
     origins: Vec<(u32, u32)>,
+    tree: Tree,
 }
 
 impl Vessels {
+    /// Whether the vessel at `(x, y)` carries blood: the vessel the scenario
+    /// laid always does, a sprout once it is perfused. Meaningless for a
+    /// pixel that is not vessel.
+    pub(crate) fn carries_blood(&self, x: u32, y: u32) -> bool {
+        self.tree.carries_blood((x, y))
+    }
+
     /// The tips still growing.
     pub(crate) fn tips(&self) -> &[Tip] {
         &self.tips
@@ -95,11 +187,22 @@ impl Vessels {
         vegf: &ScalarField,
         angiogenesis: &Angiogenesis,
     ) -> bool {
+        if self.tree.owner.is_empty() {
+            let (w, h) = lattice.dims();
+            self.tree.owner = vec![None; w as usize * h as usize];
+            self.tree.width = w;
+        }
         let mut laid = false;
+        let tree = &mut self.tree;
         self.tips
-            .retain_mut(|tip| advance(tip, lattice, vegf, angiogenesis, &mut laid));
+            .retain_mut(|tip| advance(tip, lattice, vegf, angiogenesis, tree, &mut laid));
         if let Some(wall) = self.strongest_free_wall(lattice, vegf, angiogenesis.threshold) {
-            self.tips.push(Tip::new(wall));
+            let sprout = self.tree.sprouts.len();
+            self.tree.sprouts.push(Sprout {
+                parent: self.tree.owner(wall),
+                perfused: angiogenesis.perfusion == Perfusion::AtOnce,
+            });
+            self.tips.push(Tip::new(wall, sprout));
             self.origins.push(wall);
         }
         laid
@@ -152,6 +255,7 @@ fn advance(
     lattice: &mut CpmLattice,
     vegf: &ScalarField,
     angiogenesis: &Angiogenesis,
+    tree: &mut Tree,
     laid: &mut bool,
 ) -> bool {
     let (w, h) = lattice.dims();
@@ -178,36 +282,45 @@ fn advance(
         return true;
     }
     let clear = distance(centre, tip.origin) > CLEAR_OF_ORIGIN;
-    let joined = clear && meets_another_vessel(lattice, centre, &tip.trail);
-    lattice.add_obstacle_disc(
-        Pos2 {
-            x: centre.0,
-            y: centre.1,
-        },
-        VESSEL_RADIUS,
-    );
+    let met = if clear {
+        meets_another_vessel(lattice, centre, &tip.trail)
+    } else {
+        None
+    };
+    tree.lay(lattice, centre, tip.sprout);
     *laid = true;
+    if let Some(pixel) = met {
+        // A loop closes through both sprouts and whatever each grew from.
+        tree.perfuse(tip.sprout);
+        if let Some(other) = tree.owner(pixel) {
+            tree.perfuse(other);
+        }
+    }
     tip.trail.push(centre);
     if tip.trail.len() > TRAIL_KEPT {
         tip.trail.remove(0);
     }
-    !joined
+    met.is_none()
 }
 
 fn distance((ax, ay): (u32, u32), (bx, by): (u32, u32)) -> f64 {
     (f64::from(ax) - f64::from(bx)).hypot(f64::from(ay) - f64::from(by))
 }
 
-/// Whether a disc laid at `centre` would come within a pixel of vessel that
-/// is not one of the discs in `trail`.
-fn meets_another_vessel(lattice: &CpmLattice, centre: (u32, u32), trail: &[(u32, u32)]) -> bool {
+/// The first pixel of vessel, in reading order, that a disc laid at `centre`
+/// would come within a pixel of and that is not one of the discs in `trail`.
+fn meets_another_vessel(
+    lattice: &CpmLattice,
+    centre: (u32, u32),
+    trail: &[(u32, u32)],
+) -> Option<(u32, u32)> {
     let (w, h) = lattice.dims();
     let reach = VESSEL_RADIUS + 1;
     let radius = f64::from(VESSEL_RADIUS);
     let rows = centre.1.saturating_sub(reach)..(centre.1 + reach + 1).min(h);
     let cols = centre.0.saturating_sub(reach)..(centre.0 + reach + 1).min(w);
     rows.flat_map(|y| cols.clone().map(move |x| (x, y)))
-        .any(|p| {
+        .find(|&p| {
             lattice.occupant(p.0, p.1) == OBSTACLE
                 && distance(p, centre) <= f64::from(reach)
                 && trail.iter().all(|&t| distance(p, t) > radius)
@@ -260,6 +373,7 @@ mod tests {
             threshold: field.concentration_at(25, 20) * 0.9,
             speed: 0.5,
             reach: 20.0,
+            perfusion: Perfusion::AtOnce,
         };
         let mut vessels = Vessels::default();
         for _ in 0..40 {
@@ -288,6 +402,7 @@ mod tests {
             threshold: field.concentration_at(79, 20) * 2.0,
             speed: 0.5,
             reach: 20.0,
+            perfusion: Perfusion::AtOnce,
         };
         let mut vessels = Vessels::default();
         for _ in 0..40 {
@@ -298,26 +413,69 @@ mod tests {
     }
 
     #[test]
-    fn a_tip_that_reaches_another_vessel_joins_it_and_stops() {
+    fn a_tip_that_reaches_another_vessel_joins_it_stops_and_carries_blood() {
         let (mut lattice, field) = calling_from_the_right();
         lattice.add_obstacle_disc(Pos2 { x: 40, y: 20 }, 3);
         let call = Angiogenesis {
             threshold: field.concentration_at(25, 20) * 0.9,
             speed: 0.5,
             reach: 20.0,
+            perfusion: Perfusion::OnJoining,
         };
-        let mut tip = Tip::new((24, 20));
+        let mut tree = Tree {
+            sprouts: vec![Sprout {
+                parent: None,
+                perfused: false,
+            }],
+            owner: vec![None; 80 * 40],
+            width: 80,
+        };
+        let mut tip = Tip::new((24, 20), 0);
         let mut laid = false;
         let mut steps = 0;
-        while advance(&mut tip, &mut lattice, &field, &call, &mut laid) {
+        while advance(&mut tip, &mut lattice, &field, &call, &mut tree, &mut laid) {
             steps += 1;
             assert!(steps < 100, "the tip never stopped");
+            if lattice.occupant(30, 20) == OBSTACLE {
+                assert!(!tree.carries_blood((30, 20)), "a blind end carries nothing");
+            }
         }
         assert!(
             tip.x < 37.5,
             "it stopped at the other vessel's wall: {}",
             tip.x
         );
-        assert_eq!(lattice.occupant(33, 20), OBSTACLE, "and the two are joined");
+        assert_eq!(lattice.occupant(33, 20), OBSTACLE, "the two are joined");
+        assert!(
+            tree.carries_blood((30, 20)),
+            "and blood flows through the loop"
+        );
+    }
+
+    #[test]
+    fn a_sprout_that_joins_nothing_carries_no_blood_unless_perfused_at_once() {
+        for (perfusion, blood) in [(Perfusion::OnJoining, false), (Perfusion::AtOnce, true)] {
+            let (mut lattice, field) = calling_from_the_right();
+            let call = Angiogenesis {
+                threshold: field.concentration_at(25, 20) * 0.9,
+                speed: 0.5,
+                reach: 20.0,
+                perfusion,
+            };
+            let mut vessels = Vessels::default();
+            for _ in 0..40 {
+                vessels.grow(&mut lattice, &field, &call);
+            }
+            assert_eq!(
+                lattice.occupant(32, 20),
+                OBSTACLE,
+                "the sprout reached here"
+            );
+            assert_eq!(vessels.carries_blood(32, 20), blood, "{perfusion:?}");
+            assert!(
+                vessels.carries_blood(20, 20),
+                "the vessel laid at the start always does"
+            );
+        }
     }
 }

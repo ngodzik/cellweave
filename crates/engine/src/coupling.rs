@@ -92,6 +92,22 @@ pub fn hold_obstacles_at(field: &mut ScalarField, lattice: &CpmLattice, value: f
     field.hold_pixels(value, |x, y| lattice.occupant(x, y) == OBSTACLE);
 }
 
+/// Hold every obstacle pixel `carries` says carries blood at `value`.
+///
+/// A vessel that has grown is held only where blood flows through it; a
+/// blind sprout is an obstacle that supplies nothing. With every vessel
+/// carrying blood this is [`hold_obstacles_at`].
+pub fn hold_vessels_at(
+    field: &mut ScalarField,
+    lattice: &CpmLattice,
+    value: f64,
+    carries: impl Fn(u32, u32) -> bool,
+) {
+    field.hold_pixels(value, |x, y| {
+        lattice.occupant(x, y) == OBSTACLE && carries(x, y)
+    });
+}
+
 /// Hold the medium the bath can reach at `value`.
 ///
 /// Reachability is decided by [`ScalarField::hold_bath`]; this only says which
