@@ -3,7 +3,9 @@
 
 #![allow(clippy::unwrap_used)]
 
-use cellweave_core::{CellKind, DiffusionField, Exposure, NetworkSpec, OxygenSource, Schedule};
+use cellweave_core::{
+    CellKind, DiffusionField, Exposure, NetworkSpec, OxygenSource, Schedule, SignalingNetwork,
+};
 use cellweave_engine::simulation::{DEFAULT_SEED, Running, Scenario};
 use cellweave_engine::{Fate, Simulation};
 use cellweave_io::SimConfig;
@@ -157,4 +159,69 @@ fn an_exposure_that_cannot_settle_is_refused() {
         Simulation::new(field_off, &spec()).is_err(),
         "no source to come in from"
     );
+}
+
+#[test]
+fn a_response_is_read_on_a_copy_and_needs_the_role() {
+    let net = cellweave_engine::Network::from_spec(&spec(), 200).unwrap();
+    let inputs = cellweave_core::CellInputs {
+        o2: cellweave_core::Concentration(1.0),
+        egf: cellweave_core::Concentration(0.2),
+        vegf: cellweave_core::Concentration(0.0),
+        crowding: cellweave_core::Concentration(0.0),
+        stress: cellweave_core::Concentration(0.5),
+    };
+    let before = net.state().values.clone();
+    let chance = net.apoptosis_under(&inputs, 60).unwrap();
+    assert!(
+        chance > 0.05,
+        "the unmutated network answers half the source with {chance}"
+    );
+    assert_eq!(
+        net.state().values,
+        before,
+        "asking does not move the network"
+    );
+
+    let plain: NetworkSpec =
+        toml::from_str(include_str!("../../../examples/networks/ras-erk.toml")).unwrap();
+    let plain = cellweave_engine::Network::from_spec(&plain, 200).unwrap();
+    assert_eq!(plain.apoptosis_under(&inputs, 60), None);
+}
+
+#[test]
+fn turning_p53_down_makes_a_cell_resistant() {
+    let net = cellweave_engine::Network::from_spec(&spec(), 200).unwrap();
+    let inputs = cellweave_core::CellInputs {
+        o2: cellweave_core::Concentration(1.0),
+        egf: cellweave_core::Concentration(0.2),
+        vegf: cellweave_core::Concentration(0.0),
+        crowding: cellweave_core::Concentration(0.0),
+        stress: cellweave_core::Concentration(0.5),
+    };
+    // Sixteen terms, the twelve of the RAS/ERK network and then p53's two and
+    // caspase's two: a draw of 12.5 / 16 lands on p53's activation, and a draw
+    // of zero halves it.
+    let mut mutant = net.clone();
+    let m = mutant.mutate(12.5 / 16.0, 0.0).unwrap();
+    assert_eq!((m.node.as_str(), m.kind), ("p53", "activated_by"));
+    let ratio =
+        mutant.apoptosis_under(&inputs, 60).unwrap() / net.apoptosis_under(&inputs, 60).unwrap();
+    assert!(
+        ratio < cellweave_engine::evolution::RESISTANT_BELOW,
+        "half the p53 makes a cell resistant: {ratio}"
+    );
+}
+
+#[test]
+fn an_unmutated_population_has_no_resistant_share() {
+    let sim = run(exposed(continuous(100)), 101);
+    assert_eq!(sim.resistant_fraction(0.5), Some(0.0));
+    let plain: NetworkSpec =
+        toml::from_str(include_str!("../../../examples/networks/ras-erk.toml")).unwrap();
+    let (without_role, _) = Simulation::new(exposed(None), &plain)
+        .unwrap()
+        .start()
+        .unwrap();
+    assert_eq!(without_role.resistant_fraction(0.5), None);
 }

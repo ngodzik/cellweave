@@ -238,6 +238,9 @@ pub struct Simulation<S: SimState> {
     lineage: Vec<CloneId>,
     /// Every clone ever founded, by identifier.
     clones: Vec<CloneRecord>,
+    /// The network every first cell started with, unmutated, kept as the
+    /// yardstick a mutant's response is measured against.
+    pristine: Network,
     oxygen: ScalarField,
     /// The lethal stress, when the scenario exposes the tissue to one.
     stress: Option<ScalarField>,
@@ -351,7 +354,7 @@ impl Simulation<Configured> {
         // lineage tracing experiment marks every cell at the start and follows
         // what each one's descendants become.
         let cells = lattice.cell_count();
-        let networks = vec![Some(seed_network); cells];
+        let networks = vec![Some(seed_network.clone()); cells];
         let lineage = (0..cells as u32).map(CloneId).collect();
         let clones = (0..cells as u32)
             .map(|c| CloneRecord {
@@ -421,6 +424,7 @@ impl Simulation<Configured> {
             networks,
             lineage,
             clones,
+            pristine: seed_network,
             oxygen,
             stress,
             stress_level: 0.0,
@@ -460,6 +464,7 @@ impl Simulation<Configured> {
             networks: self.networks,
             lineage: self.lineage,
             clones: self.clones,
+            pristine: self.pristine,
             oxygen: self.oxygen,
             stress: self.stress,
             stress_level: self.stress_level,
@@ -853,6 +858,11 @@ impl<S: SimState> Simulation<S> {
     pub fn clone_of(&self, id: CellId) -> Option<CloneId> {
         let slot = (id.0 as usize).checked_sub(1)?;
         self.lineage.get(slot).copied()
+    }
+
+    /// The network the first cells started with, before any mutation.
+    pub fn pristine(&self) -> &Network {
+        &self.pristine
     }
 
     /// Every clone founded so far, the founding clone first, indexed by

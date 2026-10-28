@@ -8,6 +8,8 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Apoptosis** (2, 4, 8). Programmed, orderly cell death that a cell starts itself: it packs itself into fragments its neighbours clear. Here a chance per step set by the network's apoptosis node.
 
+**Arm** (10). One configuration in a comparison, run under the same seeds as the other.
+
 **Basal layer** (7). The bottom layer of an epithelium, the only one that divides. Cells leave it upwards when they differentiate.
 
 **Bath** (3). A large stirred volume of liquid around a tissue whose oxygen never drops. Modelled by holding every medium pixel the bath can reach at 1.0.
@@ -26,6 +28,8 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Clone** (6). Every cell descended from one mutated ancestor with no further mutation in between. The first cell founds clone 0.
 
+**Common random numbers** (10). Comparing two configurations under the same seeds, pair by pair, so the history they share drops out and what differs is what differs between them.
+
 **Contact energy, J** (1). What a piece of boundary between two cells of given kinds costs.
 
 **Contact inhibition** (7). A cell with no room around it behaving differently from one with room: here, differentiating more readily.
@@ -38,7 +42,7 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Crowding** (7). How squeezed a cell is: how far below its reference size it sits, as a fraction of it. An input every network can read, like oxygen.
 
-**Determinism** (1, 9, 10). The same seed gives the same simulation, byte for byte. Checked on every push.
+**Determinism** (1, 9, 11). The same seed gives the same simulation, byte for byte. Checked on every push.
 
 **Differentiation** (7). A cell giving up dividing to become a specialised cell. In an epithelium, a basal cell that commits leaves the layer. Here, a chance per step set by the network's differentiation node.
 
@@ -52,7 +56,7 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **EGF** (2). Epidermal growth factor, the growth signal. A hardcoded input for every cell today.
 
-**Emergence** (6, 7, 10). Behaviour that follows from the model without any rule naming it. The necrotic core, the compact cell, the cord's thickness.
+**Emergence** (6, 7, 11). Behaviour that follows from the model without any rule naming it. The necrotic core, the compact cell, the cord's thickness.
 
 **Energy, Hamiltonian, H** (1). The number every configuration of the lattice has, which the Monte Carlo lowers.
 
@@ -126,9 +130,11 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Red-black** (3). An order for an SOR sweep: the grid coloured like a chessboard, every red pixel updated from its black neighbours, then every black one from the new reds. Each colour can be updated in parallel.
 
-**Refuge** (8). Where a stress does not reach: here the hypoxic, quiescent edge of the cord, the cells it is used up before reaching.
+**Refuge** (8, 10). Where a stress does not reach: here the hypoxic, quiescent edge of the cord, the cells it is used up before reaching.
 
 **Relaxation** (3). Iterating a field until it stops moving: its steady state.
+
+**Resistance** (10). A cell whose network, asked out of the tissue, responds to the stress at under half the unmutated network's chance of apoptosis.
 
 **Resorption** (4). Dead tissue being cleared. Two pixels per step here.
 
@@ -138,7 +144,7 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Selection** (6). Variants leaving more descendants because of what they do where they are. Nobody chooses the winner.
 
-**Snapshot** (4, 10). A file listing every living cell's state and the oxygen it reads, one per interval.
+**Snapshot** (4, 11). A file listing every living cell's state and the oxygen it reads, one per interval.
 
 **SOR** (3). Successive over-relaxation, the sweep that solves for a steady state in about L passes rather than L².
 
