@@ -1,4 +1,4 @@
-# 13. What the model does not say
+# 14. What the model does not say
 
 The placeholders, the missing units, and why emergence is the whole point.
 
@@ -34,12 +34,13 @@ What is a placeholder today, gathered from the chapters:
 | epithelium | NOTCH near 0.01 per step, raised by crowding half way at 60% of reference size; shedding 6 pixels per step; cells 10 pixels across; mutation rate 1 in 100 | the layer turns over in a few hundred steps and holds its size on a 200 pixel grid |
 | competition | a ceiling on the size a cell asks for at 1.5 times its reference, what a normal cell asks for; three mutations in ten rewiring | a growth signal buys no size, and a NOTCH term can be lost outright |
 | units | 0.6 hours per step for the sheet | a living cell divides about every 97 steps, a mouse oesophageal basal cell every 2.4 days |
+| lesion | NOTCH's baseline at 0.7 of its rate; 15 pixels around the centre; at step 4000 | fitter than a normal cell, less fit than a NOTCH-loss clone, about seven cells, in a sheet already covered by mutant clones |
 
 ## What is not there
 
 - **Only oxygen and crowding are coupled.** Growth factor is the same hardcoded input for every cell. VEGF is computed and goes nowhere: nothing is secreted into the field.
 - **Two dimensions.** A tissue here is a monolayer. In three dimensions a sphere starves at a different radius than a disc, and a cell has a dozen neighbours rather than six; the mechanisms are the same, the numbers are not.
-- **Tumour and normal tissue never meet.** Normal tissue exists as a sheet that renews itself (chapter 7), and a tumour grows from one cell in a box of its own. Nothing yet puts a tumour inside an epithelium, which is where most cancers start.
+- **Tumour and normal tissue meet only in the sheet.** A lesion can be placed in the sheet (chapter 13), as a patch of the basal layer with a network of its own. The tumours of chapters 5 to 10, grown from one cell around a vessel or in a bath, still live in boxes of their own, with no normal tissue around them.
 - **Only the field is parallel.** The Monte Carlo step, which moves the pixels, runs on one core. It draws its proposals from one random sequence, and splitting it would change which run a seed names.
 - **No picture on disk.** Snapshots record every cell's state and the oxygen it reads, not the grid. The viewer draws the grid live, but saves nothing; the two pictures in chapter 5 came from a debugging dump that is not in the code.
 

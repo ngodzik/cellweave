@@ -77,7 +77,7 @@ fn main() -> Result<()> {
                         || "default".to_owned(),
                         |s| s.to_string_lossy().into_owned(),
                     ),
-                scenario: config.scenario(),
+                scenario: config.scenario(path)?,
                 spec: config.load_network(path)?,
                 steps: config.mcs,
             })
@@ -109,7 +109,7 @@ fn main() -> Result<()> {
             config.mcs
         );
         let table = attribute::attribute(
-            &config.scenario(),
+            &config.scenario(config_path)?,
             &spec,
             config.mcs,
             std::path::Path::new(&config.output_dir),
@@ -142,7 +142,7 @@ fn run(config: SimConfig, config_path: Option<&str>) -> Result<()> {
         );
     }
 
-    let (mut sim, warmup) = Simulation::new(config.scenario(), &spec)?.start()?;
+    let (mut sim, warmup) = Simulation::new(config.scenario(config_path)?, &spec)?.start()?;
     eprintln!("  initial field settled in {warmup} steps");
 
     // Every step is measured, and the measurements kept, so that a rate can

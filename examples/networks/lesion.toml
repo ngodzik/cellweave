@@ -1,0 +1,22 @@
+# The cells of an early tumour arising in the sheet of chapter 11.
+#
+# Everything comes from epithelium-no-pressing.toml except NOTCH's baseline,
+# slowed to 0.7 of its rate: a cell of the lesion leaves the layer on its own
+# about a third less often than a normal one, and divides no faster. That is
+# what lineage tracing found in early oesophageal tumours of the mouse, a
+# moderate bias towards making dividing cells with no change in how often
+# cells divide (Frede and colleagues, 2016). It is fitter than a normal cell,
+# and less fit than a cell that has lost NOTCH's baseline altogether.
+#
+# NOTCH is restated whole because a node that is overridden is replaced whole.
+
+extends = "epithelium-no-pressing.toml"
+
+[[nodes]]
+name = "notch"
+initial = 0.01
+terms = [
+  { kind = "relaxes_to", value = 1.0, rate = 0.0035 },
+  { kind = "decays", rate = 0.5 },
+  { kind = "activated_by", source = "crowding", rate = 0.03, hill = { n = 4.0, k = 0.4 } },
+]

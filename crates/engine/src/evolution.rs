@@ -8,7 +8,7 @@
 //! here: it follows from what the changed rate does to its cells' fates, in
 //! the place where they live.
 
-use cellweave_core::{CellInputs, CloneId, Concentration};
+use cellweave_core::{CellId, CellInputs, CloneId, Concentration};
 
 use crate::network::Mutation;
 use crate::simulation::{Fate, SimState, Simulation};
@@ -28,6 +28,9 @@ pub struct CloneRecord {
     /// with its number, its parent and its cells, and its network is its
     /// parent's. See [`crate::simulation::Scenario::suppress`].
     pub suppressed: bool,
+    /// Founded by the scenario's lesion rather than by a mutation: the
+    /// clone of an early tumour, and everything descended from it.
+    pub lesion: bool,
 }
 
 impl CloneRecord {
@@ -39,6 +42,7 @@ impl CloneRecord {
             founded_at: 0,
             mutation: None,
             suppressed: false,
+            lesion: false,
         }
     }
 }
@@ -145,6 +149,41 @@ impl<S: SimState> Simulation<S> {
                 (name.clone(), carrying as f64 / living as f64)
             })
             .collect()
+    }
+
+    /// Whether a cell descends from the scenario's lesion: its clone, or a
+    /// clone its clone arose in, was founded by the lesion.
+    pub fn in_lesion(&self, id: CellId) -> bool {
+        let mut at = self
+            .clone_of(id)
+            .and_then(|c| self.clones().get(c.0 as usize));
+        while let Some(record) = at {
+            if record.lesion {
+                return true;
+            }
+            at = record.parent.and_then(|p| self.clones().get(p.0 as usize));
+        }
+        false
+    }
+
+    /// Living cells descended from the scenario's lesion: in its clone, or in
+    /// any clone that arose in it. Zero before it appears, once it is gone,
+    /// and without one.
+    pub fn lesion_cells(&self) -> usize {
+        let mut lesion: Vec<bool> = Vec::with_capacity(self.clones().len());
+        for clone in self.clones() {
+            let inherited = clone
+                .parent
+                .and_then(|p| lesion.get(p.0 as usize).copied())
+                .unwrap_or(false);
+            lesion.push(clone.lesion || inherited);
+        }
+        self.clone_sizes()
+            .iter()
+            .zip(&lesion)
+            .filter(|(_, l)| **l)
+            .map(|(size, _)| size)
+            .sum()
     }
 
     /// Living cells in each clone, indexed by clone identifier. A clone whose

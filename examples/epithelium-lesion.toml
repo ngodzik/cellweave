@@ -1,0 +1,32 @@
+# An early tumour arising in the ageing sheet of chapter 11.
+#
+# The sheet is epithelium-no-pressing-rewiring.toml: no cell presses harder
+# than a normal one, and a mutation can lose a term, so by step 4000 clones
+# that lost NOTCH's baseline cover much of it. At step 4000, about 100 days in,
+# every living cell whose centre lies within 15 pixels of the centre of the box
+# starts carrying networks/lesion.toml: a moderate bias towards staying in the
+# layer, fitter than a normal cell and less fit than one that has lost NOTCH's
+# baseline. Mutation goes on, in the lesion too. Followed for 2000 steps more,
+# about 50 days.
+
+width = 200
+height = 200
+mcs = 6000
+temperature = 10.0
+snapshot_interval = 100
+output_dir = "output-epithelium-lesion"
+oxygen_uptake = 0.0
+mutation_rate = 0.01
+rewiring = 0.3
+network = "networks/epithelium-no-pressing.toml"
+# A step of the sheet is about 0.6 hours (chapter 12).
+hours_per_step = 0.6
+
+[seeding]
+kind = "sheet"
+side = 10
+
+[lesion]
+network = "networks/lesion.toml"
+at = 4000
+radius = 15.0

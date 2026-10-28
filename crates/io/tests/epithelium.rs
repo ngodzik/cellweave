@@ -31,6 +31,7 @@ fn sheet(size: u32) -> Scenario {
         rewiring: 0.0,
         seeding: Seeding::Sheet { side: 10 },
         exposure: None,
+        lesion: None,
     }
 }
 

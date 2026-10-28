@@ -40,6 +40,8 @@ pub struct Measurements {
     pub gone: u64,
     /// Clones with at least one living cell.
     pub clones: usize,
+    /// Living cells descended from the scenario's lesion, zero without one.
+    pub lesion: usize,
     /// Equivalent radius of everything the tissue covers, in pixels: living,
     /// necrotic and departing cells, and the vessel they surround if there is
     /// one.
@@ -148,6 +150,7 @@ impl<S: SimState> Simulation<S> {
             born: self.born(),
             gone: self.gone(),
             clones: self.clone_sizes().iter().filter(|&&n| n > 0).count(),
+            lesion: self.lesion_cells(),
             tissue_radius,
             necrotic_radius,
             viable_depth,
@@ -183,6 +186,7 @@ mod tests {
             rewiring: 0.0,
             seeding: Default::default(),
             exposure: None,
+            lesion: None,
         }
     }
 
