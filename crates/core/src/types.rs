@@ -88,6 +88,27 @@ pub struct Exposure {
     pub schedule: Schedule,
 }
 
+/// Vessels that grow towards the tissue that calls for them.
+///
+/// Living cells secrete their angiogenic node's level into a VEGF field that
+/// diffuses and decays. Where the field at a vessel's wall is high enough,
+/// the wall sends out a sprout, whose tip climbs the field's gradient and
+/// lays new vessel behind it, held at full oxygen like the vessel it came
+/// from. Growing vessels draw nothing from the run's generator.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct Angiogenesis {
+    /// VEGF level a wall has to read to sprout, and a tip to keep going, in
+    /// units of the angiogenic node: a cell surrounded by cells like itself
+    /// reads its own level.
+    pub threshold: f64,
+    /// Pixels a tip advances per lattice step.
+    pub speed: f64,
+    /// Distance over which VEGF falls by a factor of e away from where it is
+    /// secreted, in pixels. It sets how far a cell's call carries, and so
+    /// how much of what it calls for goes to its neighbours.
+    pub reach: f64,
+}
+
 /// When an exposure is on.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "kind")]

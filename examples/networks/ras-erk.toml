@@ -8,7 +8,7 @@
 # that works as an on/off switch; RAS switches on ERK, whose level tells the cell
 # how large to grow. Separately, HIF-1a accumulates as oxygen falls and is the
 # cell's hypoxia response; it drives VEGF, the call for new blood vessels, which
-# currently goes nowhere. BCL2 is survival: fed by ERK and HIF-1a, held near a
+# is heard only where a configuration lets vessels grow. BCL2 is survival: fed by ERK and HIF-1a, held near a
 # set point, and damaged below the anoxia threshold by something no amount of
 # pro-survival signalling offsets.
 #
@@ -66,6 +66,7 @@ terms = [
 growth = "erk"
 survival = "bcl2"
 hypoxia_response = "hif1"
+angiogenic = "vegf"
 
 # How the growth node becomes a demand on the lattice.
 #

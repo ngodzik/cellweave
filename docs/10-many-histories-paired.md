@@ -44,7 +44,7 @@ So, in this model, continuous stress controls the cord far better in about half 
 
 **Resistance asked of the network, not read from the tissue.** Whether a cell survives depends on where it sits as much as on what it carries. Asking each network how it would respond, at one fixed level, separates the two, and the third route in the table above is exactly the case where they differ.
 
-**All at once.** The Monte Carlo step of one run uses one core (chapter 14); a campaign puts one run on each, which is how forty runs of 3000 steps take about forty minutes on twenty threads.
+**All at once.** The Monte Carlo step of one run uses one core (chapter 15); a campaign puts one run on each, which is how forty runs of 3000 steps take about forty minutes on twenty threads.
 
 ## Where in the code
 

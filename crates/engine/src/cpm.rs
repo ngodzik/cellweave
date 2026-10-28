@@ -224,14 +224,18 @@ impl CpmLattice {
     /// Fill a disc with obstacle, overwriting whatever was there.
     ///
     /// Any cell pixels overwritten are taken off their cells' volumes, so the
-    /// records stay true to the grid. Meant to be called before cells are
-    /// placed, but safe afterwards.
+    /// records stay true to the grid. Called before cells are placed for a
+    /// vessel the tissue grows around, and afterwards for one that grows
+    /// through the tissue.
     pub fn add_obstacle_disc(&mut self, centre: Pos2, radius: u32) {
         let cx = i64::from(centre.x);
         let cy = i64::from(centre.y);
         let r2 = i64::from(radius * radius);
-        for row in 0..self.height {
-            for col in 0..self.width {
+        // Only the square around the disc can be in it.
+        let rows = centre.y.saturating_sub(radius)..(centre.y + radius + 1).min(self.height);
+        let cols = centre.x.saturating_sub(radius)..(centre.x + radius + 1).min(self.width);
+        for row in rows {
+            for col in cols.clone() {
                 let dx = i64::from(col) - cx;
                 let dy = i64::from(row) - cy;
                 if dx * dx + dy * dy > r2 {

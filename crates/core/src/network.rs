@@ -155,6 +155,12 @@ pub struct Roles {
     /// keeps meaning.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub apoptosis: Option<String>,
+    /// Node whose level is what the cell secretes as a call for new vessels,
+    /// into the VEGF field of a scenario whose vessels can grow. Left out,
+    /// the cell calls for none; and without vessels that grow, nothing reads
+    /// it either way.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub angiogenic: Option<String>,
 }
 
 /// How the growth node becomes a mechanical demand on the lattice.

@@ -36,6 +36,7 @@ fn exposed(exposure: Option<Exposure>) -> Scenario {
         exposure,
         lesion: None,
         revert: None,
+        angiogenesis: None,
     }
 }
 

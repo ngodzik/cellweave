@@ -165,12 +165,14 @@ pub struct Network {
     /// Terms per node, same order.
     terms: Vec<Vec<Compiled>>,
     /// Index of the growth, survival and hypoxia nodes, and of the
-    /// differentiation and apoptosis nodes when the network has them.
+    /// differentiation, apoptosis and angiogenic nodes when the network has
+    /// them.
     growth: usize,
     survival: usize,
     hypoxia: usize,
     differentiation: Option<usize>,
     apoptosis: Option<usize>,
+    angiogenic: Option<usize>,
     /// How the growth node becomes mechanics.
     mechanics: MechanicsSpec,
     /// Volume this lineage divides against.
@@ -327,6 +329,11 @@ impl Network {
                 .apoptosis
                 .as_deref()
                 .map(|name| role(name, "apoptosis"))
+                .transpose()?,
+            angiogenic: roles
+                .angiogenic
+                .as_deref()
+                .map(|name| role(name, "angiogenic"))
                 .transpose()?,
             mechanics,
             reference_volume,
@@ -527,6 +534,12 @@ impl Network {
     /// programmed death.
     pub fn apoptosis(&self) -> Option<f64> {
         self.apoptosis.map(|i| self.state.values[i].0)
+    }
+
+    /// The node the specification named as angiogenic, or `None` when it named
+    /// none. Its level is what the cell secretes as a call for new vessels.
+    pub fn angiogenic(&self) -> Option<f64> {
+        self.angiogenic.map(|i| self.state.values[i].0)
     }
 
     /// The chance per step this network would give of starting apoptosis,
@@ -756,6 +769,7 @@ mod tests {
                 hypoxia_response: "a".into(),
                 differentiation: None,
                 apoptosis: None,
+                angiogenic: None,
             }),
             mechanics: Some(MechanicsSpec {
                 growth_coefficient: 1.0,
@@ -866,6 +880,7 @@ mod tests {
             hypoxia_response: "oxygen".into(),
             differentiation: None,
             apoptosis: None,
+            angiogenic: None,
         });
 
         let refused = Network::from_spec(&spec, 100);

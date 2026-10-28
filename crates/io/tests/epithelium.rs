@@ -34,6 +34,7 @@ fn sheet(size: u32) -> Scenario {
         exposure: None,
         lesion: None,
         revert: None,
+        angiogenesis: None,
     }
 }
 

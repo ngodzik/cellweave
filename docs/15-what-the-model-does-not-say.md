@@ -1,4 +1,4 @@
-# 14. What the model does not say
+# 15. What the model does not say
 
 The placeholders, the missing units, and why emergence is the whole point.
 
@@ -35,10 +35,11 @@ What is a placeholder today, gathered from the chapters:
 | competition | a ceiling on the size a cell asks for at 1.5 times its reference, what a normal cell asks for; three mutations in ten rewiring | a growth signal buys no size, and a NOTCH term can be lost outright |
 | units | 0.6 hours per step for the sheet | a living cell divides about every 97 steps, a mouse oesophageal basal cell every 2.4 days |
 | lesion | NOTCH's baseline at 0.7 or 0.3 of its rate; 15 pixels around the centre; at step 4000 | fitter than a normal cell, less fit than a NOTCH-loss clone, about seven cells, in a sheet already covered by mutant clones |
+| vessels | a wall sprouts at VEGF 0.5; VEGF's reach 30 pixels; tips a pixel per step, 16 pixels apart; new vessel 5 pixels across, perfused at once, never regressing | a cord whose cells starve calls vessels to them within a few hundred steps, in a 300 pixel box |
 
 ## What is not there
 
-- **Only oxygen and crowding are coupled.** Growth factor is the same hardcoded input for every cell. VEGF is computed and goes nowhere: nothing is secreted into the field.
+- **Only oxygen, crowding and VEGF are coupled.** Growth factor is the same hardcoded input for every cell. VEGF is secreted into a field only where vessels can grow (chapter 14), and what it calls for is a vessel: no cell reads it.
 - **Two dimensions.** A tissue here is a monolayer. In three dimensions a sphere starves at a different radius than a disc, and a cell has a dozen neighbours rather than six; the mechanisms are the same, the numbers are not.
 - **Tumour and normal tissue meet only in the sheet.** A lesion can be placed in the sheet (chapter 13), as a patch of the basal layer with a network of its own. The tumours of chapters 5 to 10, grown from one cell around a vessel or in a bath, still live in boxes of their own, with no normal tissue around them.
 - **Only the field is parallel.** The Monte Carlo step, which moves the pixels, runs on one core. It draws its proposals from one random sequence, and splitting it would change which run a seed names.

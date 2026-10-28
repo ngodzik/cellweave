@@ -1,0 +1,27 @@
+# The tumour cord of chapter 5, with a vessel that can grow (chapter 14).
+#
+# Cells starved of oxygen secrete VEGF, their angiogenic node; where it
+# reaches the vessel's wall above the threshold, the wall sprouts, and the
+# sprout climbs towards the cells calling for it, laying new vessel held at
+# full oxygen behind it. Everything else is cord-wide.toml, its twin.
+#
+# The threshold and the reach are placeholders. The speed is the fastest
+# the model allows; chapter 14 says why that is still on the slow side.
+
+width = 300
+height = 300
+mcs = 1500
+temperature = 10.0
+snapshot_interval = 100
+output_dir = "output-cord-angiogenic"
+oxygen_uptake = 0.00003
+network = "networks/ras-erk.toml"
+
+[oxygen_source]
+kind = "vessel"
+radius = 6
+
+[angiogenesis]
+threshold = 0.5
+speed = 1.0
+reach = 30.0

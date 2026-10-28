@@ -12,20 +12,23 @@
 use std::marker::PhantomData;
 
 use cellweave_core::{
-    CellId, CellInputs, CellKind, CellSnapshot, CellweaveError, CloneId, Concentration, Exposure,
-    NetworkSpec, OxygenSource, Pos2, Seeding, SignalingNetwork, SimSnapshot, TimeStep, Volume,
+    Angiogenesis, CellId, CellInputs, CellKind, CellSnapshot, CellweaveError, CloneId,
+    Concentration, Exposure, NetworkSpec, OxygenSource, Pos2, Seeding, SignalingNetwork,
+    SimSnapshot, TimeStep, Volume,
 };
 use rand::rngs::StdRng;
 use rand::{RngExt, SeedableRng};
 
 use crate::coupling::{
-    apply_background_uptake, apply_uptake, hold_medium_bath, hold_obstacles_at, mean_per_cell,
+    apply_background_uptake, apply_production, apply_uptake, hold_medium_bath, hold_obstacles_at,
+    mean_per_cell,
 };
 use crate::cpm::{CpmLattice, OBSTACLE};
 use crate::evolution::CloneRecord;
 use crate::network::Network;
 use crate::pde::ScalarField;
 use crate::sisters::{Lives, SisterFates};
+use crate::vessels::{Tip, Vessels};
 
 /// The seed every run uses unless told otherwise.
 ///
@@ -122,6 +125,15 @@ const FRAGMENTATION_RATE: u32 = 8;
 /// a comparison of their uptakes alone.
 const STRESS_DIFFUSION: f64 = OXYGEN_DIFFUSION;
 
+/// VEGF diffuses like oxygen; how far it reaches is set by how fast it
+/// decays, which the scenario's reach states: $\lambda = D / L^2$.
+const VEGF_DIFFUSION: f64 = OXYGEN_DIFFUSION;
+
+/// The VEGF field is relaxed until no pixel moves by more than this fraction
+/// of what a cell secreting at a level of one adds per step, for the reason
+/// the oxygen's tolerance is relative to its uptake.
+const VEGF_TOLERANCE: f64 = 0.01;
+
 /// What a simulation is asked to be: the box, its temperature, where the oxygen
 /// comes from, and the seed.
 ///
@@ -179,6 +191,9 @@ pub struct Scenario {
     /// Clones whose founding mutation is undone at one step, if any. Left
     /// out, nothing is undone.
     pub revert: Option<Reversion>,
+    /// Vessels that grow towards the tissue that calls for them. Left out,
+    /// the vessel stays as it was laid and nothing reads what cells secrete.
+    pub angiogenesis: Option<Angiogenesis>,
 }
 
 /// Clones whose founding mutation is undone, at one step, in every living
@@ -304,6 +319,10 @@ pub struct Simulation<S: SimState> {
     /// Level the stress field was last solved for, so that a change of level
     /// is solved from scratch, tightly, like the oxygen at the start.
     stress_level: f64,
+    /// What the living secrete as a call for vessels, when vessels can grow.
+    vegf: Option<ScalarField>,
+    /// The sprouts growing, and where every one started.
+    vessels: Vessels,
     rng: StdRng,
     first: CellId,
     /// Index of the next step to take.
@@ -506,6 +525,55 @@ impl Simulation<Configured> {
             }
         };
 
+        let vegf = match scenario.angiogenesis {
+            None => None,
+            Some(a) => {
+                if !matches!(scenario.oxygen_source, OxygenSource::Vessel { .. })
+                    || scenario.oxygen_uptake == 0.0
+                {
+                    return Err(CellweaveError::Config(
+                        "vessels grow from a vessel, and this scenario has none that feeds \
+                         anything; give it a vessel and oxygen uptake"
+                            .into(),
+                    ));
+                }
+                if !(a.threshold.is_finite() && a.threshold > 0.0) {
+                    return Err(CellweaveError::Config(format!(
+                        "the angiogenesis threshold is {}; it must be above zero, or every \
+                         vessel sprouts whether anything calls or not",
+                        a.threshold
+                    )));
+                }
+                if !(a.reach.is_finite() && a.reach > 0.0) {
+                    return Err(CellweaveError::Config(format!(
+                        "VEGF's reach is {} pixels; it must be above zero",
+                        a.reach
+                    )));
+                }
+                if !(a.speed > 0.0 && a.speed <= 1.0) {
+                    return Err(CellweaveError::Config(format!(
+                        "a sprout's speed is {} pixels per step; it must be above zero and at \
+                         most one, or the vessel it lays has gaps",
+                        a.speed
+                    )));
+                }
+                if seed_network.angiogenic().is_none() {
+                    return Err(CellweaveError::Config(
+                        "vessels grow towards what cells secrete, and this network names no \
+                         angiogenic node"
+                            .into(),
+                    ));
+                }
+                Some(ScalarField::new(
+                    scenario.width,
+                    scenario.height,
+                    VEGF_DIFFUSION,
+                    vegf_decay(&a),
+                    0.0,
+                )?)
+            }
+        };
+
         Ok(Self {
             rng: StdRng::seed_from_u64(scenario.seed),
             scenario,
@@ -519,6 +587,8 @@ impl Simulation<Configured> {
             oxygen,
             stress,
             stress_level: 0.0,
+            vegf,
+            vessels: Vessels::default(),
             first,
             next_mcs: 0,
             born: cells as u64,
@@ -561,6 +631,8 @@ impl Simulation<Configured> {
             oxygen: self.oxygen,
             stress: self.stress,
             stress_level: self.stress_level,
+            vegf: self.vegf,
+            vessels: self.vessels,
             rng: self.rng,
             first: self.first,
             next_mcs: self.next_mcs,
@@ -634,6 +706,11 @@ impl Simulation<Running> {
                 net.step(TimeStep(1.0), &inputs);
             }
         }
+
+        // 2b. With vessels that can grow, what the living secrete settles into
+        //     the VEGF field, and the vessels answer it. Laying vessel takes
+        //     pixels from cells, and a cell left with none was crushed.
+        self.call_for_vessels(mcs)?;
 
         // 3. Fate and upward coupling. A necrotic cell gives up pixels until
         //    none is left, and is then gone for good, and so does a cell leaving
@@ -725,6 +802,48 @@ impl Simulation<Running> {
         }
 
         Ok(report)
+    }
+
+    /// Settle the VEGF field against what every living cell secretes, and
+    /// let the vessels grow. Nothing happens without angiogenesis.
+    fn call_for_vessels(&mut self, mcs: u64) -> Result<(), CellweaveError> {
+        let (Some(angiogenesis), Some(vegf)) = (self.scenario.angiogenesis, self.vegf.as_mut())
+        else {
+            return Ok(());
+        };
+        // Secreted per pixel at the decay rate times the node's level, so
+        // that tissue all secreting one level settles at that level.
+        let decay = vegf_decay(&angiogenesis);
+        let mut per_cell = vec![0.0; self.networks.len() + 1];
+        for (i, slot) in self.networks.iter().enumerate() {
+            let Some(net) = slot else { continue };
+            let alive = matches!(
+                self.lattice.cell_kind(cell_of(i)),
+                Some(CellKind::Tumor | CellKind::Normal)
+            );
+            if alive {
+                per_cell[i + 1] = decay * net.angiogenic().unwrap_or(0.0);
+            }
+        }
+        apply_production(vegf, &self.lattice, &per_cell);
+        vegf.relax(TimeStep(1.0), VEGF_TOLERANCE * decay, OXYGEN_MAX_STEPS)
+            .map_err(|e| CellweaveError::Simulation(format!("VEGF at MCS {mcs}: {e}")))?;
+        if self.vessels.grow(&mut self.lattice, vegf, &angiogenesis) {
+            for i in 0..self.networks.len() {
+                let id = cell_of(i);
+                let crushed = self.networks[i].is_some()
+                    && matches!(
+                        self.lattice.cell_kind(id),
+                        Some(CellKind::Tumor | CellKind::Normal)
+                    )
+                    && self.lattice.volume(id).is_some_and(|v| v.0 == 0);
+                if crushed {
+                    self.lattice.set_kind(id, CellKind::Necrotic);
+                    self.lives.left(i);
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Split every cell, tumour or normal, that has grown past the division
@@ -1097,6 +1216,21 @@ impl<S: SimState> Simulation<S> {
         self.stress.as_ref()
     }
 
+    /// What the living secrete as a call for vessels, when vessels can grow.
+    pub fn vegf(&self) -> Option<&ScalarField> {
+        self.vegf.as_ref()
+    }
+
+    /// The tips of the sprouts still growing.
+    pub fn sprouts(&self) -> &[Tip] {
+        self.vessels.tips()
+    }
+
+    /// How many sprouts have started, growing or not.
+    pub fn sprouted(&self) -> usize {
+        self.vessels.sprouted()
+    }
+
     /// The oxygen field, as it was last settled.
     pub fn oxygen(&self) -> &ScalarField {
         &self.oxygen
@@ -1186,6 +1320,11 @@ impl<S: SimState> Simulation<S> {
     }
 }
 
+/// The decay rate that gives VEGF the reach a scenario states.
+fn vegf_decay(angiogenesis: &Angiogenesis) -> f64 {
+    VEGF_DIFFUSION / (angiogenesis.reach * angiogenesis.reach)
+}
+
 /// How squeezed a cell is: how far below its lineage's reference volume it
 /// sits, as a fraction of it. Zero for a cell at or above that size.
 ///
@@ -1228,6 +1367,7 @@ mod tests {
             exposure: None,
             lesion: None,
             revert: None,
+            angiogenesis: None,
         }
     }
 
@@ -1568,5 +1708,95 @@ mod tests {
                 "{change:?}"
             );
         }
+    }
+
+    fn growing(threshold: f64) -> Scenario {
+        Scenario {
+            angiogenesis: Some(Angiogenesis {
+                threshold,
+                speed: 1.0,
+                reach: 15.0,
+            }),
+            width: 100,
+            height: 100,
+            oxygen_uptake: 0.0001,
+            ..scenario(OxygenSource::Vessel { radius: 4 })
+        }
+    }
+
+    fn vessel_pixels(sim: &Simulation<Running>) -> usize {
+        sim.lattice()
+            .grid
+            .iter()
+            .filter(|&&p| p == OBSTACLE)
+            .count()
+    }
+
+    #[test]
+    fn a_vessel_that_never_sprouts_leaves_the_run_as_it_was() {
+        let run = |scenario: Scenario| {
+            let (mut sim, _) = Simulation::new(scenario, &spec()).unwrap().start().unwrap();
+            for _ in 0..80 {
+                sim.step().unwrap();
+            }
+            (format!("{:?}", sim.snapshot()), sim.lattice().grid.clone())
+        };
+        assert_eq!(
+            run(growing(1e9)),
+            run(Scenario {
+                angiogenesis: None,
+                ..growing(1e9)
+            })
+        );
+    }
+
+    #[test]
+    fn starving_tissue_grows_vessel_towards_itself() {
+        let (mut sim, _) = Simulation::new(growing(0.3), &spec())
+            .unwrap()
+            .start()
+            .unwrap();
+        let before = vessel_pixels(&sim);
+        for _ in 0..300 {
+            if sim.step().unwrap().reached_edge {
+                break;
+            }
+        }
+        assert!(sim.sprouted() > 0, "something called and the wall sprouted");
+        assert!(vessel_pixels(&sim) > before + 30, "and laid vessel");
+        assert!(sim.vegf().is_some());
+    }
+
+    #[test]
+    fn vessels_grow_only_from_a_vessel_towards_a_network_that_calls() {
+        let refused = |scenario: Scenario, spec: &NetworkSpec| {
+            matches!(
+                Simulation::new(scenario, spec),
+                Err(CellweaveError::Config(_))
+            )
+        };
+        let angiogenesis = growing(0.3).angiogenesis;
+        assert!(refused(
+            Scenario {
+                angiogenesis,
+                ..scenario(OxygenSource::Bath)
+            },
+            &spec()
+        ));
+        let mut silent = spec();
+        if let Some(roles) = silent.roles.as_mut() {
+            roles.angiogenic = None;
+        }
+        assert!(refused(growing(0.3), &silent));
+        for (speed, reach) in [(1.5, 15.0), (0.0, 15.0), (1.0, 0.0)] {
+            let mut s = growing(0.3);
+            s.angiogenesis = Some(Angiogenesis {
+                threshold: 0.3,
+                speed,
+                reach,
+            });
+            assert!(refused(s, &spec()), "speed {speed}, reach {reach}");
+        }
+        assert!(refused(growing(0.0), &spec()));
     }
 }

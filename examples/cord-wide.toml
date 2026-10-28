@@ -1,0 +1,16 @@
+# The tumour cord of chapter 5 in a box half as wide again, so that a cord
+# whose vessels grow has room to show it (chapter 14). The twin of
+# cord-angiogenic.toml, without vessels that grow.
+
+width = 300
+height = 300
+mcs = 1500
+temperature = 10.0
+snapshot_interval = 100
+output_dir = "output-cord-wide"
+oxygen_uptake = 0.00003
+network = "networks/ras-erk.toml"
+
+[oxygen_source]
+kind = "vessel"
+radius = 6

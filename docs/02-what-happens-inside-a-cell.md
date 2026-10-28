@@ -19,7 +19,7 @@ Two more proteins matter here, both about surviving hardship rather than growing
 
 - **HIF-1α**, hypoxia-inducible factor 1 alpha. Under normal oxygen it is made and destroyed continuously, and there is little of it. As oxygen falls, its destruction slows and it accumulates. It is the cell's hypoxia response: it switches on genes for making new vessels, for surviving on less, and for stopping the cell cycle.
 - **BCL2**, B-cell lymphoma 2, a survival protein. It holds off the cell's self-destruct machinery. When it collapses, the cell dies.
-- **VEGF**, vascular endothelial growth factor, is what HIF-1α makes the cell secrete to call for new blood vessels. It is computed here and, for now, goes nowhere.
+- **VEGF**, vascular endothelial growth factor, is what HIF-1α makes the cell secrete to call for new blood vessels. It is computed here, and heard only where a configuration lets vessels grow (chapter 14).
 
 ## In cellweave
 
@@ -30,7 +30,7 @@ flowchart LR
     EGF(["EGF<br/>outside, an input"]) --> RAS["RAS"]
     RAS --> ERK["ERK"]
     O2(["oxygen<br/>outside, an input"]) -.->|"less oxygen,<br/>more HIF"| HIF["HIF-1α"]
-    HIF --> VEGF["VEGF<br/>goes nowhere yet"]
+    HIF --> VEGF["VEGF<br/>a call for vessels"]
     ERK --> BCL2["BCL2<br/>survival"]
     HIF --> BCL2
     O2 -.->|"below 15%:<br/>damage"| BCL2
@@ -72,7 +72,7 @@ Each line of the table above is a **term**, and terms come from a closed catalog
 
 A closed catalogue rather than free-form expressions is a deliberate limit. An expression language would be more expressive and would let anyone write something that parses and means nothing; a catalogue says exactly which mechanisms the model knows about, and every one of them is documented above and pinned by a test. A paper whose network does not fit adds an entry, which is a change on the record rather than an open hole.
 
-Two more things the file declares. **Roles**: nothing in a network says which of its nodes answers the questions the simulation asks a cell, so the file says which node is growth, which is survival, which is the hypoxia response. Naming them rather than guessing from a node's name is what lets a network use its own vocabulary. And **mechanics**: how the growth node becomes a target volume and a stiffness for the lattice.
+Two more things the file declares. **Roles**: nothing in a network says which of its nodes answers the questions the simulation asks a cell, so the file says which node is growth, which is survival, which is the hypoxia response, and, for the roles later chapters add, which node a cell leaves the layer by, dies by, or calls for vessels with. Naming them rather than guessing from a node's name is what lets a network use its own vocabulary. And **mechanics**: how the growth node becomes a target volume and a stiffness for the lattice.
 
 A file may also **extend** another and give only what differs:
 
