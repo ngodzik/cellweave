@@ -12,6 +12,7 @@ pub mod measure;
 pub mod network;
 pub mod pde;
 pub mod simulation;
+pub mod sisters;
 
 pub use cpm::CpmLattice;
 pub use evolution::CloneRecord;
@@ -19,3 +20,4 @@ pub use measure::Measurements;
 pub use network::{Mutation, Network};
 pub use pde::ScalarField;
 pub use simulation::{Fate, Scenario, Simulation};
+pub use sisters::SisterFates;

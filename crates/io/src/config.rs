@@ -64,6 +64,13 @@ pub struct SimConfig {
     /// as it was.
     #[serde(default)]
     pub rewiring: f64,
+    /// How long one lattice step stands for, in hours, when the
+    /// configuration has been calibrated against a measured rate. Left out,
+    /// steps are only steps. Read by nothing in the simulation: it converts
+    /// what a run reports, and belongs to a configuration rather than to the
+    /// program because each geometry runs its cells at its own pace.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hours_per_step: Option<f64>,
 }
 
 fn default_seed() -> u64 {
@@ -110,6 +117,23 @@ impl SimConfig {
             rewiring: self.rewiring,
             seeding: self.seeding,
             exposure: self.exposure,
+        }
+    }
+
+    /// How long `steps` lattice steps stand for, in days, at the stated
+    /// hours per step, or `None` when the configuration states none.
+    ///
+    /// # Errors
+    ///
+    /// [`CellweaveError::Config`] when the hours per step are not a positive
+    /// number.
+    pub fn days(&self, steps: u64) -> Result<Option<f64>, CellweaveError> {
+        match self.hours_per_step {
+            None => Ok(None),
+            Some(h) if h.is_finite() && h > 0.0 => Ok(Some(steps as f64 * h / 24.0)),
+            Some(h) => Err(CellweaveError::Config(format!(
+                "hours_per_step is {h}; a step has to stand for some positive time"
+            ))),
         }
     }
 
@@ -200,6 +224,7 @@ impl Default for SimConfig {
             exposure: None,
             suppress: Vec::new(),
             rewiring: 0.0,
+            hours_per_step: None,
         }
     }
 }
@@ -207,6 +232,18 @@ impl Default for SimConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_calibrated_step_converts_to_days_and_an_uncalibrated_one_does_not() {
+        let mut cfg = SimConfig::default();
+        assert_eq!(cfg.days(6000).unwrap(), None);
+        cfg.hours_per_step = Some(0.6);
+        assert!((cfg.days(6000).unwrap().unwrap() - 150.0).abs() < 1e-9);
+        for h in [0.0, -1.0, f64::NAN] {
+            cfg.hours_per_step = Some(h);
+            assert!(cfg.days(10).is_err(), "{h}");
+        }
+    }
 
     #[test]
     fn roundtrip_toml() {

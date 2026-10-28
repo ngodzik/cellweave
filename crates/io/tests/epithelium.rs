@@ -130,3 +130,15 @@ fn a_sheet_around_a_vessel_is_refused() {
     };
     assert!(Simulation::new(scenario, &spec()).is_err());
 }
+
+#[test]
+fn sisters_do_opposite_things_more_often_than_chance() {
+    // Independent sisters, whatever their odds of dividing, give a quarter
+    // or more: both divide or both leave at least half the time. Nothing in
+    // the model couples two sisters but the room they share.
+    let sim = run(200, 600);
+    let fates = sim.sister_fates();
+    assert!(fates.pairs() > 1000, "{fates:?}");
+    let r = fates.r().unwrap();
+    assert!(r < 0.24, "r = {r}");
+}
