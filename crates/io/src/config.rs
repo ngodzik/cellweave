@@ -1,6 +1,6 @@
 //! TOML simulation configuration.
 
-use cellweave_core::{CellweaveError, NetworkSpec, OxygenSource, Seeding};
+use cellweave_core::{CellweaveError, Exposure, NetworkSpec, OxygenSource, Seeding};
 use cellweave_engine::simulation::{DEFAULT_SEED, Scenario};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -50,6 +50,10 @@ pub struct SimConfig {
     /// What the box holds at the start. Defaults to a single tumour cell.
     #[serde(default)]
     pub seeding: Seeding,
+    /// A lethal stress the tissue is exposed to, coming in where oxygen does.
+    /// Left out, there is none, and the run is the one it always was.
+    #[serde(default)]
+    pub exposure: Option<Exposure>,
 }
 
 fn default_seed() -> u64 {
@@ -93,6 +97,7 @@ impl SimConfig {
             seed: self.seed,
             mutation_rate: self.mutation_rate,
             seeding: self.seeding,
+            exposure: self.exposure,
         }
     }
 
@@ -180,6 +185,7 @@ impl Default for SimConfig {
             mutation_rate: 0.0,
             seed: DEFAULT_SEED,
             seeding: Seeding::Single,
+            exposure: None,
         }
     }
 }

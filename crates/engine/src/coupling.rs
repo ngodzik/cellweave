@@ -10,9 +10,13 @@ use crate::cpm::{CpmLattice, OBSTACLE};
 use crate::pde::ScalarField;
 use cellweave_core::{CellKind, DiffusionField};
 
-/// Whether a cell of this kind draws on the field at all.
+/// Whether a cell of this kind draws on the field at all. A dead cell does
+/// not, and neither does one breaking up in apoptosis.
 fn consumes(kind: CellKind) -> bool {
-    !matches!(kind, CellKind::Medium | CellKind::Necrotic)
+    !matches!(
+        kind,
+        CellKind::Medium | CellKind::Necrotic | CellKind::Apoptotic
+    )
 }
 
 /// Make every pixel of every living cell a sink of `rate`.

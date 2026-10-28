@@ -114,6 +114,13 @@ impl ScalarField {
         self.uptake[i] = rate.max(0.0);
     }
 
+    /// Set every pixel to `value`, as when what supplies a field is cut off
+    /// and everything it held has been taken up.
+    pub fn fill(&mut self, value: f64) {
+        self.values.fill(value);
+        self.next.fill(value);
+    }
+
     /// Forget every sink, before the layout of the tissue is read in again.
     pub fn clear_uptake(&mut self) {
         self.uptake.fill(0.0);

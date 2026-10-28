@@ -92,7 +92,9 @@ impl ContactEnergy {
             // A cell leaving the layer keeps its grip on its neighbours until
             // it is gone, so it costs what it cost while it was dividing.
             CellKind::Normal | CellKind::Differentiated => 2,
-            CellKind::Necrotic => 3,
+            // A cell breaking up holds on to its neighbours no better than a
+            // dead one.
+            CellKind::Necrotic | CellKind::Apoptotic => 3,
         }
     }
 }

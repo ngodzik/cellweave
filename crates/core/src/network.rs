@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// These names are the engine's, not the configuration's: they exist because
 /// something outside the cell computes them. More appear as the coupling grows.
-pub const INPUT_NAMES: [&str; 3] = ["oxygen", "egf", "crowding"];
+pub const INPUT_NAMES: [&str; 4] = ["oxygen", "egf", "crowding", "stress"];
 
 /// Cooperative binding: `source^n / (k^n + source^n)` stands in for `source`.
 ///
@@ -131,8 +131,9 @@ pub struct NodeSpec {
 ///
 /// The simulation asks a cell three questions: how large it is trying to be,
 /// whether it is still alive, and whether it is short enough of oxygen to have
-/// stopped cycling. A fourth is optional: how strongly the cell is pushed to
-/// differentiate and leave the layer it divides in. Nothing in a network says which of its nodes answers those,
+/// stopped cycling. Two more are optional: how strongly the cell is pushed to
+/// differentiate and leave the layer it divides in, and how strongly it is
+/// pushed to start its own programmed death. Nothing in a network says which of its nodes answers those,
 /// so the configuration does. Naming them rather than guessing from a node's
 /// name is what lets a network use its own vocabulary.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -148,6 +149,12 @@ pub struct Roles {
     /// tumour network written before this role existed keeps meaning.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub differentiation: Option<String>,
+    /// Node whose level is the chance, per step, that the cell starts
+    /// apoptosis, its own programmed death. Left out, cells only ever die of
+    /// necrosis, which is what every network written before this role existed
+    /// keeps meaning.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub apoptosis: Option<String>,
 }
 
 /// How the growth node becomes a mechanical demand on the lattice.

@@ -42,7 +42,8 @@ pub trait SignalingNetwork: Send + Sync {
 
 /// A scalar extracellular field solved by a finite-difference PDE integrator.
 ///
-/// One instance per diffusing species: oxygen today.
+/// One instance per diffusing species: oxygen, and a lethal stress when the
+/// tissue is exposed to one.
 pub trait DiffusionField: Send + Sync {
     /// Advance the field by one time step.
     ///
