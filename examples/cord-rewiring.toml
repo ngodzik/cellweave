@@ -1,0 +1,23 @@
+# The evolving cord of chapter 6, where three mutations in ten rewire the
+# network instead of scaling a rate: a node gains a link to any input or any
+# node, or loses one of its terms.
+#
+# Which links the cord ends up with is not written anywhere. Run it under
+# many seeds and read the leading lineage of each:
+#
+#   ./target/release/cellweave --config examples/cord-rewiring.toml --seeds 1-8
+
+width = 200
+height = 200
+mcs = 3000
+temperature = 10.0
+snapshot_interval = 50
+output_dir = "output-cord-rewiring"
+oxygen_uptake = 0.00003
+mutation_rate = 0.05
+rewiring = 0.3
+network = "networks/ras-erk.toml"
+
+[oxygen_source]
+kind = "vessel"
+radius = 6

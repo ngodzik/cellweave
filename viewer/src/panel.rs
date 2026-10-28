@@ -316,9 +316,7 @@ fn clones(ui: &mut egui::Ui, runner: &Runner, seeding: Seeding) {
                 .clones
                 .get(c)
                 .and_then(|r| r.mutation.as_ref())
-                .map_or("a founder, unmutated".to_owned(), |m| {
-                    format!("{} {} ×{:.2}", m.node, m.kind, m.factor)
-                });
+                .map_or("a founder, unmutated".to_owned(), |m| m.to_string());
             ui.label(what);
             ui.end_row();
         }

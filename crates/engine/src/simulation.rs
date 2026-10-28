@@ -149,6 +149,10 @@ pub struct Scenario {
     /// stress field unsolved and every cell reading zero, so a run without
     /// exposure is the run it was before exposure existed.
     pub exposure: Option<Exposure>,
+    /// Probability that a mutation changes the network's wiring, gaining or
+    /// losing a term, rather than scaling a rate. Zero, the default, draws
+    /// nothing for it, so a run without rewiring is the run it was before.
+    pub rewiring: f64,
     /// Clones whose founding mutation is, in this run, drawn but not made.
     ///
     /// Everything else happens as it would have: the same numbers are drawn,
@@ -272,6 +276,12 @@ impl Simulation<Configured> {
             return Err(CellweaveError::Config(format!(
                 "the mutation rate is {}; it is a probability per division, between 0 and 1",
                 scenario.mutation_rate
+            )));
+        }
+        if !(0.0..=1.0).contains(&scenario.rewiring) {
+            return Err(CellweaveError::Config(format!(
+                "rewiring is {}; it is the probability that a mutation rewires, between 0 and 1",
+                scenario.rewiring
             )));
         }
         let mut lattice = CpmLattice::new(scenario.width, scenario.height, scenario.temperature)
@@ -669,14 +679,31 @@ impl Simulation<Running> {
                 let rate = self.scenario.mutation_rate;
                 if rate > 0.0 && self.rng.random::<f64>() < rate {
                     let (which, how) = (self.rng.random::<f64>(), self.rng.random::<f64>());
+                    // Drawn only when rewiring is on, for the same reason as
+                    // the mutation rate: no rewiring, no extra draw.
+                    let rewire = self.scenario.rewiring;
+                    let wiring = if rewire > 0.0 {
+                        let u = self.rng.random::<f64>();
+                        (u < rewire).then(|| {
+                            let (source, sign) =
+                                (self.rng.random::<f64>(), self.rng.random::<f64>());
+                            [u / rewire, which, source, sign, how]
+                        })
+                    } else {
+                        None
+                    };
+                    let change = |n: &mut Network| match wiring {
+                        Some(draws) => n.rewire(draws),
+                        None => n.mutate(which, how),
+                    };
                     let founded = CloneId(self.clones.len() as u32);
                     let suppressed = self.scenario.suppress.contains(&founded);
                     // A suppressed mutation is made on a copy, to know what it
                     // would have been, and the copy is thrown away.
                     let made = if suppressed {
-                        daughter.clone().and_then(|mut n| n.mutate(which, how))
+                        daughter.clone().and_then(|mut n| change(&mut n))
                     } else {
-                        daughter.as_mut().and_then(|n| n.mutate(which, how))
+                        daughter.as_mut().and_then(change)
                     };
                     if let Some(mutation) = made {
                         self.clones.push(CloneRecord {
@@ -960,6 +987,7 @@ mod tests {
             seed: DEFAULT_SEED,
             mutation_rate: 0.0,
             suppress: Vec::new(),
+            rewiring: 0.0,
             seeding: Seeding::Single,
             exposure: None,
         }
@@ -1149,5 +1177,24 @@ mod tests {
         );
         assert_eq!(real, without);
         assert_eq!(grid, other_grid);
+    }
+
+    #[test]
+    fn with_full_rewiring_every_mutation_gains_or_loses_a_term() {
+        let (_, _, clones) = history(
+            Scenario {
+                rewiring: 1.0,
+                ..mutating()
+            },
+            100,
+        );
+        assert!(clones.len() > 3, "the population grew and mutated");
+        for clone in clones.iter().skip(1) {
+            let change = &clone.mutation.as_ref().unwrap().change;
+            assert!(
+                !matches!(change, crate::network::Change::Scaled(_)),
+                "{change:?}"
+            );
+        }
     }
 }
