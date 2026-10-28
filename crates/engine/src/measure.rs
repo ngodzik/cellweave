@@ -45,6 +45,8 @@ pub struct Measurements {
     /// Pixels of vessel: the one the scenario laid, and whatever has grown
     /// from it.
     pub vessel: u64,
+    /// Pixels of vessel that carry blood.
+    pub perfused: u64,
     /// Sprouts still growing.
     pub sprouts: usize,
     /// Equivalent radius of everything the tissue covers, in pixels: living,
@@ -126,14 +128,19 @@ impl<S: SimState> Simulation<S> {
         }
 
         // A bath has no vessel, and nothing grows one there.
-        let vessel_area = match self.scenario().oxygen_source {
-            OxygenSource::Bath => 0,
+        let (vessel_area, perfused) = match self.scenario().oxygen_source {
+            OxygenSource::Bath => (0, 0),
             OxygenSource::Vessel { .. } => {
                 let (w, h) = lattice.dims();
-                (0..h)
+                let vessel: Vec<(u32, u32)> = (0..h)
                     .flat_map(|y| (0..w).map(move |x| (x, y)))
                     .filter(|&(x, y)| lattice.occupant(x, y) == OBSTACLE)
-                    .count() as u64
+                    .collect();
+                let perfused = vessel
+                    .iter()
+                    .filter(|&&(x, y)| self.carries_blood(x, y))
+                    .count();
+                (vessel.len() as u64, perfused as u64)
             }
         };
 
@@ -163,6 +170,7 @@ impl<S: SimState> Simulation<S> {
             clones: self.clone_sizes().iter().filter(|&&n| n > 0).count(),
             lesion: self.lesion_cells(),
             vessel: vessel_area,
+            perfused,
             sprouts: self.sprouts().len(),
             tissue_radius,
             necrotic_radius,

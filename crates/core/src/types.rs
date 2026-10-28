@@ -107,6 +107,21 @@ pub struct Angiogenesis {
     /// secreted, in pixels. It sets how far a cell's call carries, and so
     /// how much of what it calls for goes to its neighbours.
     pub reach: f64,
+    /// When a new vessel starts carrying blood. Left out, at once.
+    #[serde(default)]
+    pub perfusion: Perfusion,
+}
+
+/// When a new vessel starts carrying blood, and with it oxygen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Perfusion {
+    /// From its first pixel, as if blood followed the tip.
+    #[default]
+    AtOnce,
+    /// Once its tip has joined another vessel, closing a loop blood can flow
+    /// round. Until then a sprout is a blind end and carries nothing.
+    OnJoining,
 }
 
 /// When an exposure is on.

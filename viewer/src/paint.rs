@@ -38,13 +38,17 @@ pub const DIFFERENTIATING: LinearRgba = LinearRgba::rgb(0.55, 0.45, 0.28);
 /// A cell in apoptosis, breaking up: violet, the colour of nothing else on
 /// the canvas, so that where the stress is killing reads at a glance.
 pub const APOPTOTIC: LinearRgba = LinearRgba::rgb(0.50, 0.14, 0.62);
-/// The vessel wall, held at full oxygen. The brightest thing in the picture,
-/// because everything else lives off it.
 /// A lesion's cells in the clone view: a pale gold no clone's hue reaches,
 /// so an early tumour stands out from the patchwork of clones around it.
 pub const LESION: LinearRgba = LinearRgba::rgb(1.0, 0.82, 0.45);
 
+/// The vessel wall, held at full oxygen. The brightest thing in the picture,
+/// because everything else lives off it.
 pub const VESSEL: LinearRgba = LinearRgba::rgb(1.0, 0.08, 0.04);
+
+/// A sprout no blood flows through yet: the vessel's colour, gone dark, and
+/// giving off no light.
+pub const DRY_VESSEL: LinearRgba = LinearRgba::rgb(0.18, 0.03, 0.03);
 /// The medium with no oxygen in it, and with all of it.
 const MEDIUM_EMPTY: LinearRgba = LinearRgba::rgb(0.001, 0.002, 0.008);
 const MEDIUM_FULL: LinearRgba = LinearRgba::rgb(0.002, 0.012, 0.032);
@@ -144,12 +148,14 @@ fn paint(sim: &Simulation<Running>, view: View, out: &mut [u8]) {
         .map(|id| bytes(cell_colour(sim, CellId(id), view)))
         .collect();
     let vessel = bytes(VESSEL);
+    let dry = bytes(DRY_VESSEL);
 
     for y in 0..h {
         for x in 0..w {
             let id = lattice.occupant(x, y);
             let fill = match id {
-                OBSTACLE => vessel,
+                OBSTACLE if sim.carries_blood(x, y) => vessel,
+                OBSTACLE => dry,
                 _ if view == View::Stress => bytes(ramp(stress(x, y))),
                 _ if view == View::Vegf => bytes(ramp(vegf(x, y))),
                 0 => bytes(MEDIUM_EMPTY.mix(&MEDIUM_FULL, oxygen.concentration_at(x, y) as f32)),
