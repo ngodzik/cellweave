@@ -75,3 +75,10 @@ So in this model the oesophagus's pattern needs both: basal cells that do not co
 ## Still a placeholder
 
 Everything chapter 7 lists, the ceiling at exactly the normal size, three mutations in ten rewiring, and ten seeds of each. Two things the papers saw are not measured yet: whether a NOTCH-loss clone makes its normal neighbours leave faster, as Alcolea and colleagues saw, and whether two such clones slow when they meet, as Colom and colleagues did (Nature Genetics, 2020). TP53 has no counterpart here: nothing damages a cell in the sheet, so a cell that ignores damage has no advantage. And the steps are still steps; what 6000 of them are in the life of a mouse or a person is the next chapter's question.
+
+## References
+
+- Alcolea MP, Greulich P, Wabik A, et al. [Differentiation imbalance in single oesophageal progenitor cells causes clonal immortalization and field change](https://doi.org/10.1038/ncb2963). *Nature Cell Biology* 16, 615-622 (2014). [Free full text](https://europepmc.org/article/PMC/PMC4085550).
+- Colom B, Alcolea MP, Piedrafita G, et al. [Spatial competition shapes the dynamic mutational landscape of normal esophageal epithelium](https://doi.org/10.1038/s41588-020-0624-3). *Nature Genetics* 52, 604-614 (2020). [Free full text](https://europepmc.org/article/PMC/PMC7116672).
+- Martincorena I, Fowler JC, Wabik A, et al. [Somatic mutant clones colonize the human esophagus with age](https://doi.org/10.1126/science.aau3879). *Science* 362, 911-917 (2018). [Free full text](https://europepmc.org/article/PMC/PMC6298579).
+- Piedrafita G, Kostiou V, Wabik A, et al. [A single-progenitor model as the unifying paradigm of epidermal and esophageal epithelial maintenance in mice](https://doi.org/10.1038/s41467-020-15258-0). *Nature Communications* 11, 1429 (2020). [Free full text](https://europepmc.org/article/PMC/PMC7080751).

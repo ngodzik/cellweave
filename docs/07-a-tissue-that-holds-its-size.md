@@ -96,3 +96,9 @@ One thing does not. In the real oesophagus the most successful clones carry NOTC
 ## Still a placeholder
 
 All of NOTCH's rates, the crowding curve, the shedding rate, and the size of the cells; the mutation rate, a hundred times below the evolving cord's and still far above a real one. The layer is one layer, seen from above, with nothing above it and no wound in it; the papers this chapter cites measured clone sizes over a year of a mouse's life and in decades of a human's, and comparing the clone size distributions they publish to the model's is what would turn this chapter's qualitative agreement into a quantitative one. That needs units (chapter 12).
+
+## References
+
+- Colom B, Alcolea MP, Piedrafita G, et al. [Spatial competition shapes the dynamic mutational landscape of normal esophageal epithelium](https://doi.org/10.1038/s41588-020-0624-3). *Nature Genetics* 52, 604-614 (2020). [Free full text](https://europepmc.org/article/PMC/PMC7116672).
+- Martincorena I, Fowler JC, Wabik A, et al. [Somatic mutant clones colonize the human esophagus with age](https://doi.org/10.1126/science.aau3879). *Science* 362, 911-917 (2018). [Free full text](https://europepmc.org/article/PMC/PMC6298579).
+- Snippert HJ, van der Flier LG, Sato T, et al. [Intestinal crypt homeostasis results from neutral competition between symmetrically dividing Lgr5 stem cells](https://doi.org/10.1016/j.cell.2010.09.016). *Cell* 143, 134-144 (2010).

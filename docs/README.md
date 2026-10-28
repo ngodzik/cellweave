@@ -9,6 +9,7 @@ Each chapter follows the same shape:
 - **Choices, and why**: what was decided, and what it costs.
 - **Where in the code**: file and symbol, so the claim can be checked.
 - **Still a placeholder**: what is a number picked to make something show, not a measurement.
+- **References**: the papers the chapter cites, each linked, with a link to its full text where it is free to read.
 
 Chapters build on each other and are meant to be read in order the first time.
 

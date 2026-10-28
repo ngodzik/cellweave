@@ -16,7 +16,7 @@ Two of those forces matter most here.
 
 The **lattice** (a regular grid, the word comes from garden trellis) is a 200 by 200 array of **pixels**. Each pixel carries exactly one identity: the number of the cell occupying it, or 0 for empty **medium**, or a marker for an obstacle no cell can enter. A cell is the set of pixels carrying its number. It has no shape of its own; its shape is that set, and it changes with every pixel that changes hands. A cell of radius 8 is about 200 pixels, so a pixel is roughly a micrometre, though no unit has been fixed.
 
-This is a **Cellular Potts model** (CPM), after the physicist whose spin model it borrows. Every configuration of the grid has an **energy**, called the Hamiltonian, and the model moves toward lower energy. Two terms:
+This is a **Cellular Potts model** (CPM), named after the physicist whose spin model it borrows, and introduced by Graner and Glazier (Physical Review Letters, 1992) to simulate cells sorting themselves by how strongly they stick to each other. Every configuration of the grid has an **energy**, called the Hamiltonian, and the model moves toward lower energy. Two terms:
 
 - **Contact energy.** Every pair of neighbouring pixels that belong to different cells is a piece of boundary, and it costs `J(kind of one, kind of the other)`. Boundary against medium costs 16, against a cell of the same kind 2. Lower is stickier. Two pixels of the same cell cost nothing: there is no boundary inside a cell.
 - **Volume constraint.** Each cell has a target volume and a stiffness λ (lambda), and a cell of v pixels that aims at v_target pays λ (v - v_target)².
@@ -72,3 +72,7 @@ The tests at the bottom of the file are the best description of what the energy 
 ## Still a placeholder
 
 The values in `ContactEnergy`, 16 for medium against tumour, 2 for tumour against tumour, 6 for normal against normal, are the sort of numbers the literature uses, not measurements of any cell line. So is λ at 50, and the temperature at 10. They give compact cells that hold together and fluctuate visibly. That is all they were chosen for.
+
+## References
+
+- Graner F, Glazier JA. [Simulation of biological cell sorting using a two-dimensional extended Potts model](https://doi.org/10.1103/PhysRevLett.69.2013). *Physical Review Letters* 69, 2013-2016 (1992).

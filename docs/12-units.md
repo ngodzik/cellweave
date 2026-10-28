@@ -64,3 +64,7 @@ How far below a quarter the mouse's *r* is, and so whether the sheet's sisters a
 ## Still a placeholder
 
 The conversion is the mouse oesophagus's, and only for the sheet: the cord, the spheroid and the stress have no calibrated step. In the human oesophagus cells divide in the first five or six layers rather than in one; nothing here is calibrated against it. Space has no unit but the cell. And the sheet's *r* is compared with the mouse's only by which side of a quarter it falls on.
+
+## References
+
+- Piedrafita G, Kostiou V, Wabik A, et al. [A single-progenitor model as the unifying paradigm of epidermal and esophageal epithelial maintenance in mice](https://doi.org/10.1038/s41467-020-15258-0). *Nature Communications* 11, 1429 (2020). [Free full text](https://europepmc.org/article/PMC/PMC7080751).
