@@ -47,6 +47,13 @@ The loop closes on itself. A cell that is fed stops accumulating HIF-1α, stops 
 
 **What a run says.** `measurements.csv` gains two columns, `vessel`, the pixels of vessel, and `sprouts`, the tips still growing. `Simulation::depth_from_vessels` says how far living tissue reaches from its nearest vessel: the distance within which 95% of the living pixels lie. In a cord whose vessel does not grow, it is the cord's living depth. A run prints it with the sprouts and the vessel, and a campaign writes `necrotic`, `vessel`, `sprouted` and `depth` for each run and compares them pair by pair.
 
+**Watching it.** In the viewer the new vessel is drawn as the old one is, raised and glowing, and grows on screen. Coloured by `vegf`, every pixel shows the call it sits in, and the panel counts the pixels of vessel and the sprouts still growing.
+
+```bash
+cd viewer
+cargo run --release -- --config ../examples/cord-angiogenic.toml --view vegf
+```
+
 ### The predictions, and what happened
 
 `examples/cord-angiogenic.toml` is the cord of chapter 5 with vessels that may grow, in a box of 300 pixels so that a tumour that grows has room to show it; `examples/cord-wide.toml` is the same cord in the same box, with a vessel that does not grow. Paired under the same seeds, the two are one run until the first sprout lays its first pixel.
@@ -103,6 +110,8 @@ How much a tumour gained followed how many sprouts it started, from a single one
 ## Where in the code
 
 `crates/engine/src/vessels.rs`: `Tip`, `VESSEL_RADIUS`, the spacing of sprouts, how a tip moves, lays vessel and joins another. `crates/core/src/types.rs`: `Angiogenesis`. `crates/core/src/network.rs`: the `angiogenic` field of `Roles`. `crates/engine/src/network.rs`: `Network::angiogenic`. `crates/engine/src/pde.rs`: `ScalarField::set_production`, a source per pixel. `crates/engine/src/coupling.rs`: `apply_production`. `crates/engine/src/simulation.rs`: the `angiogenesis` field of `Scenario`, the VEGF field and its reach, where a step settles it and grows the vessels, `Simulation::vegf`, `Simulation::sprouts`, `Simulation::sprouted`. `crates/engine/src/measure.rs`: the `vessel` and `sprouts` columns, `Simulation::depth_from_vessels`, `DEPTH_SHARE`. `src/campaign.rs`: the columns and the lines a campaign adds.
+
+`viewer/src/paint.rs`: the `Vegf` view. `viewer/src/panel.rs`: the vessel line.
 
 `examples/cord-angiogenic.toml` and its twin `examples/cord-wide.toml`.
 

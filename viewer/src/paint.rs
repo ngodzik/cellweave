@@ -66,6 +66,9 @@ pub enum View {
     Clone,
     /// The lethal stress each pixel sits in, cells included.
     Stress,
+    /// The call for vessels each pixel sits in, cells included, where
+    /// vessels can grow.
+    Vegf,
 }
 
 /// The texture one run's tissue is painted into, and the material that
@@ -133,6 +136,7 @@ fn paint(sim: &Simulation<Running>, view: View, out: &mut [u8]) {
     let lattice = sim.lattice();
     let oxygen = sim.oxygen();
     let stress = |x: u32, y: u32| sim.stress().map_or(0.0, |f| f.concentration_at(x, y)) as f32;
+    let vegf = |x: u32, y: u32| sim.vegf().map_or(0.0, |f| f.concentration_at(x, y)) as f32;
     let (w, h) = lattice.dims();
 
     // Each cell's colour, worked out once rather than once per pixel.
@@ -147,6 +151,7 @@ fn paint(sim: &Simulation<Running>, view: View, out: &mut [u8]) {
             let fill = match id {
                 OBSTACLE => vessel,
                 _ if view == View::Stress => bytes(ramp(stress(x, y))),
+                _ if view == View::Vegf => bytes(ramp(vegf(x, y))),
                 0 => bytes(MEDIUM_EMPTY.mix(&MEDIUM_FULL, oxygen.concentration_at(x, y) as f32)),
                 _ if view == View::Oxygen => bytes(ramp(oxygen.concentration_at(x, y) as f32)),
                 _ => cells.get(id as usize).copied().unwrap_or(vessel),

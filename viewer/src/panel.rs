@@ -160,6 +160,12 @@ fn census(ui: &mut egui::Ui, runner: &Runner, sheet: bool, exposed: bool) {
             );
         }
         row("born · gone", format!("{} · {}", c.born, c.gone));
+        if runner.experiment.scenario.angiogenesis.is_some() {
+            row(
+                "vessel",
+                format!("{} px, {} sprouts growing", c.vessel, c.sprouts),
+            );
+        }
         // Once a lesion has appeared, how much of it is left, down to none.
         if runner.history.iter().any(|m| m.lesion > 0) {
             row("lesion", c.lesion.to_string());
@@ -205,6 +211,9 @@ fn colouring(ui: &mut egui::Ui, view: &mut View, experiment: &Experiment) {
         if experiment.scenario.exposure.is_some() {
             ui.selectable_value(&mut chosen, View::Stress, "stress");
         }
+        if experiment.scenario.angiogenesis.is_some() {
+            ui.selectable_value(&mut chosen, View::Vegf, "vegf");
+        }
         let protein = match chosen {
             View::Protein(i) => i,
             _ => 0,
@@ -245,7 +254,7 @@ fn colouring(ui: &mut egui::Ui, view: &mut View, experiment: &Experiment) {
             chosen = View::Protein(index);
             gradient(ui);
         }
-        View::Oxygen | View::Stress => gradient(ui),
+        View::Oxygen | View::Stress | View::Vegf => gradient(ui),
         View::Clone => {
             ui.horizontal_wrapped(|ui| {
                 if experiment.scenario.seeding == Seeding::Single {
