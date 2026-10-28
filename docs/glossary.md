@@ -48,7 +48,7 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Crowding** (7). How squeezed a cell is: how far below its reference size it sits, as a fraction of it. An input every network can read, like oxygen.
 
-**Determinism** (1, 9, 14, 15). The same seed gives the same simulation, byte for byte. Checked on every push.
+**Determinism** (1, 9, 14, 16). The same seed gives the same simulation, byte for byte. Checked on every push.
 
 **Differentiation** (7). A cell giving up dividing to become a specialised cell. In an epithelium, a basal cell that commits leaves the layer. Here, a chance per step set by the network's differentiation node.
 
@@ -60,11 +60,11 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Driver** (9). A mutation that gave the cells carrying it an advantage the tumour grew from. Here, one whose suppression changes the history.
 
-**Early tumour, lesion** (13). A microscopic patch of abnormal cells that has only just formed. Here a patch of the sheet placed at one step, carrying a network of its own. Whether it survives depends on its fitness relative to the clones around it, within a window.
+**Early tumour, lesion** (13, 15). A microscopic patch of abnormal cells that has only just formed. Here a patch placed at one step, carrying a network of its own: in the sheet, where whether it survives depends on its fitness relative to the clones around it, within a window (13); or in a tumour, as a subclone placed by hand (16).
 
 **EGF** (2). Epidermal growth factor, the growth signal. A hardcoded input for every cell today.
 
-**Emergence** (6, 7, 12, 14, 15). Behaviour that follows from the model without any rule naming it. The necrotic core, the compact cell, the cord's thickness.
+**Emergence** (6, 7, 12, 14, 16). Behaviour that follows from the model without any rule naming it. The necrotic core, the compact cell, the cord's thickness.
 
 **Endothelial cell** (14). A cell of the thin layer that lines every blood vessel. The cells that sprout.
 
@@ -79,6 +79,8 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 **Exposure** (8). When and how strongly the lethal stress is held at its source: an intensity, a start, and a schedule, continuous or periodic.
 
 **Field** (3). One value per pixel, here the oxygen concentration.
+
+**Free rider** (15). A cell that benefits from what its neighbours secrete without secreting any itself.
 
 **Gone** (4, 7). A cell that has left the tissue for good: resorbed to nothing after dying, or shed after differentiating. Its slot is empty; the lattice keeps a tombstone.
 
@@ -136,6 +138,8 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Proliferating** (4). Alive, cycling, dividing. The default fate under enough oxygen.
 
+**Public good** (15). Something everyone nearby can use and nobody can keep to themselves, such as a factor a cell secretes into the space around it.
+
 **Quiescent** (4). Alive, not dividing. Hypoxia response above 0.45.
 
 **RAS** (2). The switch at the start of the growth pathway. Stuck on in one cancer in three.
@@ -164,7 +168,7 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Sister fates, r** (12). What the two cells of one division do next. r is the chance both divide, which equals the chance both leave; a quarter if sisters were independent, below a quarter when they tend to do opposite things, as in the mouse and in the sheet.
 
-**Snapshot** (4, 15). A file listing every living cell's state and the oxygen it reads, one per interval.
+**Snapshot** (4, 16). A file listing every living cell's state and the oxygen it reads, one per interval.
 
 **SOR** (3). Successive over-relaxation, the sweep that solves for a steady state in about L passes rather than L².
 

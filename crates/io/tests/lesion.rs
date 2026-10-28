@@ -1,5 +1,6 @@
 //! An early tumour in a sheet, end to end: read from the shipped files, placed,
-//! followed, and checked for what placing it must and must not do.
+//! followed, and checked for what placing it must and must not do; and a
+//! patch placed by hand in a tumour, off centre.
 
 #![allow(clippy::unwrap_used)]
 
@@ -66,18 +67,46 @@ fn a_lesion_that_never_comes_leaves_the_run_as_it_was() {
 }
 
 #[test]
-fn a_lesion_needs_a_sheet_and_some_room() {
+fn a_lesion_needs_some_room_inside_the_box() {
     let (scenario, spec) = scenario(20);
-    let single = Scenario {
-        seeding: Seeding::Single,
-        oxygen_source: OxygenSource::Bath,
-        oxygen_uptake: 0.0003,
-        ..scenario.clone()
-    };
-    assert!(Simulation::new(single, &spec).is_err());
     let empty = Scenario {
         lesion: scenario.lesion.clone().map(|l| Lesion { radius: 0.0, ..l }),
-        ..scenario
+        ..scenario.clone()
     };
     assert!(Simulation::new(empty, &spec).is_err());
+    let outside = Scenario {
+        lesion: scenario.lesion.clone().map(|l| Lesion {
+            centre: Some((150.0, 50.0)),
+            ..l
+        }),
+        ..scenario
+    };
+    assert!(Simulation::new(outside, &spec).is_err());
+}
+
+#[test]
+fn a_lesion_placed_off_centre_in_a_tumour_takes_the_cells_there() {
+    let config = SimConfig::default();
+    let spec = config.load_network(None).unwrap();
+    // One cell seeded against a vessel of radius 6, eight pixels out from
+    // its wall: the centre of the box is vessel, and the cell is to its right.
+    let first = (100.0 + 6.0 + 8.0, 100.0);
+    let tumour = Scenario {
+        seeding: Seeding::Single,
+        oxygen_source: OxygenSource::Vessel { radius: 6 },
+        oxygen_uptake: 0.00003,
+        lesion: Some(Lesion {
+            spec: config.load_network(None).unwrap(),
+            at: 1,
+            radius: 4.0,
+            centre: Some(first),
+        }),
+        ..config.scenario(None).unwrap()
+    };
+    let (mut sim, _) = Simulation::new(tumour, &spec).unwrap().start().unwrap();
+    sim.step().unwrap();
+    assert_eq!(sim.lesion_cells(), 0, "not before its step");
+    sim.step().unwrap();
+    assert_eq!(sim.lesion_cells(), 1, "the one cell there");
+    assert!(sim.in_lesion(CellId(1)));
 }

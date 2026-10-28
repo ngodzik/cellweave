@@ -1,0 +1,31 @@
+# The cord of cord-angiogenic.toml with a patch of cells placed by hand at
+# step 120, to the right of the vessel, carrying the same network as every
+# other cell, only marked (chapter 15).
+#
+# cord-patch-marked.toml and cord-patch-silent.toml differ only in the
+# patch's network, so under one seed the two runs are one run until the
+# silent patch's silence makes a difference.
+
+width = 300
+height = 300
+mcs = 300
+temperature = 10.0
+snapshot_interval = 100
+output_dir = "output-cord-patch-marked"
+oxygen_uptake = 0.00003
+network = "networks/ras-erk.toml"
+
+[oxygen_source]
+kind = "vessel"
+radius = 6
+
+[angiogenesis]
+threshold = 0.5
+speed = 1.0
+reach = 30.0
+
+[lesion]
+network = "networks/ras-erk.toml"
+at = 120
+radius = 30.0
+centre = [185.0, 150.0]
