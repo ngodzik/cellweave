@@ -33,6 +33,7 @@ fn sheet(size: u32) -> Scenario {
         seeding: Seeding::Sheet { side: 10 },
         exposure: None,
         lesion: None,
+        revert: None,
     }
 }
 

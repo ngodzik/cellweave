@@ -31,6 +31,9 @@ pub struct CloneRecord {
     /// Founded by the scenario's lesion rather than by a mutation: the
     /// clone of an early tumour, and everything descended from it.
     pub lesion: bool,
+    /// The step its mutation was undone at, in every cell carrying it, when
+    /// the scenario reverts it. See [`crate::simulation::Reversion`].
+    pub reverted_at: Option<u64>,
 }
 
 impl CloneRecord {
@@ -43,6 +46,7 @@ impl CloneRecord {
             mutation: None,
             suppressed: false,
             lesion: false,
+            reverted_at: None,
         }
     }
 }
@@ -113,7 +117,8 @@ impl<S: SimState> Simulation<S> {
     ///
     /// It is what a sequencing study of a normal tissue reports gene by gene:
     /// the fraction of the cells carrying a mutation in it, whatever the
-    /// mutation does. A suppressed mutation was not made, and does not count.
+    /// mutation does. A suppressed mutation was not made, and an undone one no
+    /// longer acts; neither counts.
     pub fn coverage(&self) -> Vec<(String, f64)> {
         let names = self.pristine().node_names();
         // A clone arises in an older one, so walking the clones in order
@@ -124,7 +129,10 @@ impl<S: SimState> Simulation<S> {
                 .parent
                 .and_then(|p| carries.get(p.0 as usize).cloned())
                 .unwrap_or_else(|| vec![false; names.len()]);
-            if let Some(m) = clone.mutation.as_ref().filter(|_| !clone.suppressed)
+            if let Some(m) = clone
+                .mutation
+                .as_ref()
+                .filter(|_| !clone.suppressed && clone.reverted_at.is_none())
                 && let Some(i) = names.iter().position(|n| *n == m.node)
             {
                 nodes[i] = true;

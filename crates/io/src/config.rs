@@ -156,6 +156,7 @@ impl SimConfig {
             seeding: self.seeding,
             exposure: self.exposure,
             lesion,
+            revert: None,
         })
     }
 

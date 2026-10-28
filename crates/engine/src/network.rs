@@ -461,6 +461,60 @@ impl Network {
         None
     }
 
+    /// Make a recorded mutation again: scale the same rate by the same
+    /// factor, lose the same term, or gain the same link at the same rate.
+    /// Replaying every mutation of a lineage in order, on the network it
+    /// started from, gives back the lineage's network exactly.
+    ///
+    /// `None`, with nothing changed, when the mutation does not fit: a node
+    /// this network does not have, or a term that is not where the mutation
+    /// says, which happens when an earlier mutation it relied on, a lost or a
+    /// gained term on the same node, was left out.
+    pub(crate) fn apply(&mut self, mutation: &Mutation) -> Option<()> {
+        let node = self.names.iter().position(|n| *n == mutation.node)?;
+        match &mutation.change {
+            Change::Scaled(factor) => {
+                let term = self.terms[node]
+                    .get_mut(mutation.term)
+                    .filter(|t| t.kind() == mutation.kind)?;
+                *term.rate_mut() *= factor;
+            }
+            Change::Lost => {
+                self.terms[node]
+                    .get(mutation.term)
+                    .filter(|t| t.kind() == mutation.kind)?;
+                self.terms[node].remove(mutation.term);
+            }
+            Change::Gained { source, rate } => {
+                let source = match input_source(source) {
+                    Some(input) => input,
+                    None => Source::Node(self.names.iter().position(|n| n == source)?),
+                };
+                self.terms[node].push(if mutation.kind == "activated_by" {
+                    Compiled::ActivatedBy {
+                        source,
+                        rate: *rate,
+                        hill: None,
+                    }
+                } else {
+                    Compiled::ActivatedByAbsenceOf {
+                        source,
+                        rate: *rate,
+                    }
+                });
+            }
+        }
+        Some(())
+    }
+
+    /// Take over another network's protein levels, when it has as many
+    /// nodes: a cell whose wiring changes keeps the state it is in.
+    pub(crate) fn take_state(&mut self, from: &Network) {
+        if from.state.values.len() == self.state.values.len() {
+            self.state = from.state.clone();
+        }
+    }
+
     /// The node the specification named as differentiation, or `None` when it
     /// named none. Its level is the chance per step that the cell commits to
     /// differentiate.
@@ -712,6 +766,28 @@ mod tests {
                 max_target: None,
             }),
         }
+    }
+
+    #[test]
+    fn replaying_a_lineage_gives_back_its_network() {
+        let mut lineage = ras_erk();
+        let mut replayed = ras_erk();
+        let draws = [
+            [0.1, 0.3, 0.6, 0.2, 0.9],
+            [0.7, 0.5, 0.1, 0.8, 0.4],
+            [0.2, 0.9, 0.95, 0.6, 0.1],
+            [0.6, 0.05, 0.3, 0.3, 0.7],
+        ];
+        let mut made = Vec::new();
+        for d in draws {
+            made.extend(lineage.rewire(d));
+            made.extend(lineage.mutate(d[1], d[4]));
+        }
+        assert!(made.len() >= 6, "{made:?}");
+        for m in &made {
+            assert!(replayed.apply(m).is_some(), "{m}");
+        }
+        assert_eq!(format!("{lineage:?}"), format!("{replayed:?}"));
     }
 
     #[test]

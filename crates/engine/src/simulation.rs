@@ -176,6 +176,27 @@ pub struct Scenario {
     /// An early tumour that arises in a sheet at one step, if any. Left out,
     /// the run is the one it always was.
     pub lesion: Option<Lesion>,
+    /// Clones whose founding mutation is undone at one step, if any. Left
+    /// out, nothing is undone.
+    pub revert: Option<Reversion>,
+}
+
+/// Clones whose founding mutation is undone, at one step, in every living
+/// cell that carries it.
+///
+/// [`Scenario::suppress`] asks what would have happened had a mutation never
+/// been made; this asks what happens if it stops acting, here and now. The
+/// run is the run without the reversion, to the last bit, until the step it
+/// comes at, and from then on differs only by those cells being as their
+/// lineage would have been without that mutation. It is what an experiment
+/// does when it switches a gene back on in the cells of one clone.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Reversion {
+    /// The clones whose founding mutation is undone, in them and in every
+    /// clone that arose in them.
+    pub clones: Vec<CloneId>,
+    /// The step it is undone at, before anything else in that step.
+    pub at: u64,
 }
 
 /// A patch of a sheet whose cells, at one step, start carrying another
@@ -561,6 +582,9 @@ impl Simulation<Running> {
     pub fn step(&mut self) -> Result<StepReport, CellweaveError> {
         let mcs = self.next_mcs;
         self.next_mcs += 1;
+        if self.scenario.revert.as_ref().is_some_and(|r| r.at == mcs) {
+            self.revert_clones(mcs);
+        }
         if self.scenario.lesion.as_ref().is_some_and(|l| l.at == mcs) {
             self.place_lesion(mcs);
         }
@@ -785,6 +809,7 @@ impl Simulation<Running> {
                             mutation: Some(mutation),
                             suppressed,
                             lesion: false,
+                            reverted_at: None,
                         });
                         clone = founded;
                     }
@@ -810,6 +835,84 @@ impl Simulation<Running> {
             "one clone per cell: the network list and the lineage have diverged"
         );
         born
+    }
+
+    /// Undo the founding mutation of every clone the reversion names, in every
+    /// cell whose lineage passes through one: its network is rebuilt from the
+    /// network its lineage started from, with every mutation made since but
+    /// those, and keeps the protein levels it had. Draws nothing.
+    fn revert_clones(&mut self, mcs: u64) {
+        let Some(undone) = self.scenario.revert.as_ref().map(|r| r.clones.clone()) else {
+            return;
+        };
+        for id in &undone {
+            if let Some(record) = self.clones.get_mut(id.0 as usize)
+                && record.mutation.is_some()
+            {
+                record.reverted_at = Some(mcs);
+            }
+        }
+        let mut touched: Vec<bool> = Vec::with_capacity(self.clones.len());
+        for clone in &self.clones {
+            let inherited = clone
+                .parent
+                .and_then(|p| touched.get(p.0 as usize).copied())
+                .unwrap_or(false);
+            touched.push(inherited || undone.contains(&clone.id));
+        }
+        let rebuilt: Vec<(usize, Network)> = self
+            .networks
+            .iter()
+            .enumerate()
+            .filter(|&(i, _)| {
+                touched
+                    .get(self.lineage[i].0 as usize)
+                    .copied()
+                    .unwrap_or(false)
+            })
+            .filter_map(|(i, slot)| {
+                let current = slot.as_ref()?;
+                let mut network = self.lineage_network(self.lineage[i], &undone);
+                network.take_state(current);
+                Some((i, network))
+            })
+            .collect();
+        for (i, network) in rebuilt {
+            self.networks[i] = Some(network);
+        }
+    }
+
+    /// The network of a clone's lineage, rebuilt: the network it started
+    /// from, the unmutated one or a lesion's, with every mutation made since,
+    /// in order, but those of the clones in `leaving_out`.
+    fn lineage_network(&self, clone: CloneId, leaving_out: &[CloneId]) -> Network {
+        let mut chain = Vec::new();
+        let mut at = self.clones.get(clone.0 as usize);
+        while let Some(record) = at {
+            chain.push(record);
+            if record.lesion {
+                break;
+            }
+            at = record.parent.and_then(|p| self.clones.get(p.0 as usize));
+        }
+        chain.reverse();
+        let base = match (chain.first(), &self.lesion_network) {
+            (Some(first), Some(lesion)) if first.lesion => lesion,
+            _ => &self.pristine,
+        };
+        let mut network = base.clone();
+        for record in chain {
+            if record.suppressed || record.reverted_at.is_some() || leaving_out.contains(&record.id)
+            {
+                continue;
+            }
+            if let Some(mutation) = &record.mutation {
+                // A mutation that no longer fits, because one it relied on
+                // was left out, is left out too.
+                let _ = network.apply(mutation);
+            }
+        }
+        network
     }
 
     /// Turn every living cell whose centre lies within the lesion's radius of
@@ -856,6 +959,7 @@ impl Simulation<Running> {
             mutation: None,
             suppressed: false,
             lesion: true,
+            reverted_at: None,
         });
         for i in joining {
             self.networks[i] = Some(network.clone());
@@ -1123,6 +1227,7 @@ mod tests {
             seeding: Seeding::Single,
             exposure: None,
             lesion: None,
+            revert: None,
         }
     }
 
@@ -1310,6 +1415,58 @@ mod tests {
         );
         assert_eq!(real, without);
         assert_eq!(grid, other_grid);
+    }
+
+    #[test]
+    fn undoing_a_neutral_mutation_leaves_the_history_identical_to_the_last_bit() {
+        let (real, grid, clones) = history(mutating(), 160);
+        let neutral = clones
+            .iter()
+            .find(|c| c.founded_at < 120 && c.mutation.as_ref().is_some_and(|m| m.node == "vegf"))
+            .expect("one of the early clones changed VEGF");
+        let revert = Some(Reversion {
+            clones: vec![neutral.id],
+            at: 120,
+        });
+        let (undone, other_grid, records) = history(
+            Scenario {
+                revert,
+                ..mutating()
+            },
+            160,
+        );
+        assert_eq!(real, undone);
+        assert_eq!(grid, other_grid);
+        assert_eq!(records[neutral.id.0 as usize].reverted_at, Some(120));
+    }
+
+    #[test]
+    fn undoing_a_mutation_parts_the_histories_only_from_its_step() {
+        let (real, _, clones) = history(mutating(), 160);
+        // Every clone founded before step 120 undone at once: something they
+        // did has to show.
+        let early: Vec<CloneId> = clones
+            .iter()
+            .filter(|c| c.mutation.is_some() && c.founded_at < 120)
+            .map(|c| c.id)
+            .collect();
+        assert!(early.len() > 2);
+        let (undone, _, _) = history(
+            Scenario {
+                revert: Some(Reversion {
+                    clones: early,
+                    at: 120,
+                }),
+                ..mutating()
+            },
+            160,
+        );
+        assert_eq!(
+            real[..120],
+            undone[..120],
+            "the same history until step 120"
+        );
+        assert_ne!(real, undone, "and a different one after");
     }
 
     #[test]

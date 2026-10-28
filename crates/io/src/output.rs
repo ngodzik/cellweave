@@ -163,6 +163,9 @@ pub fn write_clones(
             if c.lesion {
                 entry["lesion"] = serde_json::Value::Bool(true);
             }
+            if let Some(at) = c.reverted_at {
+                entry["reverted_at"] = serde_json::Value::from(at);
+            }
             entry
         })
         .collect();

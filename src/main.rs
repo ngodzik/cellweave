@@ -103,13 +103,20 @@ fn main() -> Result<()> {
 
     if args.iter().any(|a| a == "--attribute") {
         let spec = config.load_network(config_path)?;
-        eprintln!(
-            "attributing the outcome of {} MCS to the mutations of its leading clone, \
-             one run per mutation",
-            config.mcs
-        );
+        let scenario = config.scenario(config_path)?;
+        match scenario.lesion.as_ref().map(|l| l.at) {
+            Some(at) => eprintln!(
+                "attributing what happened to the lesion to the clones around it, \
+                 each mutation undone at step {at}, one run per mutation"
+            ),
+            None => eprintln!(
+                "attributing the outcome of {} MCS to the mutations of its leading clone, \
+                 one run per mutation",
+                config.mcs
+            ),
+        }
         let table = attribute::attribute(
-            &config.scenario(config_path)?,
+            &scenario,
             &spec,
             config.mcs,
             std::path::Path::new(&config.output_dir),
