@@ -161,6 +161,12 @@ pub struct Roles {
     /// it either way.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub angiogenic: Option<String>,
+    /// Node whose level shields the cell from immune cells: one that touches
+    /// it kills it with the chance it would otherwise, times one less this
+    /// level. Left out, nothing shields the cell; and without immune cells,
+    /// nothing reads it either way.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evasion: Option<String>,
 }
 
 /// How the growth node becomes a mechanical demand on the lattice.

@@ -1211,7 +1211,13 @@ impl Simulation<Running> {
             else {
                 continue;
             };
-            if self.rng.random::<f64>() < immunity.kill {
+            // A tumour cell whose network names an evasion node is shielded
+            // by its level.
+            let shield = self.networks[victim as usize - 1]
+                .as_ref()
+                .and_then(Network::evasion)
+                .map_or(0.0, |e| e.clamp(0.0, 1.0));
+            if self.rng.random::<f64>() < immunity.kill * (1.0 - shield) {
                 self.lattice.set_kind(CellId(victim), CellKind::Apoptotic);
                 self.lives.left(victim as usize - 1);
                 self.immune[k].kills_left -= 1;
@@ -1770,6 +1776,23 @@ impl<S: SimState> Simulation<S> {
     /// Tumour cells immune cells have killed so far.
     pub fn killed(&self) -> u64 {
         self.killed
+    }
+
+    /// The mean level of the evasion node over the living tumour cells, or
+    /// `None` when their networks name none or none is living.
+    pub fn evasion(&self) -> Option<f64> {
+        let levels: Vec<f64> = self
+            .networks
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| {
+                let id = cell_of(*i);
+                self.lattice.cell_kind(id) == Some(CellKind::Tumor)
+                    && matches!(self.fate(id), Some(Fate::Cycling | Fate::Quiescent))
+            })
+            .filter_map(|(_, slot)| slot.as_ref().and_then(Network::evasion))
+            .collect();
+        (!levels.is_empty()).then(|| levels.iter().sum::<f64>() / levels.len() as f64)
     }
 
     /// The chemokine living tumour cells secrete, as it was last settled,
@@ -2523,5 +2546,26 @@ mod tests {
             tumour,
             "immune cells are not counted among the living"
         );
+    }
+
+    #[test]
+    fn a_tumour_cell_fully_shielded_is_never_killed() {
+        let child: NetworkSpec =
+            toml::from_str(include_str!("../../../examples/networks/ras-erk-pdl1.toml")).unwrap();
+        let mut shielded = child.merge_onto(spec());
+        if let Some(node) = shielded.nodes.iter_mut().find(|n| n.name == "pdl1") {
+            node.initial = 1.0;
+            node.terms.clear();
+        }
+        let (mut sim, _) = Simulation::new(immune(0, 1.0, 1.0), &shielded)
+            .unwrap()
+            .start()
+            .unwrap();
+        for _ in 0..60 {
+            sim.step().unwrap();
+        }
+        assert!(sim.immune_cells() > 0, "immune cells came");
+        assert_eq!(sim.killed(), 0, "and killed nothing");
+        assert_eq!(sim.evasion(), Some(1.0));
     }
 }

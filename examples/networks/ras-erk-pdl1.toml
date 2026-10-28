@@ -1,0 +1,26 @@
+# The RAS/ERK network of ras-erk.toml, with a shield against immune cells
+# (chapter 23).
+#
+# PD-L1, programmed death-ligand 1, is a protein on the cell's surface that
+# holds back the killer T cells that touch it. Here it is switched on by the
+# growth factor every cell reads, and turned over: at its rates it settles
+# near 0.17, and an immune cell touching the cell kills it with the chance
+# it would otherwise, times 0.83. A mutation scaling either rate by up to
+# two moves it to between about 0.09 and 0.29. Nothing else changes.
+
+extends = "ras-erk.toml"
+
+[[nodes]]
+name = "pdl1"
+initial = 0.17
+terms = [
+  { kind = "activated_by", source = "egf", rate = 0.3 },
+  { kind = "decays", rate = 0.3 },
+]
+
+[roles]
+growth = "erk"
+survival = "bcl2"
+hypoxia_response = "hif1"
+angiogenic = "vegf"
+evasion = "pdl1"

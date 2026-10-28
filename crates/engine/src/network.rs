@@ -165,14 +165,15 @@ pub struct Network {
     /// Terms per node, same order.
     terms: Vec<Vec<Compiled>>,
     /// Index of the growth, survival and hypoxia nodes, and of the
-    /// differentiation, apoptosis and angiogenic nodes when the network has
-    /// them.
+    /// differentiation, apoptosis, angiogenic and evasion nodes when the
+    /// network has them.
     growth: usize,
     survival: usize,
     hypoxia: usize,
     differentiation: Option<usize>,
     apoptosis: Option<usize>,
     angiogenic: Option<usize>,
+    evasion: Option<usize>,
     /// How the growth node becomes mechanics.
     mechanics: MechanicsSpec,
     /// Volume this lineage divides against.
@@ -334,6 +335,11 @@ impl Network {
                 .angiogenic
                 .as_deref()
                 .map(|name| role(name, "angiogenic"))
+                .transpose()?,
+            evasion: roles
+                .evasion
+                .as_deref()
+                .map(|name| role(name, "evasion"))
                 .transpose()?,
             mechanics,
             reference_volume,
@@ -540,6 +546,12 @@ impl Network {
     /// none. Its level is what the cell secretes as a call for new vessels.
     pub fn angiogenic(&self) -> Option<f64> {
         self.angiogenic.map(|i| self.state.values[i].0)
+    }
+
+    /// The node the specification named as evasion, or `None` when it named
+    /// none. Its level is how much it shields the cell from immune cells.
+    pub fn evasion(&self) -> Option<f64> {
+        self.evasion.map(|i| self.state.values[i].0)
     }
 
     /// The chance per step this network would give of starting apoptosis,
@@ -770,6 +782,7 @@ mod tests {
                 differentiation: None,
                 apoptosis: None,
                 angiogenic: None,
+                evasion: None,
             }),
             mechanics: Some(MechanicsSpec {
                 growth_coefficient: 1.0,
@@ -881,6 +894,7 @@ mod tests {
             differentiation: None,
             apoptosis: None,
             angiogenic: None,
+            evasion: None,
         });
 
         let refused = Network::from_spec(&spec, 100);
