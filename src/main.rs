@@ -218,6 +218,22 @@ fn leading_clones<S: cellweave_engine::simulation::SimState>(
         sim.clones().len(),
         order.len()
     );
+    let mut carried: Vec<(String, f64)> = sim
+        .coverage()
+        .into_iter()
+        .filter(|(_, share)| *share > 0.0)
+        .collect();
+    carried.sort_by(|a, b| b.1.total_cmp(&a.1));
+    if !carried.is_empty() {
+        let shares: Vec<String> = carried
+            .iter()
+            .map(|(node, share)| format!("{node} {:.0}%", 100.0 * share))
+            .collect();
+        text.push_str(&format!(
+            "\n  the living carrying a change to: {}",
+            shares.join(", ")
+        ));
+    }
     let sheet = matches!(sim.scenario().seeding, Seeding::Sheet { .. });
     for &c in order.iter().take(5) {
         let mut chain = Vec::new();

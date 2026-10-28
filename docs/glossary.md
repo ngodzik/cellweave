@@ -20,7 +20,7 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Caspase** (8). The enzymes that carry out apoptosis, cutting the cell's own proteins apart. Here one node, switched on sharply by p53.
 
-**Cell competition** (7). Cells eliminating their neighbours by outdoing them. Here cells with higher ERK press their neighbours small, and the squeezed ones differentiate and leave.
+**Cell competition** (7, 11). Cells eliminating their neighbours by outdoing them. In chapter 7 cells with higher ERK press their neighbours small, and the squeezed ones differentiate and leave; chapter 11 shows the oesophagus's pattern needs cells that do not compete by size.
 
 **Cellular Potts model, CPM** (1). Cells as sets of pixels on a lattice, moving pixel by pixel to lower an energy.
 
@@ -40,9 +40,11 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Counterfactual** (9). The history that would have been: the same run with one event changed and everything else identical. The difference from the real run is that event's effect.
 
+**Coverage** (11). The share of the living cells whose lineage carries a change to a node, whatever the change does: what sequencing reports gene by gene.
+
 **Crowding** (7). How squeezed a cell is: how far below its reference size it sits, as a fraction of it. An input every network can read, like oxygen.
 
-**Determinism** (1, 9, 11). The same seed gives the same simulation, byte for byte. Checked on every push.
+**Determinism** (1, 9, 12). The same seed gives the same simulation, byte for byte. Checked on every push.
 
 **Differentiation** (7). A cell giving up dividing to become a specialised cell. In an epithelium, a basal cell that commits leaves the layer. Here, a chance per step set by the network's differentiation node.
 
@@ -56,7 +58,7 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **EGF** (2). Epidermal growth factor, the growth signal. A hardcoded input for every cell today.
 
-**Emergence** (6, 7, 11). Behaviour that follows from the model without any rule naming it. The necrotic core, the compact cell, the cord's thickness.
+**Emergence** (6, 7, 12). Behaviour that follows from the model without any rule naming it. The necrotic core, the compact cell, the cord's thickness.
 
 **Energy, Hamiltonian, H** (1). The number every configuration of the lattice has, which the Monte Carlo lowers.
 
@@ -88,6 +90,8 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Lethal stress** (8). An abstract agent that comes in where oxygen does, is taken up by the cells it reaches, and raises what the network says it raises. Stands for nothing in particular.
 
+**Loss of function** (11). A mutation that stops a gene's product from working, rather than turning it up or down. Here a lost term, through rewiring.
+
 **Lineage reference volume** (4). The size a lineage divides at, inherited unchanged. How a cell type keeps its size across generations.
 
 **Lineage tracing** (7). Marking cells with a heritable label and following what their descendants become. A sheet labels every cell as its own clone.
@@ -108,7 +112,7 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Neutral drift** (7). Clones winning and losing by chance alone, when no cell is better than another. The number of clones falls and the survivors grow.
 
-**NOTCH, NOTCH1** (7). A receptor that pushes a basal cell to differentiate. Its loss lets a clone keep more cells in the basal layer; mutated in much of the normal ageing oesophagus.
+**NOTCH, NOTCH1** (7, 11). A receptor that pushes a basal cell to differentiate. Its loss lets a clone keep more cells in the basal layer; mutated in 12 to 80% of the cells of a middle-aged or elderly oesophagus. Here NOTCH clones cover the layer only when cells do not press and a mutation can lose NOTCH's baseline.
 
 **Obstacle** (1, 3). A pixel no cell can take. A vessel is an obstacle held at full oxygen.
 
@@ -146,7 +150,7 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Selection** (6). Variants leaving more descendants because of what they do where they are. Nobody chooses the winner.
 
-**Snapshot** (4, 11). A file listing every living cell's state and the oxygen it reads, one per interval.
+**Snapshot** (4, 12). A file listing every living cell's state and the oxygen it reads, one per interval.
 
 **SOR** (3). Successive over-relaxation, the sweep that solves for a steady state in about L passes rather than L².
 
@@ -156,7 +160,7 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Stroma** (3). Ordinary tissue between and around tumour cells. Consumes too.
 
-**Target volume** (1, 4). The size a cell tries to be, set by its ERK.
+**Target volume** (1, 4, 11). The size a cell tries to be, set by its ERK, up to a ceiling when the network sets `max_target`.
 
 **Temperature, T** (1). How often a costly move is accepted anyway. The noise knob.
 

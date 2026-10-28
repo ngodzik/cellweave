@@ -1,4 +1,4 @@
-# 11. What the model does not say
+# 12. What the model does not say
 
 The placeholders, the missing units, and why emergence is the whole point.
 
@@ -32,6 +32,7 @@ What is a placeholder today, gathered from the chapters:
 | evolution | mutation rate 1 in 20; factor between 1/2 and 2; every term equally likely | selection acts within a few thousand steps on changes large enough to alter a fate |
 | lethal stress | intensity 1; uptake 0.0001; p53 and caspase rates; caspase half way at p53 of 0.4; fragmentation 8 pixels per step | continuous exposure empties the cord against its vessel and leaves a refuge, a periodic one lets it grow back |
 | epithelium | NOTCH near 0.01 per step, raised by crowding half way at 60% of reference size; shedding 6 pixels per step; cells 10 pixels across; mutation rate 1 in 100 | the layer turns over in a few hundred steps and holds its size on a 200 pixel grid |
+| competition | a ceiling on the size a cell asks for at 1.5 times its reference, what a normal cell asks for; three mutations in ten rewiring | a growth signal buys no size, and a NOTCH term can be lost outright |
 
 ## What is not there
 

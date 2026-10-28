@@ -1,0 +1,24 @@
+# The ageing epithelium of epithelium-mutating.toml, whose mutations can also
+# rewire the network.
+#
+# Three mutations in ten lose a term or gain a link instead of scaling a rate
+# (chapter 6). A loss is what a scaled rate cannot do: NOTCH losing its
+# baseline stops a cell leaving the layer with room around it, the way a loss
+# of NOTCH1 is understood to in the oesophagus. Cells still press on their
+# neighbours by trying to be larger, as in epithelium-mutating.toml. Compare
+# the two with --seeds 1-10 --versus (chapter 11).
+
+width = 200
+height = 200
+mcs = 6000
+temperature = 10.0
+snapshot_interval = 100
+output_dir = "output-epithelium-rewiring"
+oxygen_uptake = 0.0
+mutation_rate = 0.01
+rewiring = 0.3
+network = "networks/epithelium.toml"
+
+[seeding]
+kind = "sheet"
+side = 10

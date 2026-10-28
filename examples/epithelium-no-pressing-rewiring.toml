@@ -1,0 +1,21 @@
+# The ageing epithelium with neither of chapter 7's assumptions: no cell
+# presses harder than a normal one, and a mutation can lose a term outright.
+#
+# Of the four combinations chapter 11 runs, the only one in which NOTCH
+# changes come to hold more of the layer than growth changes in every seed, as
+# NOTCH1 mutations do in the human oesophagus.
+
+width = 200
+height = 200
+mcs = 6000
+temperature = 10.0
+snapshot_interval = 100
+output_dir = "output-epithelium-no-pressing-rewiring"
+oxygen_uptake = 0.0
+mutation_rate = 0.01
+rewiring = 0.3
+network = "networks/epithelium-no-pressing.toml"
+
+[seeding]
+kind = "sheet"
+side = 10

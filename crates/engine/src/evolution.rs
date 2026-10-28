@@ -102,6 +102,51 @@ impl<S: SimState> Simulation<S> {
         Some(responses)
     }
 
+    /// For each node of the network, in the order the network lists them, the
+    /// share of the living cells whose lineage carries a change to it: a
+    /// mutation made in the cell's clone or in any clone that clone arose in.
+    /// Empty when nothing lives.
+    ///
+    /// It is what a sequencing study of a normal tissue reports gene by gene:
+    /// the fraction of the cells carrying a mutation in it, whatever the
+    /// mutation does. A suppressed mutation was not made, and does not count.
+    pub fn coverage(&self) -> Vec<(String, f64)> {
+        let names = self.pristine().node_names();
+        // A clone arises in an older one, so walking the clones in order
+        // reaches every parent before its children.
+        let mut carries: Vec<Vec<bool>> = Vec::with_capacity(self.clones().len());
+        for clone in self.clones() {
+            let mut nodes = clone
+                .parent
+                .and_then(|p| carries.get(p.0 as usize).cloned())
+                .unwrap_or_else(|| vec![false; names.len()]);
+            if let Some(m) = clone.mutation.as_ref().filter(|_| !clone.suppressed)
+                && let Some(i) = names.iter().position(|n| *n == m.node)
+            {
+                nodes[i] = true;
+            }
+            carries.push(nodes);
+        }
+        let sizes = self.clone_sizes();
+        let living: usize = sizes.iter().sum();
+        if living == 0 {
+            return Vec::new();
+        }
+        names
+            .iter()
+            .enumerate()
+            .map(|(i, name)| {
+                let carrying: usize = sizes
+                    .iter()
+                    .zip(&carries)
+                    .filter(|(_, nodes)| nodes[i])
+                    .map(|(size, _)| size)
+                    .sum();
+                (name.clone(), carrying as f64 / living as f64)
+            })
+            .collect()
+    }
+
     /// Living cells in each clone, indexed by clone identifier. A clone whose
     /// cells are all dead or gone counts zero; it is extinct.
     pub fn clone_sizes(&self) -> Vec<usize> {

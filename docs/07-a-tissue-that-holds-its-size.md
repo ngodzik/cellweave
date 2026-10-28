@@ -61,7 +61,7 @@ The reason is mechanical. Higher ERK raises the size a cell tries to reach (chap
 
 One thing matches the oesophagus. The layer holds its size throughout, 288 to 310 cells at every point sampled, while one mutant clone after another takes it over: a tissue colonised by mutants that looks normal. Whether a clone here slows when it meets another mutant clone, as Colom and colleagues saw, has not been measured yet; it needs clone sizes followed over time, which the program does not report.
 
-One thing does not. In the real oesophagus the most successful clones carry NOTCH1 and TP53 mutations, not mutations of the growth pathway. So this version of the model makes a claim that the sequencing contradicts: if basal cells competed by pressing on each other, growth mutants would win. Either they do not compete that way, or a loss of NOTCH1 does far more than halve a baseline. Saying which is a hypothesis the model can now test, by changing one file.
+One thing does not. In the real oesophagus the most successful clones carry NOTCH1 and TP53 mutations, not mutations of the growth pathway. So this version of the model makes a claim that the sequencing contradicts: if basal cells competed by pressing on each other, growth mutants would win. Either they do not compete that way, or a loss of NOTCH1 does far more than halve a baseline. Saying which is a hypothesis the model can test, by changing one file; chapter 11 tests both.
 
 ### Watching it
 
@@ -95,4 +95,4 @@ One thing does not. In the real oesophagus the most successful clones carry NOTC
 
 ## Still a placeholder
 
-All of NOTCH's rates, the crowding curve, the shedding rate, and the size of the cells; the mutation rate, a hundred times below the evolving cord's and still far above a real one. The layer is one layer, seen from above, with nothing above it and no wound in it; the papers this chapter cites measured clone sizes over a year of a mouse's life and in decades of a human's, and comparing the clone size distributions they publish to the model's is what would turn this chapter's qualitative agreement into a quantitative one. That needs the units of chapter 8.
+All of NOTCH's rates, the crowding curve, the shedding rate, and the size of the cells; the mutation rate, a hundred times below the evolving cord's and still far above a real one. The layer is one layer, seen from above, with nothing above it and no wound in it; the papers this chapter cites measured clone sizes over a year of a mouse's life and in decades of a human's, and comparing the clone size distributions they publish to the model's is what would turn this chapter's qualitative agreement into a quantitative one. That needs units (chapter 12).

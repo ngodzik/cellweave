@@ -1,0 +1,21 @@
+# The ageing epithelium of epithelium-mutating.toml, in which no cell presses
+# harder than a normal one.
+#
+# networks/epithelium-no-pressing.toml caps the size a cell asks for at what a
+# normal cell asks for, so a clone that turns the growth pathway up no longer
+# squeezes its neighbours out. Mutations only scale a rate. Compare with
+# epithelium-no-pressing-rewiring.toml (chapter 11).
+
+width = 200
+height = 200
+mcs = 6000
+temperature = 10.0
+snapshot_interval = 100
+output_dir = "output-epithelium-no-pressing"
+oxygen_uptake = 0.0
+mutation_rate = 0.01
+network = "networks/epithelium-no-pressing.toml"
+
+[seeding]
+kind = "sheet"
+side = 10
