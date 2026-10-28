@@ -34,9 +34,11 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Cord, tumour cord** (5). Tumour tissue living around a vessel out to the depth oxygen reaches, dead beyond. A steady state with turnover.
 
+**Counterfactual** (9). The history that would have been: the same run with one event changed and everything else identical. The difference from the real run is that event's effect.
+
 **Crowding** (7). How squeezed a cell is: how far below its reference size it sits, as a fraction of it. An input every network can read, like oxygen.
 
-**Determinism** (1, 9). The same seed gives the same simulation, byte for byte. Checked on every push.
+**Determinism** (1, 9, 10). The same seed gives the same simulation, byte for byte. Checked on every push.
 
 **Differentiation** (7). A cell giving up dividing to become a specialised cell. In an epithelium, a basal cell that commits leaves the layer. Here, a chance per step set by the network's differentiation node.
 
@@ -46,9 +48,11 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Drift** (6). A variant spreading or vanishing by chance rather than because of what it does.
 
+**Driver** (9). A mutation that gave the cells carrying it an advantage the tumour grew from. Here, one whose suppression changes the history.
+
 **EGF** (2). Epidermal growth factor, the growth signal. A hardcoded input for every cell today.
 
-**Emergence** (6, 7, 9). Behaviour that follows from the model without any rule naming it. The necrotic core, the compact cell, the cord's thickness.
+**Emergence** (6, 7, 10). Behaviour that follows from the model without any rule naming it. The necrotic core, the compact cell, the cord's thickness.
 
 **Energy, Hamiltonian, H** (1). The number every configuration of the lattice has, which the Monte Carlo lowers.
 
@@ -108,6 +112,8 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **p53** (8). The protein that rises when a cell is damaged and decides between repair and apoptosis. Here switched on by the stress.
 
+**Passenger** (9). A mutation carried along by a lineage that won for other reasons. Here, one whose suppression leaves the history identical to the last bit.
+
 **PDE** (3). Partial differential equation: rates of change in time and space. Oxygen is one.
 
 **Pixel** (1). One square of the lattice, about a micrometre, carrying one identity and one oxygen value.
@@ -132,7 +138,7 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Selection** (6). Variants leaving more descendants because of what they do where they are. Nobody chooses the winner.
 
-**Snapshot** (4, 9). A file listing every living cell's state and the oxygen it reads, one per interval.
+**Snapshot** (4, 10). A file listing every living cell's state and the oxygen it reads, one per interval.
 
 **SOR** (3). Successive over-relaxation, the sweep that solves for a steady state in about L passes rather than L².
 

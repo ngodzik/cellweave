@@ -22,7 +22,8 @@ Chapters build on each other and are meant to be read in order the first time.
 | 6 | [A population that evolves](06-a-population-that-evolves.md) | What happens when a daughter is not quite a copy, and nobody says which change is good? |
 | 7 | [A tissue that holds its size](07-a-tissue-that-holds-its-size.md) | How does normal tissue stay the same size while renewing itself, and what happens to it as mutations pile up? |
 | 8 | [A lethal stress](08-a-lethal-stress.md) | How does a cell die on purpose, and what happens to a tissue when something from outside makes it? |
-| 9 | [What the model does not say](09-what-the-model-does-not-say.md) | The placeholders, the missing units, and why emergence is the whole point. |
+| 9 | [Rewinding a history](09-rewinding-a-history.md) | Which events made a tumour, and which only came along? |
+| 10 | [What the model does not say](10-what-the-model-does-not-say.md) | The placeholders, the missing units, and why emergence is the whole point. |
 | | [Glossary](glossary.md) | Every word, in one place. |
 
 ## How the chapters map onto the code
@@ -46,6 +47,8 @@ flowchart LR
     c7 --> epi["examples/networks/epithelium.toml"]
     c8["8. apoptosis,<br/>lethal stress"] --> sim
     c8 --> str["examples/networks/stress-response.toml"]
+    c9["9. counterfactuals"] --> att["src/attribute.rs"]
+    c9 --> evo
 ```
 
 The README at the root of the repository says what works and what does not today. This course says why.

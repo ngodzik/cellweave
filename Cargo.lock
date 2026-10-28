@@ -86,6 +86,7 @@ dependencies = [
  "cellweave-core",
  "cellweave-engine",
  "cellweave-io",
+ "rayon",
  "tracing",
  "tracing-subscriber",
 ]

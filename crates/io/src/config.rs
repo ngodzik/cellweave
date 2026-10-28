@@ -1,6 +1,6 @@
 //! TOML simulation configuration.
 
-use cellweave_core::{CellweaveError, Exposure, NetworkSpec, OxygenSource, Seeding};
+use cellweave_core::{CellweaveError, CloneId, Exposure, NetworkSpec, OxygenSource, Seeding};
 use cellweave_engine::simulation::{DEFAULT_SEED, Scenario};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -54,6 +54,11 @@ pub struct SimConfig {
     /// Left out, there is none, and the run is the one it always was.
     #[serde(default)]
     pub exposure: Option<Exposure>,
+    /// Clones whose founding mutation is drawn but not made, for a run that
+    /// asks what would have happened without them. Usually set from the
+    /// command line rather than written in a file.
+    #[serde(default)]
+    pub suppress: Vec<u32>,
 }
 
 fn default_seed() -> u64 {
@@ -96,6 +101,7 @@ impl SimConfig {
             oxygen_uptake: self.oxygen_uptake,
             seed: self.seed,
             mutation_rate: self.mutation_rate,
+            suppress: self.suppress.iter().copied().map(CloneId).collect(),
             seeding: self.seeding,
             exposure: self.exposure,
         }
@@ -186,6 +192,7 @@ impl Default for SimConfig {
             seed: DEFAULT_SEED,
             seeding: Seeding::Single,
             exposure: None,
+            suppress: Vec::new(),
         }
     }
 }

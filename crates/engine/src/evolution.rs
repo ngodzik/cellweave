@@ -24,6 +24,10 @@ pub struct CloneRecord {
     pub founded_at: u64,
     /// The change that founded it, or `None` for the founding clone.
     pub mutation: Option<Mutation>,
+    /// The mutation was drawn but, in this run, not made: the clone exists,
+    /// with its number, its parent and its cells, and its network is its
+    /// parent's. See [`crate::simulation::Scenario::suppress`].
+    pub suppressed: bool,
 }
 
 impl CloneRecord {
@@ -34,6 +38,7 @@ impl CloneRecord {
             parent: None,
             founded_at: 0,
             mutation: None,
+            suppressed: false,
         }
     }
 }

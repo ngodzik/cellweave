@@ -27,6 +27,7 @@ fn sheet(size: u32) -> Scenario {
         oxygen_uptake: 0.0,
         seed: DEFAULT_SEED,
         mutation_rate: 0.0,
+        suppress: Vec::new(),
         seeding: Seeding::Sheet { side: 10 },
         exposure: None,
     }

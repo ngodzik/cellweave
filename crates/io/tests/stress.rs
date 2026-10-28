@@ -27,6 +27,7 @@ fn exposed(exposure: Option<Exposure>) -> Scenario {
         oxygen_uptake: 0.0003,
         seed: DEFAULT_SEED,
         mutation_rate: 0.0,
+        suppress: Vec::new(),
         seeding: Default::default(),
         exposure,
     }
