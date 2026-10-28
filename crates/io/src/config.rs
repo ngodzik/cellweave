@@ -1,7 +1,7 @@
 //! TOML simulation configuration.
 
 use cellweave_core::{CellweaveError, CloneId, Exposure, NetworkSpec, OxygenSource, Seeding};
-use cellweave_engine::simulation::{DEFAULT_SEED, Scenario};
+use cellweave_engine::simulation::{DEFAULT_SEED, Lesion, Scenario};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -71,6 +71,24 @@ pub struct SimConfig {
     /// program because each geometry runs its cells at its own pace.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hours_per_step: Option<f64>,
+    /// An early tumour arising in a sheet at one step. Left out, there is
+    /// none, and the run is the one it always was.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lesion: Option<LesionConfig>,
+}
+
+/// A lesion as a configuration states it: its network by file name, where
+/// and when.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LesionConfig {
+    /// File holding the network its cells carry, relative to the
+    /// configuration file, like the configuration's own network.
+    pub network: String,
+    /// The step it appears at.
+    pub at: u64,
+    /// Every living cell whose centre lies within this many pixels of the
+    /// centre of the box joins it.
+    pub radius: f64,
 }
 
 fn default_seed() -> u64 {
@@ -103,9 +121,24 @@ impl SimConfig {
         Self::from_toml(&s)
     }
 
-    /// The simulation this configuration describes, under its seed.
-    pub fn scenario(&self) -> Scenario {
-        Scenario {
+    /// The simulation this configuration describes, under its seed, with any
+    /// file it names, the lesion's network, read next to the configuration
+    /// at `config_path`.
+    ///
+    /// # Errors
+    ///
+    /// [`CellweaveError::Config`] when the lesion's network cannot be read or
+    /// is not a network.
+    pub fn scenario(&self, config_path: Option<&str>) -> Result<Scenario, CellweaveError> {
+        let lesion = match &self.lesion {
+            None => None,
+            Some(l) => Some(Lesion {
+                spec: load_network_chain(&resolve(&l.network, config_path), &mut Vec::new())?,
+                at: l.at,
+                radius: l.radius,
+            }),
+        };
+        Ok(Scenario {
             width: self.width,
             height: self.height,
             temperature: self.temperature,
@@ -117,7 +150,8 @@ impl SimConfig {
             rewiring: self.rewiring,
             seeding: self.seeding,
             exposure: self.exposure,
-        }
+            lesion,
+        })
     }
 
     /// How long `steps` lattice steps stand for, in days, at the stated
@@ -150,15 +184,17 @@ impl SimConfig {
     pub fn load_network(&self, config_path: Option<&str>) -> Result<NetworkSpec, CellweaveError> {
         match &self.network {
             None => parse_network(BUILT_IN_NETWORK, "the built-in network"),
-            Some(name) => {
-                let dir = config_path.and_then(|c| Path::new(c).parent());
-                let path = match dir {
-                    Some(dir) => dir.join(name),
-                    None => Path::new(name).to_path_buf(),
-                };
-                load_network_chain(&path, &mut Vec::new())
-            }
+            Some(name) => load_network_chain(&resolve(name, config_path), &mut Vec::new()),
         }
+    }
+}
+
+/// A file a configuration names, next to the configuration when its path is
+/// known.
+fn resolve(name: &str, config_path: Option<&str>) -> std::path::PathBuf {
+    match config_path.and_then(|c| Path::new(c).parent()) {
+        Some(dir) => dir.join(name),
+        None => Path::new(name).to_path_buf(),
     }
 }
 
@@ -225,6 +261,7 @@ impl Default for SimConfig {
             suppress: Vec::new(),
             rewiring: 0.0,
             hours_per_step: None,
+            lesion: None,
         }
     }
 }
@@ -265,7 +302,7 @@ mod tests {
         .unwrap();
         assert_eq!(cfg.oxygen_source, OxygenSource::Bath);
         assert_eq!(
-            cfg.scenario().seed,
+            cfg.scenario(None).unwrap().seed,
             DEFAULT_SEED,
             "a config that names no seed is the run it always was"
         );
@@ -277,7 +314,7 @@ mod tests {
             "width = 50\nheight = 50\nmcs = 10\ntemperature = 10.0\nsnapshot_interval = 5\noutput_dir = \"o\"\nseed = 7\n",
         )
         .unwrap();
-        assert_eq!(cfg.scenario().seed, 7);
+        assert_eq!(cfg.scenario(None).unwrap().seed, 7);
     }
 
     #[test]

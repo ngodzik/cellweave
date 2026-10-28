@@ -105,6 +105,10 @@ fn census(ui: &mut egui::Ui, runner: &Runner, sheet: bool, exposed: bool) {
             );
         }
         row("born · gone", format!("{} · {}", c.born, c.gone));
+        // Once a lesion has appeared, how much of it is left, down to none.
+        if runner.history.iter().any(|m| m.lesion > 0) {
+            row("lesion", c.lesion.to_string());
+        }
         if sheet {
             row("clones", c.clones.to_string());
         } else {
@@ -192,6 +196,9 @@ fn colouring(ui: &mut egui::Ui, view: &mut View, experiment: &Experiment) {
                         "founder",
                     );
                 }
+                if experiment.scenario.lesion.is_some() {
+                    swatch(ui, paint::LESION, "lesion");
+                }
                 ui.label("· a mutant per hue · dim: arrested");
             });
         }
@@ -253,6 +260,11 @@ fn plot(ui: &mut egui::Ui, runner: &Runner, sheet: bool) {
             );
         }
         plot.line(Line::new("living", series(|m| m.living() as f64)).color(colour(paint::CYCLING)));
+        if runner.history.iter().any(|m| m.lesion > 0) {
+            plot.line(
+                Line::new("lesion", series(|m| m.lesion as f64)).color(colour(paint::LESION)),
+            );
+        }
         plot.line(
             Line::new("necrotic", series(|m| m.necrotic as f64))
                 .color(egui::Color32::from_gray(150)),

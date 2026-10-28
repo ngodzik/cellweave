@@ -40,6 +40,10 @@ pub const DIFFERENTIATING: LinearRgba = LinearRgba::rgb(0.55, 0.45, 0.28);
 pub const APOPTOTIC: LinearRgba = LinearRgba::rgb(0.50, 0.14, 0.62);
 /// The vessel wall, held at full oxygen. The brightest thing in the picture,
 /// because everything else lives off it.
+/// A lesion's cells in the clone view: a pale gold no clone's hue reaches,
+/// so an early tumour stands out from the patchwork of clones around it.
+pub const LESION: LinearRgba = LinearRgba::rgb(1.0, 0.82, 0.45);
+
 pub const VESSEL: LinearRgba = LinearRgba::rgb(1.0, 0.08, 0.04);
 /// The medium with no oxygen in it, and with all of it.
 const MEDIUM_EMPTY: LinearRgba = LinearRgba::rgb(0.001, 0.002, 0.008);
@@ -219,9 +223,12 @@ pub fn cell_colour(sim: &Simulation<Running>, id: CellId, view: View) -> LinearR
         }
         (View::Clone, fate) => {
             let seeding = sim.scenario().seeding;
-            let colour = sim
-                .clone_of(id)
-                .map_or(NECROTIC, |c| clone_colour(c, seeding));
+            let colour = if sim.in_lesion(id) {
+                LESION
+            } else {
+                sim.clone_of(id)
+                    .map_or(NECROTIC, |c| clone_colour(c, seeding))
+            };
             // A clone keeps its hue whatever its cells are doing; an arrested
             // or departing cell is a dimmer shade of it, so a clone that
             // escapes arrest is also a clone that lights up.

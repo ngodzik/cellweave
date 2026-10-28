@@ -77,7 +77,7 @@ fn main() -> Result<()> {
     let spec = config.load_network(config_path)?;
     let experiment = Experiment {
         label: config_path.unwrap_or("the default spheroid").to_owned(),
-        scenario: config.scenario(),
+        scenario: config.scenario(config_path)?,
         spec,
     };
 

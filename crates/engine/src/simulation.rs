@@ -168,6 +168,27 @@ pub struct Scenario {
     /// exact copy, and draws nothing from the generator for it, so a run
     /// without mutation is the same run it was before mutation existed.
     pub mutation_rate: f64,
+    /// An early tumour that arises in a sheet at one step, if any. Left out,
+    /// the run is the one it always was.
+    pub lesion: Option<Lesion>,
+}
+
+/// A patch of a sheet whose cells, at one step, start carrying another
+/// network: an early tumour arising inside normal tissue.
+///
+/// What makes it a tumour here is only what its network does, its cells
+/// staying in the layer, dividing or leaving, as every other cell does.
+/// That is all a lesion needs to be for the question of whether its
+/// neighbours outcompete it, which is the question it is here to ask.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Lesion {
+    /// The network its cells carry from the step it appears.
+    pub spec: NetworkSpec,
+    /// The step it appears at, before anything else happens in that step.
+    pub at: u64,
+    /// Every living cell whose centre lies within this many pixels of the
+    /// centre of the box joins it.
+    pub radius: f64,
 }
 
 /// Lifecycle stage of a [`Simulation`]. Sealed: the stages are the ones below.
@@ -248,6 +269,9 @@ pub struct Simulation<S: SimState> {
     pristine: Network,
     /// What each cell a division made did next, and its sister.
     lives: Lives,
+    /// The network a lesion's cells start carrying, compiled once, when the
+    /// scenario has a lesion.
+    lesion_network: Option<Network>,
     oxygen: ScalarField,
     /// The lethal stress, when the scenario exposes the tissue to one.
     stress: Option<ScalarField>,
@@ -370,6 +394,24 @@ impl Simulation<Configured> {
             })?,
         };
         let seed_network = Network::from_spec(spec, newborn_volume)?;
+        let lesion_network = match &scenario.lesion {
+            None => None,
+            Some(lesion) => {
+                if !matches!(scenario.seeding, Seeding::Sheet { .. }) {
+                    return Err(CellweaveError::Config(
+                        "a lesion arises in a sheet of normal tissue; this scenario has none"
+                            .into(),
+                    ));
+                }
+                if !(lesion.radius.is_finite() && lesion.radius > 0.0) {
+                    return Err(CellweaveError::Config(format!(
+                        "a lesion of radius {} holds no cell",
+                        lesion.radius
+                    )));
+                }
+                Some(Network::from_spec(&lesion.spec, newborn_volume)?)
+            }
+        };
 
         // A sheet labels every cell as the founder of its own clone, the way a
         // lineage tracing experiment marks every cell at the start and follows
@@ -447,6 +489,7 @@ impl Simulation<Configured> {
             clones,
             pristine: seed_network,
             lives: Lives::new(cells),
+            lesion_network,
             oxygen,
             stress,
             stress_level: 0.0,
@@ -488,6 +531,7 @@ impl Simulation<Configured> {
             clones: self.clones,
             pristine: self.pristine,
             lives: self.lives,
+            lesion_network: self.lesion_network,
             oxygen: self.oxygen,
             stress: self.stress,
             stress_level: self.stress_level,
@@ -512,6 +556,9 @@ impl Simulation<Running> {
     pub fn step(&mut self) -> Result<StepReport, CellweaveError> {
         let mcs = self.next_mcs;
         self.next_mcs += 1;
+        if self.scenario.lesion.as_ref().is_some_and(|l| l.at == mcs) {
+            self.place_lesion(mcs);
+        }
 
         // 1. Downward coupling: the field settles against the current layout of
         //    the cells, and each cell reads the oxygen where it actually sits.
@@ -728,6 +775,7 @@ impl Simulation<Running> {
                             founded_at: mcs,
                             mutation: Some(mutation),
                             suppressed,
+                            lesion: false,
                         });
                         clone = founded;
                     }
@@ -753,6 +801,57 @@ impl Simulation<Running> {
             "one clone per cell: the network list and the lineage have diverged"
         );
         born
+    }
+
+    /// Turn every living cell whose centre lies within the lesion's radius of
+    /// the centre of the box into a lesion cell: the lesion's network, fresh,
+    /// and one new clone for all of them. Draws nothing.
+    fn place_lesion(&mut self, mcs: u64) {
+        let (Some(lesion), Some(network)) = (&self.scenario.lesion, &self.lesion_network) else {
+            return;
+        };
+        let (w, h) = self.lattice.dims();
+        let (cx, cy) = (f64::from(w) / 2.0, f64::from(h) / 2.0);
+        // Centres of mass, one pass over the lattice, indexed by cell.
+        let mut sums = vec![(0.0_f64, 0.0_f64, 0_u32); self.lattice.cell_count() + 1];
+        for y in 0..h {
+            for x in 0..w {
+                let id = self.lattice.occupant(x, y);
+                if let Some(s) = sums.get_mut(id as usize) {
+                    s.0 += f64::from(x) + 0.5;
+                    s.1 += f64::from(y) + 0.5;
+                    s.2 += 1;
+                }
+            }
+        }
+        let joining: Vec<usize> = (0..self.networks.len())
+            .filter(|&i| {
+                let id = cell_of(i);
+                let Some(&(sx, sy, n)) = sums.get(id.0 as usize) else {
+                    return false;
+                };
+                let alive = matches!(self.fate(id), Some(Fate::Cycling | Fate::Quiescent));
+                alive
+                    && n > 0
+                    && (sx / f64::from(n) - cx).hypot(sy / f64::from(n) - cy) <= lesion.radius
+            })
+            .collect();
+        if joining.is_empty() {
+            return;
+        }
+        let founded = CloneId(self.clones.len() as u32);
+        self.clones.push(CloneRecord {
+            id: founded,
+            parent: None,
+            founded_at: mcs,
+            mutation: None,
+            suppressed: false,
+            lesion: true,
+        });
+        for i in joining {
+            self.networks[i] = Some(network.clone());
+            self.lineage[i] = founded;
+        }
     }
 
     /// Every cell still holding pixels, with the oxygen it sits in, labelled
@@ -1013,6 +1112,7 @@ mod tests {
             rewiring: 0.0,
             seeding: Seeding::Single,
             exposure: None,
+            lesion: None,
         }
     }
 

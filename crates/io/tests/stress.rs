@@ -33,6 +33,7 @@ fn exposed(exposure: Option<Exposure>) -> Scenario {
         rewiring: 0.0,
         seeding: Default::default(),
         exposure,
+        lesion: None,
     }
 }
 
