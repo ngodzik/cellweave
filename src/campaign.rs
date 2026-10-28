@@ -75,6 +75,8 @@ struct Outcome {
     /// How far living tissue reaches from its nearest vessel at the end, as
     /// [`Simulation::depth_from_vessels`] reads it.
     depth: Option<f64>,
+    /// Cells a growing vessel took every pixel of, over the whole run.
+    crushed: u64,
 }
 
 /// Mutations shown for the leading clone, the latest ones.
@@ -173,6 +175,7 @@ fn run(arm: &Arm, index: usize, seed: u64) -> Result<Outcome> {
         necrotic: m.necrotic,
         vessel: (m.vessel > 0).then_some((m.vessel, m.perfused, sim.sprouted(), m.regressed)),
         depth: sim.depth_from_vessels(DEPTH_SHARE),
+        crushed: sim.crushed(),
     })
 }
 
@@ -191,12 +194,12 @@ pub fn campaign(arms: &[Arm], seeds: RangeInclusive<u64>, dir: &Path) -> Result<
     outcomes.sort_by_key(|o| (o.seed, o.arm));
 
     let mut csv = String::from(
-        "seed,arm,end_mcs,reached_edge,living,cycling,quiescent,clones,nadir,resistant,response,leading,lesion,lesion_lost_at,necrotic,vessel,perfused,sprouted,regressed,depth,coverage\n",
+        "seed,arm,end_mcs,reached_edge,living,cycling,quiescent,clones,nadir,resistant,response,leading,lesion,lesion_lost_at,necrotic,vessel,perfused,sprouted,regressed,depth,crushed,coverage\n",
     );
     for o in &outcomes {
         let _ = writeln!(
             csv,
-            "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
+            "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
             o.seed,
             arms[o.arm].name,
             o.end_mcs,
@@ -221,6 +224,7 @@ pub fn campaign(arms: &[Arm], seeds: RangeInclusive<u64>, dir: &Path) -> Result<
             o.vessel
                 .map_or_else(String::new, |(_, _, _, r)| r.to_string()),
             o.depth.map_or_else(String::new, |d| format!("{d:.1}")),
+            o.crushed,
             o.coverage
                 .iter()
                 .filter(|(_, share)| *share > 0.0)
@@ -286,11 +290,18 @@ pub fn campaign(arms: &[Arm], seeds: RangeInclusive<u64>, dir: &Path) -> Result<
             } else {
                 String::new()
             };
+            // Only where vessels grow, the only place cells can be crushed.
+            let crushed = if arm.scenario.angiogenesis.is_some() {
+                let counts: Vec<f64> = mine.iter().map(|o| o.crushed as f64).collect();
+                format!(", crushed {}", spread(&counts))
+            } else {
+                String::new()
+            };
             let necrotic: Vec<f64> = mine.iter().map(|o| o.necrotic as f64).collect();
             let depth: Vec<f64> = mine.iter().filter_map(|o| o.depth).collect();
             let _ = writeln!(
                 text,
-                "    necrotic {}, vessel pixels {}, carrying blood {}, sprouts {}{regressed}, living tissue within {} px of a vessel",
+                "    necrotic {}, vessel pixels {}, carrying blood {}, sprouts {}{regressed}, living tissue within {} px of a vessel{crushed}",
                 spread(&necrotic),
                 spread(&vessel),
                 spread(&perfused),
@@ -387,6 +398,16 @@ pub fn campaign(arms: &[Arm], seeds: RangeInclusive<u64>, dir: &Path) -> Result<
                 text,
                 "    living tissue reaching further from a vessel: {}",
                 tally(&pairs, |o| o.depth)
+            );
+            let _ = writeln!(
+                text,
+                "    more vessel at the end: {}",
+                tally(&pairs, |o| o.vessel.map(|(v, _, _, _)| v as f64))
+            );
+            let _ = writeln!(
+                text,
+                "    more cells crushed: {}",
+                tally(&pairs, |o| Some(o.crushed as f64))
             );
         }
     }

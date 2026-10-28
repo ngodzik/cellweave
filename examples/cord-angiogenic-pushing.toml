@@ -1,0 +1,26 @@
+# cord-angiogenic.toml, with the cells in a growing vessel's way pushed
+# aside rather than crushed (chapter 17).
+#
+# Each pixel a new disc of vessel covers is shoved outward, with every cell
+# pixel beyond it, into the first free pixel, so no cell loses any of its
+# size. Where another vessel or the edge of the box comes first, the pixel
+# is taken as before. Everything else is cord-angiogenic.toml.
+
+width = 300
+height = 300
+mcs = 1500
+temperature = 10.0
+snapshot_interval = 100
+output_dir = "output-cord-angiogenic-pushing"
+oxygen_uptake = 0.00003
+network = "networks/ras-erk.toml"
+
+[oxygen_source]
+kind = "vessel"
+radius = 6
+
+[angiogenesis]
+threshold = 0.5
+speed = 1.0
+reach = 30.0
+in_the_way = "pushed"

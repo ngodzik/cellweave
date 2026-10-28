@@ -22,7 +22,7 @@
 //! with vessels that may grow is the run without them, to the last bit, until
 //! the first sprout lays its first pixel.
 
-use cellweave_core::{Angiogenesis, DiffusionField, Perfusion, Pos2};
+use cellweave_core::{Angiogenesis, DiffusionField, InTheWay, Perfusion, Pos2};
 
 use crate::cpm::{CpmLattice, OBSTACLE};
 use crate::pde::ScalarField;
@@ -130,8 +130,15 @@ impl Tree {
     }
 
     /// Lay a disc of vessel for `sprout` at `centre`, and remember which
-    /// pixels it made vessel.
-    fn lay(&mut self, lattice: &mut CpmLattice, centre: (u32, u32), sprout: usize) {
+    /// pixels it made vessel. With a heading, the way the tip is moving, the
+    /// cells in the disc are pushed aside; without one, crushed.
+    fn lay(
+        &mut self,
+        lattice: &mut CpmLattice,
+        centre: (u32, u32),
+        sprout: usize,
+        push: Option<(f64, f64)>,
+    ) {
         let (w, h) = lattice.dims();
         let r = VESSEL_RADIUS;
         let r2 = i64::from(r * r);
@@ -147,13 +154,16 @@ impl Tree {
                 dx * dx + dy * dy <= r2 && lattice.occupant(x, y) != OBSTACLE
             })
             .collect();
-        lattice.add_obstacle_disc(
-            Pos2 {
-                x: centre.0,
-                y: centre.1,
-            },
-            r,
-        );
+        let at = Pos2 {
+            x: centre.0,
+            y: centre.1,
+        };
+        match push {
+            Some(heading) => {
+                lattice.push_obstacle_disc(at, r, heading);
+            }
+            None => lattice.add_obstacle_disc(at, r),
+        }
         for pixel in fresh {
             let i = self.index(pixel);
             self.owner[i] = Some(sprout);
@@ -373,7 +383,14 @@ fn advance(
     } else {
         None
     };
-    tree.lay(lattice, centre, tip.sprout);
+    let push = (angiogenesis.in_the_way == InTheWay::Pushed).then(|| {
+        let from = tip.trail.last().copied().unwrap_or(tip.origin);
+        (
+            f64::from(centre.0) - f64::from(from.0),
+            f64::from(centre.1) - f64::from(from.1),
+        )
+    });
+    tree.lay(lattice, centre, tip.sprout, push);
     *laid = true;
     if let Some(pixel) = met {
         // A loop closes through both sprouts and whatever each grew from.
@@ -466,6 +483,7 @@ mod tests {
             reach: 20.0,
             perfusion: Perfusion::AtOnce,
             regress_after: None,
+            in_the_way: InTheWay::Crushed,
         };
         let mut vessels = Vessels::default();
         for mcs in 0..40 {
@@ -496,6 +514,7 @@ mod tests {
             reach: 20.0,
             perfusion: Perfusion::AtOnce,
             regress_after: None,
+            in_the_way: InTheWay::Crushed,
         };
         let mut vessels = Vessels::default();
         for mcs in 0..40 {
@@ -515,6 +534,7 @@ mod tests {
             reach: 20.0,
             perfusion: Perfusion::OnJoining,
             regress_after: None,
+            in_the_way: InTheWay::Crushed,
         };
         let mut tree = Tree {
             sprouts: vec![Sprout::new(None, false, (24, 20), 0)],
@@ -553,6 +573,7 @@ mod tests {
                 reach: 20.0,
                 perfusion,
                 regress_after: None,
+                in_the_way: InTheWay::Crushed,
             };
             let mut vessels = Vessels::default();
             for mcs in 0..40 {
@@ -583,6 +604,7 @@ mod tests {
             reach: 20.0,
             perfusion: Perfusion::OnJoining,
             regress_after: Some(20),
+            in_the_way: InTheWay::Crushed,
         };
         let mut vessels = Vessels::default();
         for mcs in 0..20 {
@@ -628,7 +650,7 @@ mod tests {
         ];
         for (sprout, centres) in discs {
             for &centre in centres {
-                tree.lay(&mut lattice, centre, sprout);
+                tree.lay(&mut lattice, centre, sprout, None);
             }
         }
         (
@@ -673,5 +695,42 @@ mod tests {
             "the vessel the scenario laid never regresses"
         );
         assert!(vessels.carries_blood(27, 22));
+    }
+
+    /// A small cell sits in the path of the sprout: crushed, it is left with
+    /// nothing; pushed, it keeps every pixel it had.
+    #[test]
+    fn a_cell_in_the_way_is_crushed_or_pushed_aside() {
+        for (in_the_way, kept) in [(InTheWay::Crushed, false), (InTheWay::Pushed, true)] {
+            let (mut lattice, field) = calling_from_the_right();
+            let cell = lattice.add_cell(cellweave_core::CellKind::Tumor, Pos2 { x: 30, y: 20 }, 1);
+            let size = lattice.volume(cell).unwrap().0;
+            let call = Angiogenesis {
+                threshold: field.concentration_at(25, 20) * 0.9,
+                speed: 0.5,
+                reach: 20.0,
+                perfusion: Perfusion::AtOnce,
+                regress_after: None,
+                in_the_way,
+            };
+            let mut vessels = Vessels::default();
+            for mcs in 0..40 {
+                vessels.grow(&mut lattice, &field, &call, mcs);
+            }
+            assert_eq!(
+                lattice.occupant(32, 20),
+                OBSTACLE,
+                "the sprout went through"
+            );
+            let left = lattice.volume(cell).unwrap().0;
+            assert_eq!(
+                left == size,
+                kept,
+                "{in_the_way:?}: {left} of {size} pixels"
+            );
+            if !kept {
+                assert_eq!(left, 0, "crushed, it has nothing left");
+            }
+        }
     }
 }

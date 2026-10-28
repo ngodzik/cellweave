@@ -353,10 +353,11 @@ fn vessels<S: cellweave_engine::simulation::SimState>(sim: &Simulation<S>) -> Op
         String::new()
     };
     Some(format!(
-        "vessels: {} sprouts started, {} still growing{regressed}, {} pixels of vessel{depth}",
+        "vessels: {} sprouts started, {} still growing{regressed}, {} pixels of vessel{depth}; {} cells crushed",
         sim.sprouted(),
         m.sprouts,
-        m.vessel
+        m.vessel,
+        sim.crushed()
     ))
 }
 

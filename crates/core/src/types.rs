@@ -116,6 +116,24 @@ pub struct Angiogenesis {
     /// Left out, never: a blind end stays for good.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub regress_after: Option<u64>,
+    /// What becomes of the cells in the way of a growing vessel. Left out,
+    /// they are crushed.
+    #[serde(default)]
+    pub in_the_way: InTheWay,
+}
+
+/// What becomes of the cells in the way of a growing vessel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InTheWay {
+    /// The vessel takes their pixels, and a cell left with none dies.
+    #[default]
+    Crushed,
+    /// The vessel pushes them aside, and every cell keeps its size: what
+    /// lies in its way is shoved outward, cell after cell, into the first
+    /// free pixel beyond. Where nothing is free before another vessel or the
+    /// edge of the box, the pixel is taken as when crushed.
+    Pushed,
 }
 
 /// When a new vessel starts carrying blood, and with it oxygen.
