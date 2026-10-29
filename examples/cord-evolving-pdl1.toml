@@ -1,0 +1,22 @@
+# cord-wide.toml with mutation and a shield against immune cells, and no
+# immune cell (chapter 23).
+#
+# A daughter mutates one rate of its network with a chance of one in
+# twenty, as in cord-evolving.toml, and the network carries PD-L1, which
+# shields a cell from immune cells; here none comes, so nothing selects it.
+# The twin of cord-evolving-immune.toml.
+
+width = 300
+height = 300
+mcs = 1500
+temperature = 10.0
+snapshot_interval = 100
+output_dir = "output-cord-evolving-pdl1"
+oxygen_uptake = 0.00003
+mutation_rate = 0.05
+network = "networks/ras-erk-pdl1.toml"
+
+[oxygen_source]
+kind = "vessel"
+radius = 6
+

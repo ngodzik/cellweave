@@ -37,7 +37,8 @@ Chapters build on each other and are meant to be read in order the first time.
 | 20 | [What blood delivers](20-what-blood-delivers.md) | When a vessel delivers oxygen in proportion to the blood through it, what does a tumour make of vessels that carry little? |
 | 21 | [Pruned by the flow](21-pruned-by-the-flow.md) | When vessels carrying too little blood are pruned, as real networks prune them, does the network shrink, and does the tumour lose by it? |
 | 22 | [Killers that come for the tumour](22-killers-that-come-for-the-tumour.md) | When immune cells arrive through the vessels and kill the tumour cells they touch, do they clear the tumour, hold it, or neither? |
-| 23 | [What the model does not say](23-what-the-model-does-not-say.md) | The placeholders, the missing units, and why emergence is the whole point. |
+| 23 | [Escape](23-escape.md) | When a tumour's cells can mutate a shield against immune cells, do the immune cells select the shielded ones? |
+| 24 | [What the model does not say](24-what-the-model-does-not-say.md) | The placeholders, the missing units, and why emergence is the whole point. |
 | | [Glossary](glossary.md) | Every word, in one place. |
 
 ## How the chapters map onto the code
@@ -88,6 +89,8 @@ flowchart LR
     c21["21. pruned<br/>by the flow"] --> ves
     c22["22. immune<br/>killers"] --> sim
     c22 --> cpm
+    c23["23. escape"] --> run
+    c23 --> pdl["examples/networks/ras-erk-pdl1.toml"]
 ```
 
 The README at the root of the repository says what works and what does not today. This course says why.

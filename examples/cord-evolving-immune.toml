@@ -1,0 +1,28 @@
+# cord-evolving-pdl1.toml, with the immune cells of cord-immune.toml
+# (chapter 23).
+#
+# The same mutating tumour carrying PD-L1, with killer immune cells from
+# step 200: whatever raises PD-L1 shields its cells from them.
+
+width = 300
+height = 300
+mcs = 1500
+temperature = 10.0
+snapshot_interval = 100
+output_dir = "output-cord-evolving-immune"
+oxygen_uptake = 0.00003
+mutation_rate = 0.05
+network = "networks/ras-erk-pdl1.toml"
+
+[oxygen_source]
+kind = "vessel"
+radius = 6
+
+[immunity]
+from = 200
+arrival = 0.1
+kill = 0.05
+kills = 5
+lifetime = 300
+chemotaxis = 200.0
+reach = 20.0

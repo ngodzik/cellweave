@@ -54,7 +54,7 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Crowding** (7). How squeezed a cell is: how far below its reference size it sits, as a fraction of it. An input every network can read, like oxygen.
 
-**Determinism** (1, 9, 14, 16, 23). The same seed gives the same simulation, byte for byte. Checked on every push.
+**Determinism** (1, 9, 14, 16, 24). The same seed gives the same simulation, byte for byte. Checked on every push.
 
 **Differentiation** (7). A cell giving up dividing to become a specialised cell. In an epithelium, a basal cell that commits leaves the layer. Here, a chance per step set by the network's differentiation node.
 
@@ -70,7 +70,7 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **EGF** (2). Epidermal growth factor, the growth signal. A hardcoded input for every cell today.
 
-**Emergence** (6, 7, 12, 14, 20, 23). Behaviour that follows from the model without any rule naming it. The necrotic core, the compact cell, the cord's thickness.
+**Emergence** (6, 7, 12, 14, 20, 24). Behaviour that follows from the model without any rule naming it. The necrotic core, the compact cell, the cord's thickness.
 
 **Endothelial cell** (14). A cell of the thin layer that lines every blood vessel. The cells that sprout.
 
@@ -100,7 +100,7 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Hypoxia** (2, 3). Too little oxygen, but enough to live on. Distinct from anoxia.
 
-**Immunoediting** (22). The immune system shaping a tumour: eliminating it, holding it in equilibrium, or selecting the cells that escape it.
+**Immunoediting** (22, 23). The immune system shaping a tumour: eliminating it, holding it in equilibrium, or selecting the cells that escape it.
 
 **Jacobi** (3). The plain way to relax a field, one full update from the previous state. Replaced by SOR for steady states.
 
@@ -143,6 +143,8 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 **p53** (8). The protein that rises when a cell is damaged and decides between repair and apoptosis. Here switched on by the stress.
 
 **Passenger** (9). A mutation carried along by a lineage that won for other reasons. Here, one whose suppression leaves the history identical to the last bit.
+
+**PD-L1** (23). Programmed death-ligand 1, a protein on a cell's surface that holds back the killer T cells that touch it. Here the node a tumour network may name as its evasion, which shields a cell in proportion to its level.
 
 **PDE** (3). Partial differential equation: rates of change in time and space. Oxygen is one.
 
@@ -188,7 +190,7 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Sister fates, r** (12). What the two cells of one division do next. r is the chance both divide, which equals the chance both leave; a quarter if sisters were independent, below a quarter when they tend to do opposite things, as in the mouse and in the sheet.
 
-**Snapshot** (4, 23). A file listing every living cell's state and the oxygen it reads, one per interval.
+**Snapshot** (4, 24). A file listing every living cell's state and the oxygen it reads, one per interval.
 
 **SOR** (3). Successive over-relaxation, the sweep that solves for a steady state in about L passes rather than L².
 
