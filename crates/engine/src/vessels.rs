@@ -122,6 +122,9 @@ struct Sprout {
     parent: Option<usize>,
     /// Whether blood flows through it.
     perfused: bool,
+    /// When blood flows as pressure drives it, whether more of it does than
+    /// the share below which a sprout is pruned.
+    strong: bool,
     /// The wall pixel it started from.
     origin: (u32, u32),
     /// Centre of every disc of vessel it laid.
@@ -130,8 +133,9 @@ struct Sprout {
     regressed: bool,
     /// Where its tip joined another vessel, if it has.
     joined: Option<Join>,
-    /// The step since which it has carried no blood: when it started, or
-    /// when the flow through it last stopped.
+    /// The step since which it has carried no blood, or when blood flows as
+    /// pressure drives it, no more than the share below which a sprout is
+    /// pruned: when it started, or when its flow last fell.
     dry_since: u64,
     /// When blood flows as pressure drives it, the flow through each of its
     /// discs, as a share of what the capillary alone carries.
@@ -143,6 +147,7 @@ impl Sprout {
         Self {
             parent,
             perfused,
+            strong: perfused,
             origin,
             centres: Vec::new(),
             regressed: false,
@@ -184,6 +189,9 @@ struct Tree {
     capillary: Option<Capillary>,
     /// Whether blood flows as pressure drives it.
     flowing: bool,
+    /// When it does, the share of the capillary's own flow below which a
+    /// sprout counts as dry; zero when only no blood at all does.
+    prune_below: f64,
     /// Joins and regressions so far: the network blood flows through changes
     /// only with them.
     changes: u64,
@@ -255,12 +263,7 @@ impl Tree {
     /// A pixel one of them laid is given back to the tissue, unless it lies
     /// in a disc a sprout still standing laid too, which then keeps it.
     fn regress(&mut self, lattice: &mut CpmLattice, root: usize) {
-        // A sprout comes after the one it grew from, so one pass in order
-        // finds every sprout grown from the root, however indirectly.
-        let mut going = vec![false; self.sprouts.len()];
-        for (i, sprout) in self.sprouts.iter().enumerate().skip(root) {
-            going[i] = i == root || sprout.parent.is_some_and(|p| going[p]);
-        }
+        let going = self.grown_from(root);
         for (sprout, &gone) in self.sprouts.iter_mut().zip(&going) {
             sprout.regressed |= gone;
         }
@@ -288,6 +291,16 @@ impl Tree {
             }
         }
         self.changes += 1;
+    }
+
+    /// Which sprouts are `root` or grew from it, however indirectly. A sprout
+    /// comes after the one it grew from, so one pass in order finds them.
+    fn grown_from(&self, root: usize) -> Vec<bool> {
+        let mut going = vec![false; self.sprouts.len()];
+        for (i, sprout) in self.sprouts.iter().enumerate().skip(root) {
+            going[i] = i == root || sprout.parent.is_some_and(|p| going[p]);
+        }
+        going
     }
 
     /// Blood through `sprout` and every sprout it grew from.
@@ -374,12 +387,15 @@ impl Tree {
                 }
             }
         }
+        let floor = self.prune_below.max(FLOWING);
         for sprout in &mut self.sprouts {
-            let wet = !sprout.regressed && sprout.flow.iter().any(|&f| f > FLOWING);
-            if sprout.perfused && !wet {
+            let carried = |level: f64| !sprout.regressed && sprout.flow.iter().any(|&f| f > level);
+            let (wet, strong) = (carried(FLOWING), carried(floor));
+            if sprout.strong && !strong {
                 sprout.dry_since = mcs;
             }
             sprout.perfused = wet;
+            sprout.strong = strong;
         }
     }
 
@@ -560,6 +576,7 @@ impl Vessels {
             self.tree.disc = vec![0; w as usize * h as usize];
             self.tree.width = w;
             self.tree.flowing = angiogenesis.perfusion == Perfusion::Flow;
+            self.tree.prune_below = angiogenesis.prune_below.unwrap_or(0.0);
         }
         let mut laid = false;
         let tree = &mut self.tree;
@@ -586,13 +603,29 @@ impl Vessels {
 
     /// Take back every sprout that has carried no blood for `after` steps or
     /// more by `mcs`, since it started or since the flow through it stopped,
-    /// and with it every sprout grown from it, which carries none either:
-    /// blood reaching one would have reached what it grew from.
+    /// or under pruning by flow too little, and with it every sprout grown
+    /// from it: blood reaching one of those would have reached what it grew
+    /// from, and a sprout pruned by flow stays while one grown from it
+    /// carries enough.
     fn regress_dry(&mut self, lattice: &mut CpmLattice, after: u64, mcs: u64) {
         for i in 0..self.tree.sprouts.len() {
             let sprout = &self.tree.sprouts[i];
             let due = sprout.dry_since.saturating_add(after) <= mcs;
-            if due && !sprout.perfused && !sprout.regressed {
+            // Pruned by flow, a weak sprout stays while a sprout grown from it
+            // carries enough: blood can enter it at both ends and leave
+            // together through the one grown from it.
+            let dry = if self.tree.flowing {
+                !sprout.strong
+                    && !self
+                        .tree
+                        .grown_from(i)
+                        .iter()
+                        .zip(&self.tree.sprouts)
+                        .any(|(&from, s)| from && s.strong)
+            } else {
+                !sprout.perfused
+            };
+            if due && dry && !sprout.regressed {
                 self.tree.regress(lattice, i);
             }
         }
@@ -790,6 +823,7 @@ mod tests {
             perfusion: Perfusion::AtOnce,
             regress_after: None,
             half_delivery_flow: None,
+            prune_below: None,
             in_the_way: InTheWay::Crushed,
         };
         let mut vessels = Vessels::default();
@@ -822,6 +856,7 @@ mod tests {
             perfusion: Perfusion::AtOnce,
             regress_after: None,
             half_delivery_flow: None,
+            prune_below: None,
             in_the_way: InTheWay::Crushed,
         };
         let mut vessels = Vessels::default();
@@ -843,6 +878,7 @@ mod tests {
             perfusion: Perfusion::OnJoining,
             regress_after: None,
             half_delivery_flow: None,
+            prune_below: None,
             in_the_way: InTheWay::Crushed,
         };
         let mut tree = Tree {
@@ -885,6 +921,7 @@ mod tests {
                 perfusion,
                 regress_after: None,
                 half_delivery_flow: None,
+                prune_below: None,
                 in_the_way: InTheWay::Crushed,
             };
             let mut vessels = Vessels::default();
@@ -917,6 +954,7 @@ mod tests {
             perfusion: Perfusion::OnJoining,
             regress_after: Some(20),
             half_delivery_flow: None,
+            prune_below: None,
             in_the_way: InTheWay::Crushed,
         };
         let mut vessels = Vessels::default();
@@ -1027,6 +1065,7 @@ mod tests {
                 perfusion: Perfusion::AtOnce,
                 regress_after: None,
                 half_delivery_flow: None,
+                prune_below: None,
                 in_the_way,
             };
             let mut vessels = Vessels::default();
@@ -1069,6 +1108,7 @@ mod tests {
                 radius: 2,
             }),
             flowing: true,
+            prune_below: 0.0,
             changes: 0,
             solved: 0,
             capillary_flow: vec![1.0; 80],
@@ -1231,6 +1271,59 @@ mod tests {
         assert!(
             (beside + bypass - before).abs() < 1e-9,
             "the bypassed stretch and the bypass share it: {beside} + {bypass} against {before}"
+        );
+    }
+
+    #[test]
+    fn a_sprout_carrying_too_little_is_pruned_and_one_carrying_enough_stays() {
+        let carried = {
+            let (_, mut tree) = a_network_laid_by_hand();
+            tree.solve_flow(0);
+            tree.flow_at(0, 20)
+        };
+        // Pruned below a share just above what the bypass carries, kept
+        // below one just under it.
+        for (floor, pruned) in [(carried * 1.01, true), (carried * 0.99, false)] {
+            let (mut lattice, mut tree) = a_network_laid_by_hand();
+            tree.prune_below = floor;
+            tree.changes += 1;
+            tree.solve_flow(0);
+            assert!(tree.sprouts[0].perfused, "it still carries blood");
+            let mut vessels = Vessels {
+                tips: Vec::new(),
+                tree,
+            };
+            vessels.regress_dry(&mut lattice, 50, 50);
+            assert_eq!(vessels.tree.sprouts[0].regressed, pruned, "floor {floor}");
+        }
+    }
+
+    #[test]
+    fn a_weak_sprout_feeding_a_strong_one_is_not_pruned() {
+        // Blood can enter a sprout at both ends and leave together through
+        // one grown from it, which then carries more than either half: the
+        // first may be under the floor while the second is over it.
+        let (mut lattice, mut tree) = a_network_laid_by_hand();
+        tree.solve_flow(0);
+        tree.prune_below = 0.5;
+        for (sprout, strong) in [(0, false), (1, true)] {
+            tree.sprouts[sprout].strong = strong;
+            tree.sprouts[sprout].dry_since = 0;
+        }
+        assert_eq!(tree.sprouts[1].parent, None);
+        tree.sprouts[1].parent = Some(0);
+        let mut vessels = Vessels {
+            tips: Vec::new(),
+            tree,
+        };
+        vessels.regress_dry(&mut lattice, 50, 50);
+        assert!(!vessels.tree.sprouts[0].regressed, "kept for what it feeds");
+        assert!(!vessels.tree.sprouts[1].regressed);
+        vessels.tree.sprouts[1].strong = false;
+        vessels.regress_dry(&mut lattice, 50, 50);
+        assert!(
+            vessels.tree.sprouts[0].regressed,
+            "and pruned once it feeds nothing strong"
         );
     }
 }

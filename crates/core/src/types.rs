@@ -122,6 +122,13 @@ pub struct Angiogenesis {
     /// Left out, every vessel carrying blood delivers in full.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub half_delivery_flow: Option<f64>,
+    /// With blood flowing as pressure drives it and `regress_after`, the
+    /// flow, as a share of what the capillary alone carries, below which a
+    /// sprout counts as dry: it regresses `regress_after` steps after its
+    /// flow fell below it, as segments carrying little blood are pruned.
+    /// Left out, only a sprout carrying no blood at all regresses.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prune_below: Option<f64>,
     /// What becomes of the cells in the way of a growing vessel. Left out,
     /// they are crushed.
     #[serde(default)]

@@ -603,6 +603,21 @@ impl Simulation<Configured> {
                             .into(),
                     ));
                 }
+                if let Some(floor) = a.prune_below {
+                    if a.perfusion != Perfusion::Flow || a.regress_after.is_none() {
+                        return Err(CellweaveError::Config(
+                            "a sprout is pruned for carrying too little blood only when blood \
+                             flows as pressure drives it and sprouts can regress; set \
+                             perfusion to flow and regress_after"
+                                .into(),
+                        ));
+                    }
+                    if !(floor.is_finite() && floor > 0.0) {
+                        return Err(CellweaveError::Config(format!(
+                            "prune_below is {floor}; it must be above zero"
+                        )));
+                    }
+                }
                 if let Some(half) = a.half_delivery_flow {
                     if a.perfusion != Perfusion::Flow {
                         return Err(CellweaveError::Config(
@@ -1874,6 +1889,7 @@ mod tests {
                 perfusion: Perfusion::AtOnce,
                 regress_after: None,
                 half_delivery_flow: None,
+                prune_below: None,
                 in_the_way: InTheWay::Crushed,
             }),
             width: 100,
@@ -1956,6 +1972,7 @@ mod tests {
                 perfusion: Perfusion::AtOnce,
                 regress_after: None,
                 half_delivery_flow: None,
+                prune_below: None,
                 in_the_way: InTheWay::Crushed,
             });
             assert!(refused(s, &spec()), "speed {speed}, reach {reach}");
@@ -2102,5 +2119,24 @@ mod tests {
         let at = |y| cellweave_core::DiffusionField::concentration_at(sim.oxygen(), 50, y);
         assert_eq!(at(row), 1.0);
         assert!(at(row + 12) > 0.5, "and feeds the tissue below");
+    }
+
+    #[test]
+    fn pruning_by_flow_needs_flow_regression_and_a_floor_above_zero() {
+        let pruning = |perfusion: Perfusion, regress_after: Option<u64>, floor: f64| {
+            let mut s = growing(0.3);
+            s.oxygen_source = OxygenSource::Capillary { radius: 2 };
+            s.angiogenesis = s.angiogenesis.map(|a| Angiogenesis {
+                perfusion,
+                regress_after,
+                prune_below: Some(floor),
+                ..a
+            });
+            Simulation::new(s, &spec())
+        };
+        assert!(pruning(Perfusion::OnJoining, Some(100), 0.02).is_err());
+        assert!(pruning(Perfusion::Flow, None, 0.02).is_err());
+        assert!(pruning(Perfusion::Flow, Some(100), 0.0).is_err());
+        assert!(pruning(Perfusion::Flow, Some(100), 0.02).is_ok());
     }
 }

@@ -1,0 +1,28 @@
+# capillary-regressing.toml, with sprouts pruned for carrying too little
+# blood (chapter 21).
+#
+# A sprout whose flow stays below a fiftieth of the capillary's own for 100
+# steps regresses, as one carrying none at all does. The fiftieth is a
+# placeholder. Everything else is capillary-regressing.toml.
+
+width = 300
+height = 300
+mcs = 1500
+temperature = 10.0
+snapshot_interval = 100
+output_dir = "output-capillary-pruning"
+oxygen_uptake = 0.0001
+network = "networks/ras-erk.toml"
+
+[oxygen_source]
+kind = "capillary"
+radius = 3
+
+[angiogenesis]
+threshold = 0.3
+speed = 1.0
+reach = 30.0
+perfusion = "flow"
+half_delivery_flow = 0.1
+regress_after = 100
+prune_below = 0.02
