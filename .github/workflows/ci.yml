@@ -49,6 +49,17 @@ jobs:
       - name: The course still matches the code
         run: python3 scripts/check-course-symbols.py
 
+      # The repository holds no one else's data, only recipes saying where it
+      # is published and what fingerprint it must have (CONTRIBUTING.md). This
+      # fails if a data file is committed or a recipe is incomplete.
+      - name: No data in the repository, and complete recipes
+        run: |
+          if git ls-files | grep -E '^data/|\.(csv|tsv|xlsx|xls|parquet|h5|hdf5|mat)$'; then
+            echo "data files are committed: the repository holds recipes, not data"
+            exit 1
+          fi
+          python3 scripts/fetch-dataset.py --check datasets/*.toml
+
   test:
     name: Tests (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

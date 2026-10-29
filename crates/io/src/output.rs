@@ -112,6 +112,63 @@ impl MeasurementLog {
     }
 }
 
+/// `traced.csv`: the clones a tracing experiment follows, one row per marked
+/// clone still in the layer each time they are written down, so that the
+/// sizes at any time after marking can be read off and set against a
+/// lineage tracing experiment's.
+pub struct TraceLog {
+    out: BufWriter<File>,
+}
+
+/// The columns, in the order [`TraceLog::record`] writes them: the step,
+/// the mark, and the cells in the layer carrying it.
+pub const TRACE_COLUMNS: &str = "mcs,mark,cells";
+
+impl TraceLog {
+    /// Start the table in `dir`, which must exist, with its header row.
+    ///
+    /// # Errors
+    ///
+    /// [`CellweaveError::Simulation`] when the file cannot be written.
+    pub fn new(dir: impl AsRef<Path>) -> Result<Self, CellweaveError> {
+        let path = dir.as_ref().join("traced.csv");
+        let file = File::create(&path)
+            .map_err(|e| CellweaveError::Simulation(format!("{}: {e}", path.display())))?;
+        let mut log = Self {
+            out: BufWriter::new(file),
+        };
+        log.line(TRACE_COLUMNS)?;
+        Ok(log)
+    }
+
+    /// Append every clone in `clones`, as `(mark, cells)`, at step `mcs`.
+    ///
+    /// # Errors
+    ///
+    /// [`CellweaveError::Simulation`] when the file cannot be written.
+    pub fn record(&mut self, mcs: u64, clones: &[(u32, usize)]) -> Result<(), CellweaveError> {
+        for (mark, cells) in clones {
+            self.line(&format!("{mcs},{mark},{cells}"))?;
+        }
+        Ok(())
+    }
+
+    /// Write what is buffered.
+    ///
+    /// # Errors
+    ///
+    /// [`CellweaveError::Simulation`] when the file cannot be written.
+    pub fn finish(mut self) -> Result<(), CellweaveError> {
+        self.out
+            .flush()
+            .map_err(|e| CellweaveError::Simulation(e.to_string()))
+    }
+
+    fn line(&mut self, text: &str) -> Result<(), CellweaveError> {
+        writeln!(self.out, "{text}").map_err(|e| CellweaveError::Simulation(e.to_string()))
+    }
+}
+
 /// A mutation as `clones.json` holds it. A scaled rate is written as it
 /// always was; a gained or lost term says so, and a gained one what it reads.
 fn mutation_json(m: &Mutation) -> serde_json::Value {

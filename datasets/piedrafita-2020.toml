@@ -1,0 +1,26 @@
+# Clone sizes in the mouse oesophagus, for chapter 24.
+#
+# No data here: where the authors published it, the fingerprint the file must
+# have, and how scripts/fetch-dataset.py turns it into data/piedrafita-2020/
+# lrig1-clones.csv, which git ignores.
+
+name = "piedrafita-2020"
+title = "A single-progenitor model as the unifying paradigm of epidermal and esophageal epithelial maintenance in mice"
+authors = "Piedrafita G, Kostiou V, Wabik A, Colom B, Fernandez-Antoran D, Herms A, Murai K, Hall BA, Jones PH."
+source = "Nature Communications 11, 1429 (2020)"
+doi = "10.1038/s41467-020-15258-0"
+licence = "CC-BY-4.0"
+what = "Every clone of the Lrig1 lineage tracing in the mouse oesophagus, 1,222 clones from 16 mice at 10, 30, 84 and 182 days: cells in the basal layer, above it, and terminally differentiated."
+chapter = 24
+
+[[files]]
+# Supplementary Data 10, from the publisher's page for the article. The same
+# file is among Europe PMC's supplementary files for PMC7080751.
+name = "41467_2020_15258_MOESM13_ESM.xlsx"
+url = "https://static-content.springer.com/esm/art%3A10.1038%2Fs41467-020-15258-0/MediaObjects/41467_2020_15258_MOESM13_ESM.xlsx"
+sha256 = "8aa4d698a940b49bbd0785fd8e2cf094391de536c6bcd5418886d205d13018e3"
+
+[[outputs]]
+name = "lrig1-clones.csv"
+convert = "piedrafita-2020-lrig1"
+from = "41467_2020_15258_MOESM13_ESM.xlsx"

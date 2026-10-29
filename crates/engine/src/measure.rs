@@ -290,6 +290,7 @@ mod tests {
             revert: None,
             angiogenesis: None,
             immunity: None,
+            tracing: None,
         }
     }
 

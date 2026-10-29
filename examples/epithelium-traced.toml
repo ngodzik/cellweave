@@ -1,0 +1,26 @@
+# The neutral sheet of epithelium.toml, marked once it has settled, as a
+# lineage tracing experiment marks basal cells, and its clones followed for
+# six months of a mouse's life.
+#
+# Every cell is marked at step 1000, each with its own mark, and the size of
+# every marked clone still in the layer is written to traced.csv every ten
+# steps. scripts/compare-clones.py sets them against the clones Piedrafita
+# and colleagues counted in the mouse oesophagus (chapter 25).
+
+width = 200
+height = 200
+mcs = 8500
+temperature = 10.0
+snapshot_interval = 1000
+output_dir = "output-epithelium-traced"
+oxygen_uptake = 0.0
+network = "networks/epithelium.toml"
+hours_per_step = 0.6
+
+[seeding]
+kind = "sheet"
+side = 10
+
+[tracing]
+at = 1000
+every = 10

@@ -24,3 +24,6 @@ target
 output/
 # and what each example writes, under a name of its own
 output-*/
+
+# Datasets fetched by scripts/fetch-dataset.py: never committed (CONTRIBUTING.md)
+/data/

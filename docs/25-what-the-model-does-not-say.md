@@ -1,4 +1,4 @@
-# 24. What the model does not say
+# 25. What the model does not say
 
 The placeholders, the missing units, and why emergence is the whole point.
 
@@ -14,7 +14,7 @@ The thresholds of chapter 4 are the closest thing to rules: 0.25 on survival, 0.
 
 A pixel is roughly a micrometre, judged by a cell of radius 8 against a real tumour cell of 15 to 20 micrometres across. A lattice step is roughly an hour, judged by a cell dividing in about twenty of them against a real cycle of a day. Roughly, in both cases, and nothing in the code fixes either for the tumour. Until they are fixed, `D = 0.2` cannot be compared to the measured diffusion coefficient of oxygen in tissue, an uptake of `0.0003` cannot be compared to a measured consumption rate, and a cord fifty pixels deep cannot be compared to a cord 150 micrometres deep. Every number that depends on a unit is a placeholder.
 
-**Calibration** is the work of fixing those units and then adjusting the constants until the model reproduces a measured result. For the sheet it has started: chapter 12 fixes a step at about 0.6 hours against the division rate of the mouse oesophagus, and checks two laws of clone sizes and the coordination of sisters. For the tumour it has not: the depth of a real cord, the size at which a real spheroid of a given cell line develops a core and the doubling time of that line are the results to reproduce first, because their numbers are on record.
+**Calibration** is the work of fixing those units and then adjusting the constants until the model reproduces a measured result. For the sheet it has started: chapter 12 fixes a step at about 0.6 hours against the division rate of the mouse oesophagus, and checks two laws of clone sizes and the coordination of sisters; chapter 24 sets its clones against the mouse's, one by one, and finds them growing about six times as fast per division, and at best between a third and a half too large for a month. For the tumour it has not: the depth of a real cord, the size at which a real spheroid of a given cell line develops a core and the doubling time of that line are the results to reproduce first, because their numbers are on record.
 
 ## The list
 
@@ -34,6 +34,7 @@ What is a placeholder today, gathered from the chapters:
 | epithelium | NOTCH near 0.01 per step, raised by crowding half way at 60% of reference size; shedding 6 pixels per step; cells 10 pixels across; mutation rate 1 in 100 | the layer turns over in a few hundred steps and holds its size on a 200 pixel grid |
 | competition | a ceiling on the size a cell asks for at 1.5 times its reference, what a normal cell asks for; three mutations in ten rewiring | a growth signal buys no size, and a NOTCH term can be lost outright |
 | units | 0.6 hours per step for the sheet | a living cell divides about every 97 steps, a mouse oesophageal basal cell every 2.4 days |
+| tracing | every cell marked at step 1000; a committed cell still in the layer counted as a basal cell; crowding at a rate of 0.3, half way at 75% of the reference size, NOTCH's baseline at a fifth | marked past the tiled sheet's first waves of division; the one setting tried that brings the first month's clones within half of the mouse's without emptying the layer |
 | lesion | NOTCH's baseline at 0.7 or 0.3 of its rate; 15 pixels around the centre; at step 4000 | fitter than a normal cell, less fit than a NOTCH-loss clone, about seven cells, in a sheet already covered by mutant clones |
 | a silent patch | every living cell within 30 pixels of a point to the right of the vessel, at step 120; read at step 300 | a patch placed before the first sprout, large enough to matter: with the marked network it holds more than half the tumour at step 300 |
 | vessels | a wall sprouts at VEGF 0.5; VEGF's reach 30 pixels; tips a pixel per step, 16 pixels apart; new vessel 5 pixels across, perfused at once or once joined, regressing after 100 steps without blood when told to; cells in the way crushed, or pushed along straight lines when told to | a cord whose cells starve calls vessels to them within a few hundred steps, in a 300 pixel box |

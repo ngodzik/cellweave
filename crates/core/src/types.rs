@@ -185,6 +185,23 @@ pub struct Immunity {
     pub reach: f64,
 }
 
+/// Every cell marked at one step, the way a lineage tracing experiment marks
+/// basal cells once the tissue is at steady state, and the clones the marks
+/// make followed from then on.
+///
+/// A mark is inherited at division, so the cells carrying one are the
+/// descendants of one cell marked at `at`. Marking draws nothing from the
+/// run's generator, so a traced run is the run without tracing, step for
+/// step.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Tracing {
+    /// The step every cell is marked at, before anything else in that step.
+    pub at: u64,
+    /// Every how many steps after `at` the size of each marked clone is
+    /// written down.
+    pub every: u64,
+}
+
 /// When a new vessel starts carrying blood, and with it oxygen.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

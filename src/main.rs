@@ -21,7 +21,7 @@ use anyhow::{Context, Result};
 use cellweave_core::Seeding;
 use cellweave_core::traits::SimOutput;
 use cellweave_engine::{Measurements, Simulation};
-use cellweave_io::{JsonOutput, MeasurementLog, SimConfig, write_clones};
+use cellweave_io::{JsonOutput, MeasurementLog, SimConfig, TraceLog, write_clones};
 
 fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
@@ -136,6 +136,10 @@ fn run(config: SimConfig, config_path: Option<&str>) -> Result<()> {
 
     let mut output = JsonOutput::new(&config.output_dir).context("creating output directory")?;
     let mut log = MeasurementLog::new(&config.output_dir)?;
+    let mut traced = match config.tracing {
+        Some(_) => Some(TraceLog::new(&config.output_dir)?),
+        None => None,
+    };
 
     // The hypothesis under test, read from a file rather than compiled in.
     let spec = config.load_network(config_path)?;
@@ -160,6 +164,12 @@ fn run(config: SimConfig, config_path: Option<&str>) -> Result<()> {
         let m = sim.measure();
         log.record(&m)?;
         measured.push(m);
+        if let (Some(trace), Some(tracing)) = (traced.as_mut(), config.tracing)
+            && step.mcs >= tracing.at
+            && (step.mcs - tracing.at).is_multiple_of(tracing.every)
+        {
+            trace.record(step.mcs, &sim.traced_clones())?;
+        }
 
         // The moment tissue touches the edge of the box, the box is deciding
         // what the tissue sees. Stop, and say so.
@@ -196,6 +206,9 @@ fn run(config: SimConfig, config_path: Option<&str>) -> Result<()> {
 
     output.finalize()?;
     log.finish()?;
+    if let Some(trace) = traced {
+        trace.finish()?;
+    }
     let sizes = sim.clone_sizes();
     write_clones(&config.output_dir, sim.clones(), &sizes)?;
     if let Some(summary) = summarise(&measured) {

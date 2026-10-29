@@ -7,4 +7,4 @@ pub mod output;
 
 pub use cellweave_core::{Exposure, OxygenSource, Schedule, Seeding};
 pub use config::{LesionConfig, SimConfig};
-pub use output::{JsonOutput, MeasurementLog, write_clones};
+pub use output::{JsonOutput, MeasurementLog, TraceLog, write_clones};
