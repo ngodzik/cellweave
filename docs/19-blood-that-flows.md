@@ -23,6 +23,13 @@ The flow is solved again whenever the network changes in a way that can change i
 
 **What this changes.** A blind sprout carries nothing, as with `on_joining`. But a loop now carries blood only if there is a difference of pressure across it. A sprout that starts on a blind sprout and comes back to it closes a loop with no pressure across it, and carries nothing. A loop between two nearby points of the capillary carries little, and one that bypasses a long stretch of it carries a lot.
 
+**Watching it.** In the viewer a vessel is as bright as the blood through it: full red at the capillary's own flow, a third darker for each tenfold less, dark where none flows. Coloured by `flow`, living cells are a plain grey, dead ones near black, and the network over them runs from faint violet to white. `Simulation::flow_through` says what flows through a vessel pixel and `Simulation::flowing` whether blood flows as pressure drives it at all.
+
+```bash
+cd viewer
+cargo run --release -- --config ../examples/capillary-delivery.toml --view flow
+```
+
 `examples/capillary-joining.toml` is `capillary-angiogenic.toml` with blood only through loops; `examples/capillary-flow.toml`, with blood where pressure drives it.
 
 ### The predictions, and what happened
@@ -63,6 +70,8 @@ The share of vessel carrying blood moved little, and the tumour still lost a thi
 ## Where in the code
 
 `crates/engine/src/flow.rs`: `Segment`, `conductance`, `pressures`, `flows`. `crates/engine/src/vessels.rs`: `Capillary`, `Join`, where a tip records the vessel it joined, `Tree::network`, which builds the segments and junctions, and `Tree::solve_flow`, which shares the flow out over each sprout's discs and says which sprouts carry blood and since when they have been dry. `crates/core/src/types.rs`: `Perfusion::Flow`. `crates/engine/src/simulation.rs`: where a flow is refused without a capillary.
+
+`viewer/src/paint.rs`: the `Flow` view, `flow_strength` and `vessel_colour`. `viewer/src/glow.rs`: a vessel's light by its flow.
 
 `examples/capillary-joining.toml`, `examples/capillary-flow.toml`.
 

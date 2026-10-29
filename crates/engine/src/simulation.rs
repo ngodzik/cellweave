@@ -1368,6 +1368,21 @@ impl<S: SimState> Simulation<S> {
         self.vessels.regressed()
     }
 
+    /// The flow through the vessel at `(x, y)`, as a share of what the
+    /// capillary alone carries, when blood flows as pressure drives it; zero
+    /// otherwise, and meaningless for a pixel that is not vessel.
+    pub fn flow_through(&self, x: u32, y: u32) -> f64 {
+        self.vessels.flow_through(x, y)
+    }
+
+    /// Whether blood flows as pressure drives it, so that a vessel carries
+    /// some share of it rather than all or none.
+    pub fn flowing(&self) -> bool {
+        self.scenario
+            .angiogenesis
+            .is_some_and(|a| a.perfusion == Perfusion::Flow)
+    }
+
     /// Whether the vessel at `(x, y)` carries blood, and with it oxygen:
     /// the vessel the scenario laid always does, a sprout once perfused.
     /// Meaningless for a pixel that is not vessel.

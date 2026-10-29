@@ -225,8 +225,11 @@ fn colouring(ui: &mut egui::Ui, view: &mut View, experiment: &Experiment) {
         if experiment.scenario.exposure.is_some() {
             ui.selectable_value(&mut chosen, View::Stress, "stress");
         }
-        if experiment.scenario.angiogenesis.is_some() {
+        if let Some(a) = experiment.scenario.angiogenesis {
             ui.selectable_value(&mut chosen, View::Vegf, "vegf");
+            if a.perfusion == Perfusion::Flow {
+                ui.selectable_value(&mut chosen, View::Flow, "flow");
+            }
         }
         let protein = match chosen {
             View::Protein(i) => i,
@@ -276,6 +279,13 @@ fn colouring(ui: &mut egui::Ui, view: &mut View, experiment: &Experiment) {
             gradient(ui);
         }
         View::Oxygen | View::Stress | View::Vegf => gradient(ui),
+        View::Flow => {
+            gradient(ui);
+            ui.horizontal_wrapped(|ui| {
+                ui.label("blood through each vessel: a thousandth of the capillary's or less, to all of it");
+                swatch(ui, paint::DRY_VESSEL, "none");
+            });
+        }
         View::Clone => {
             ui.horizontal_wrapped(|ui| {
                 if experiment.scenario.seeding == Seeding::Single {
