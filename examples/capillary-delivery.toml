@@ -1,0 +1,27 @@
+# capillary-flow.toml, with what a vessel delivers following the blood
+# through it (chapter 20).
+#
+# A vessel carrying a tenth of the capillary's own flow delivers half the
+# oxygen it would at full flow, and half of anything else blood brings; one
+# carrying the capillary's own flow, all of it. The tenth is a placeholder.
+# Everything else is capillary-flow.toml.
+
+width = 300
+height = 300
+mcs = 1500
+temperature = 10.0
+snapshot_interval = 100
+output_dir = "output-capillary-delivery"
+oxygen_uptake = 0.0001
+network = "networks/ras-erk.toml"
+
+[oxygen_source]
+kind = "capillary"
+radius = 3
+
+[angiogenesis]
+threshold = 0.3
+speed = 1.0
+reach = 30.0
+perfusion = "flow"
+half_delivery_flow = 0.1

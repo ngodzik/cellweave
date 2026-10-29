@@ -189,6 +189,9 @@ struct Tree {
     changes: u64,
     /// The value of `changes` the flow was last solved for.
     solved: u64,
+    /// When blood flows as pressure drives it, the flow through the
+    /// capillary at each column, as a share of what it alone carries.
+    capillary_flow: Vec<f64>,
 }
 
 impl Tree {
@@ -304,6 +307,21 @@ impl Tree {
         }
     }
 
+    /// The flow through the vessel at `pixel`, as a share of what the
+    /// capillary alone carries: through the capillary at its column, or
+    /// through the disc of a sprout that laid it. Zero unless blood flows as
+    /// pressure drives it.
+    fn flow_through(&self, pixel: (u32, u32)) -> f64 {
+        match self.owner(pixel) {
+            None => self
+                .capillary_flow
+                .get(pixel.0 as usize)
+                .copied()
+                .unwrap_or(0.0),
+            Some(s) => self.flow_at(s, self.disc_at(pixel)),
+        }
+    }
+
     /// The flow through disc `disc` of `sprout`, as a share of what the
     /// capillary alone carries; zero unless blood flows as pressure drives it.
     fn flow_at(&self, sprout: usize, disc: u32) -> f64 {
@@ -335,8 +353,15 @@ impl Tree {
         for sprout in &mut self.sprouts {
             sprout.flow = vec![0.0; sprout.centres.len()];
         }
+        self.capillary_flow = vec![0.0; capillary.width as usize];
         for (&(line, u, v), q) in placed.iter().zip(&q) {
             if line == 0 {
+                let share = q.abs() / alone;
+                for x in u.min(v)..=u.max(v) {
+                    if let Some(f) = self.capillary_flow.get_mut(x as usize) {
+                        *f = share;
+                    }
+                }
                 continue;
             }
             // Position k along a sprout is its origin for 0 and its disc k - 1
@@ -484,8 +509,23 @@ impl Vessels {
 
     /// Let blood flow through `capillary`, in at its left end and out at
     /// its right, when the scenario says it flows as pressure drives it.
-    pub(crate) fn lie_along(&mut self, capillary: Capillary) {
+    pub(crate) fn lie_along(&mut self, capillary: Capillary, flowing: bool) {
         self.tree.capillary = Some(capillary);
+        // Known from the start, not only from the first growth, since what
+        // the capillary delivers is read before anything grows.
+        self.tree.flowing = flowing;
+        // Before any sprout, the capillary carries all of its own flow.
+        self.tree.capillary_flow = vec![1.0; capillary.width as usize];
+    }
+
+    /// The flow through the vessel at `(x, y)`, as a share of what the
+    /// capillary alone carries. Zero unless blood flows as pressure drives
+    /// it, and meaningless for a pixel that is not vessel.
+    pub(crate) fn flow_through(&self, x: u32, y: u32) -> f64 {
+        if !self.tree.flowing {
+            return 0.0;
+        }
+        self.tree.flow_through((x, y))
     }
 
     /// The tips still growing.
@@ -749,6 +789,7 @@ mod tests {
             reach: 20.0,
             perfusion: Perfusion::AtOnce,
             regress_after: None,
+            half_delivery_flow: None,
             in_the_way: InTheWay::Crushed,
         };
         let mut vessels = Vessels::default();
@@ -780,6 +821,7 @@ mod tests {
             reach: 20.0,
             perfusion: Perfusion::AtOnce,
             regress_after: None,
+            half_delivery_flow: None,
             in_the_way: InTheWay::Crushed,
         };
         let mut vessels = Vessels::default();
@@ -800,6 +842,7 @@ mod tests {
             reach: 20.0,
             perfusion: Perfusion::OnJoining,
             regress_after: None,
+            half_delivery_flow: None,
             in_the_way: InTheWay::Crushed,
         };
         let mut tree = Tree {
@@ -841,6 +884,7 @@ mod tests {
                 reach: 20.0,
                 perfusion,
                 regress_after: None,
+                half_delivery_flow: None,
                 in_the_way: InTheWay::Crushed,
             };
             let mut vessels = Vessels::default();
@@ -872,6 +916,7 @@ mod tests {
             reach: 20.0,
             perfusion: Perfusion::OnJoining,
             regress_after: Some(20),
+            half_delivery_flow: None,
             in_the_way: InTheWay::Crushed,
         };
         let mut vessels = Vessels::default();
@@ -981,6 +1026,7 @@ mod tests {
                 reach: 20.0,
                 perfusion: Perfusion::AtOnce,
                 regress_after: None,
+                half_delivery_flow: None,
                 in_the_way,
             };
             let mut vessels = Vessels::default();
@@ -1025,6 +1071,7 @@ mod tests {
             flowing: true,
             changes: 0,
             solved: 0,
+            capillary_flow: vec![1.0; 80],
         };
         let sprout =
             |tree: &mut Tree, lattice: &mut CpmLattice, origin: (u32, u32), path: &[(u32, u32)]| {
@@ -1166,5 +1213,24 @@ mod tests {
         );
         assert!(tree.sprouts[blind].perfused);
         assert!(tree.flow_at(blind, 10) <= FLOWING, "and beyond it, nothing");
+    }
+
+    #[test]
+    fn the_capillary_carries_less_where_a_bypass_takes_its_share() {
+        let (_, mut tree) = a_network_laid_by_hand();
+        tree.capillary_flow = vec![1.0; 80];
+        tree.solve_flow(0);
+        let (before, beside, after) = (
+            tree.flow_through((10, 10)),
+            tree.flow_through((30, 10)),
+            tree.flow_through((50, 10)),
+        );
+        assert!((before - after).abs() < 1e-9, "what goes in comes out");
+        assert!(before > 1.0, "a bypass lowers the resistance: {before}");
+        let bypass = tree.flow_through((30, 25));
+        assert!(
+            (beside + bypass - before).abs() < 1e-9,
+            "the bypassed stretch and the bypass share it: {beside} + {bypass} against {before}"
+        );
     }
 }
