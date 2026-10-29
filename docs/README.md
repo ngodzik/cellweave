@@ -32,7 +32,8 @@ Chapters build on each other and are meant to be read in order the first time.
 | 15 | [A call heard by its neighbours](15-a-call-heard-by-its-neighbours.md) | When a cell calls for vessels, how much of what comes goes to the cells that called? |
 | 16 | [Vessels that regress](16-vessels-that-regress.md) | When sprouts that carry no blood are taken back, does a tumour still call in more vessel than it needs? |
 | 17 | [Cells pushed aside](17-cells-pushed-aside.md) | How many cells does a growing vessel crush, and do the results of chapter 14 hold when it pushes them aside instead? |
-| 18 | [What the model does not say](18-what-the-model-does-not-say.md) | The placeholders, the missing units, and why emergence is the whole point. |
+| 18 | [A capillary in the plane](18-a-capillary-in-the-plane.md) | What does a tumour do against a vessel lying across the tissue rather than one seen end on, and can it make blood flow? |
+| 19 | [What the model does not say](19-what-the-model-does-not-say.md) | The placeholders, the missing units, and why emergence is the whole point. |
 | | [Glossary](glossary.md) | Every word, in one place. |
 
 ## How the chapters map onto the code
@@ -74,6 +75,8 @@ flowchart LR
     c16 --> cpm
     c17["17. cells<br/>pushed aside"] --> cpm
     c17 --> ves
+    c18["18. a capillary<br/>in the plane"] --> cfg
+    c18 --> mea
 ```
 
 The README at the root of the repository says what works and what does not today. This course says why.

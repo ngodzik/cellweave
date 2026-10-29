@@ -1,0 +1,22 @@
+# A tumour against a capillary lying in the plane rather than around a
+# vessel seen end on (chapter 18).
+#
+# The capillary runs across the box a quarter of the way down, seven pixels
+# wide, held at full oxygen; the box is a window onto a longer one, and the
+# tissue may reach its left and right sides. One cell is seeded against its
+# lower wall, and the tissue grows into a layer along it. A line feeds
+# deeper than a point, so the uptake is three times the cord's, which makes
+# the layer as deep as the cord's sleeve.
+
+width = 300
+height = 300
+mcs = 1500
+temperature = 10.0
+snapshot_interval = 100
+output_dir = "output-capillary"
+oxygen_uptake = 0.0001
+network = "networks/ras-erk.toml"
+
+[oxygen_source]
+kind = "capillary"
+radius = 3

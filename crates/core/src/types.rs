@@ -213,6 +213,27 @@ pub enum OxygenSource {
         /// Radius of the vessel, in pixels.
         radius: u32,
     },
+    /// A capillary lying in the plane, across the box from its left side to
+    /// its right a quarter of the way down, held at full oxygen, that cells
+    /// cannot enter.
+    /// The box is a window onto a longer capillary: blood comes in through
+    /// its left side and leaves through its right, which is what lets blood
+    /// flow through the loops new vessels close with it. One cell is seeded
+    /// against its lower wall, and the tissue grows into a layer along it,
+    /// with three quarters of the box below to grow into.
+    Capillary {
+        /// Half its width, in pixels.
+        radius: u32,
+    },
+}
+
+impl OxygenSource {
+    /// Whether oxygen comes from a vessel, of either kind, rather than a
+    /// bath: then the medium is stroma that consumes, and the vessel is what
+    /// is held.
+    pub fn is_vessel(&self) -> bool {
+        !matches!(self, Self::Bath)
+    }
 }
 
 // ── Protein state ─────────────────────────────────────────────────────────────
