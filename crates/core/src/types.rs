@@ -62,6 +62,10 @@ pub enum CellKind {
     /// A cell that has started its own programmed death, apoptosis, and is
     /// breaking up into fragments its neighbours clear.
     Apoptotic,
+    /// A cytotoxic immune cell, a killer T cell: it arrives through a vessel
+    /// carrying blood, climbs the chemokine tumour cells secrete, and kills
+    /// the tumour cells it touches. It carries no network.
+    Immune,
 }
 
 // ── Geometry ──────────────────────────────────────────────────────────────────
@@ -147,6 +151,38 @@ pub enum InTheWay {
     /// free pixel beyond. Where nothing is free before another vessel or the
     /// edge of the box, the pixel is taken as when crushed.
     Pushed,
+}
+
+/// Cytotoxic immune cells that come for the tumour.
+///
+/// They arrive through vessels carrying blood, one at a time, climb the
+/// gradient of a chemokine every living tumour cell secretes, and kill the
+/// tumour cells they touch, each a limited number of times and for a limited
+/// time. Arrivals and kills are drawn from the run's generator, and only when
+/// a scenario has immunity, so every run without it draws what it always did.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct Immunity {
+    /// The step immune cells start to arrive at: an immune response takes
+    /// time to start, and a tumour of one cell is not yet one to answer.
+    pub from: u64,
+    /// Chance per step that one immune cell arrives, through a vessel wall
+    /// carrying blood.
+    pub arrival: f64,
+    /// Chance per step that an immune cell touching a tumour cell kills it:
+    /// the tumour cell starts apoptosis.
+    pub kill: f64,
+    /// How many tumour cells one immune cell can kill before it is
+    /// exhausted and dies.
+    pub kills: u32,
+    /// Steps an immune cell lives, if it is not exhausted first.
+    pub lifetime: u64,
+    /// How strongly an immune cell is pulled up the chemokine's gradient:
+    /// what extending one pixel up a difference of one in the chemokine
+    /// saves in energy.
+    pub chemotaxis: f64,
+    /// Distance over which the chemokine falls by a factor of e away from
+    /// where it is secreted, in pixels.
+    pub reach: f64,
 }
 
 /// When a new vessel starts carrying blood, and with it oxygen.

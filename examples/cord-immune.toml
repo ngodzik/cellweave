@@ -1,0 +1,30 @@
+# cord-wide.toml, with immune cells that come for the tumour (chapter 22).
+#
+# From step 200, when the cord has formed, killer immune cells arrive
+# through the vessel's wall, one in ten steps on average. They climb the
+# chemokine the living tumour cells secrete, which falls by e over 20
+# pixels, and kill a tumour cell they touch with a chance of one in twenty
+# per step, at most five each, and live 300 steps. Every number is a
+# placeholder. Everything else is cord-wide.toml.
+
+width = 300
+height = 300
+mcs = 1500
+temperature = 10.0
+snapshot_interval = 100
+output_dir = "output-cord-immune"
+oxygen_uptake = 0.00003
+network = "networks/ras-erk.toml"
+
+[oxygen_source]
+kind = "vessel"
+radius = 6
+
+[immunity]
+from = 200
+arrival = 0.1
+kill = 0.05
+kills = 5
+lifetime = 300
+chemotaxis = 200.0
+reach = 20.0

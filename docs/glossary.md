@@ -28,6 +28,10 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Cellular Potts model, CPM** (1). Cells as sets of pixels on a lattice, moving pixel by pixel to lower an energy.
 
+**Chemokine** (22). A small protein cells secrete to attract other cells, which climb its gradient. Here what living tumour cells secrete, and immune cells climb.
+
+**Chemotaxis** (22). A cell moving up the gradient of something it senses. Here an immune cell extending a pixel up the chemokine's gradient saves energy in proportion to the difference.
+
 **Clonal sweep** (6). One clone outcompeting the rest and taking over the population.
 
 **Clone** (6). Every cell descended from one mutated ancestor with no further mutation in between. The first cell founds clone 0.
@@ -50,7 +54,7 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Crowding** (7). How squeezed a cell is: how far below its reference size it sits, as a fraction of it. An input every network can read, like oxygen.
 
-**Determinism** (1, 9, 14, 16, 22). The same seed gives the same simulation, byte for byte. Checked on every push.
+**Determinism** (1, 9, 14, 16, 23). The same seed gives the same simulation, byte for byte. Checked on every push.
 
 **Differentiation** (7). A cell giving up dividing to become a specialised cell. In an epithelium, a basal cell that commits leaves the layer. Here, a chance per step set by the network's differentiation node.
 
@@ -66,7 +70,7 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **EGF** (2). Epidermal growth factor, the growth signal. A hardcoded input for every cell today.
 
-**Emergence** (6, 7, 12, 14, 20, 22). Behaviour that follows from the model without any rule naming it. The necrotic core, the compact cell, the cord's thickness.
+**Emergence** (6, 7, 12, 14, 20, 23). Behaviour that follows from the model without any rule naming it. The necrotic core, the compact cell, the cord's thickness.
 
 **Endothelial cell** (14). A cell of the thin layer that lines every blood vessel. The cells that sprout.
 
@@ -96,7 +100,11 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Hypoxia** (2, 3). Too little oxygen, but enough to live on. Distinct from anoxia.
 
+**Immunoediting** (22). The immune system shaping a tumour: eliminating it, holding it in equilibrium, or selecting the cells that escape it.
+
 **Jacobi** (3). The plain way to relax a field, one full update from the previous state. Replaced by SOR for steady states.
+
+**Killer T cell, cytotoxic T lymphocyte** (22). An immune cell that recognises an infected or abnormal cell and kills it by contact. Here an immune cell of the lattice that arrives through a vessel carrying blood.
 
 **Kinase** (2). An enzyme that activates another protein by attaching a phosphate group.
 
@@ -180,7 +188,7 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Sister fates, r** (12). What the two cells of one division do next. r is the chance both divide, which equals the chance both leave; a quarter if sisters were independent, below a quarter when they tend to do opposite things, as in the mouse and in the sheet.
 
-**Snapshot** (4, 22). A file listing every living cell's state and the oxygen it reads, one per interval.
+**Snapshot** (4, 23). A file listing every living cell's state and the oxygen it reads, one per interval.
 
 **SOR** (3). Successive over-relaxation, the sweep that solves for a steady state in about L passes rather than L².
 

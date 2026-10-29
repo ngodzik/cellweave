@@ -1,4 +1,4 @@
-# 22. What the model does not say
+# 23. What the model does not say
 
 The placeholders, the missing units, and why emergence is the whole point.
 
@@ -41,6 +41,7 @@ What is a placeholder today, gathered from the chapters:
 | flow | Poiseuille's law in two dimensions, conductance as the fourth power of the radius over the length; pressure 1 at the inlet, 0 at the outlet; a vessel carries blood above a millionth of the capillary's own flow | blood goes where a difference of pressure sends it, and nowhere else |
 | delivery | half of full delivery at a tenth of the capillary's own flow | vessels carrying little blood deliver little, and the capillary all |
 | pruning | a sprout carrying under a fiftieth of the capillary's own flow for 100 steps regresses | the weakest loops go, the strong ones stay |
+| immunity | from step 200; one arrival in ten steps; a kill one step in twenty of contact, five at most; 300 steps of life; chemokine reach 20 pixels | immune cells that reach the tumour and kill a few cells a day, without clearing a cord at once |
 
 ## What is not there
 

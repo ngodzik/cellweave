@@ -77,6 +77,9 @@ struct Outcome {
     depth: Option<f64>,
     /// Cells a growing vessel took every pixel of, over the whole run.
     crushed: u64,
+    /// Immune cells in the tissue at the end and tumour cells they killed,
+    /// when the configuration has immunity.
+    immune: Option<(usize, u64)>,
 }
 
 /// Mutations shown for the leading clone, the latest ones.
@@ -176,6 +179,10 @@ fn run(arm: &Arm, index: usize, seed: u64) -> Result<Outcome> {
         vessel: (m.vessel > 0).then_some((m.vessel, m.perfused, sim.sprouted(), m.regressed)),
         depth: sim.depth_from_vessels(DEPTH_SHARE),
         crushed: sim.crushed(),
+        immune: arm
+            .scenario
+            .immunity
+            .map(|_| (sim.immune_cells(), sim.killed())),
     })
 }
 
@@ -194,12 +201,12 @@ pub fn campaign(arms: &[Arm], seeds: RangeInclusive<u64>, dir: &Path) -> Result<
     outcomes.sort_by_key(|o| (o.seed, o.arm));
 
     let mut csv = String::from(
-        "seed,arm,end_mcs,reached_edge,living,cycling,quiescent,clones,nadir,resistant,response,leading,lesion,lesion_lost_at,necrotic,vessel,perfused,sprouted,regressed,depth,crushed,coverage\n",
+        "seed,arm,end_mcs,reached_edge,living,cycling,quiescent,clones,nadir,resistant,response,leading,lesion,lesion_lost_at,necrotic,vessel,perfused,sprouted,regressed,depth,crushed,immune,killed,coverage\n",
     );
     for o in &outcomes {
         let _ = writeln!(
             csv,
-            "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
+            "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}",
             o.seed,
             arms[o.arm].name,
             o.end_mcs,
@@ -225,6 +232,8 @@ pub fn campaign(arms: &[Arm], seeds: RangeInclusive<u64>, dir: &Path) -> Result<
                 .map_or_else(String::new, |(_, _, _, r)| r.to_string()),
             o.depth.map_or_else(String::new, |d| format!("{d:.1}")),
             o.crushed,
+            o.immune.map_or_else(String::new, |(n, _)| n.to_string()),
+            o.immune.map_or_else(String::new, |(_, k)| k.to_string()),
             o.coverage
                 .iter()
                 .filter(|(_, share)| *share > 0.0)
@@ -307,6 +316,20 @@ pub fn campaign(arms: &[Arm], seeds: RangeInclusive<u64>, dir: &Path) -> Result<
                 spread(&perfused),
                 spread(&sprouted),
                 spread(&depth)
+            );
+        }
+        let immune: Vec<(usize, u64)> = mine.iter().filter_map(|o| o.immune).collect();
+        if !immune.is_empty() {
+            let present: Vec<f64> = immune.iter().map(|&(n, _)| n as f64).collect();
+            let killed: Vec<f64> = immune.iter().map(|&(_, k)| k as f64).collect();
+            let gone = mine.iter().filter(|o| o.living == 0).count();
+            let _ = writeln!(
+                text,
+                "    immune cells at the end {}, tumour cells they killed {}, tumours with no living cell left {} of {}",
+                spread(&present),
+                spread(&killed),
+                gone,
+                mine.len()
             );
         }
         if let Some(at) = arm.scenario.lesion.as_ref().map(|l| l.at) {
