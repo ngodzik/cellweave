@@ -251,7 +251,7 @@ fn colouring(ui: &mut egui::Ui, view: &mut View, experiment: &Experiment) {
                 if experiment
                     .scenario
                     .angiogenesis
-                    .is_some_and(|a| a.perfusion == Perfusion::OnJoining)
+                    .is_some_and(|a| a.perfusion != Perfusion::AtOnce)
                 {
                     swatch(ui, paint::DRY_VESSEL, "no blood yet");
                 }
