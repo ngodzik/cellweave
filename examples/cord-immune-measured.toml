@@ -1,0 +1,31 @@
+# cord-immune.toml, with immune cells that kill at measured rates (chapter 25).
+#
+# At a tumour step of 0.3 to 0.9 hours (chapter 25), a kill chance of 0.3 a
+# step of contact makes a tumour cell die after one to three hours of
+# contact, where Weigelin and colleagues (2021) see death after contacts
+# adding up to about an hour or more; and a cap of 20 kills lets an immune
+# cell in steady contact kill within the 1 to 20 a day they cite. When immune
+# cells arrive, how long they live, how strongly they climb the chemokine and
+# how far it reaches are not measured, and stay as in cord-immune.toml.
+
+width = 300
+height = 300
+mcs = 1500
+temperature = 10.0
+snapshot_interval = 100
+output_dir = "output-cord-immune-measured"
+oxygen_uptake = 0.00003
+network = "networks/ras-erk.toml"
+
+[oxygen_source]
+kind = "vessel"
+radius = 6
+
+[immunity]
+from = 200
+arrival = 0.1
+kill = 0.3
+kills = 20
+lifetime = 300
+chemotaxis = 200.0
+reach = 20.0

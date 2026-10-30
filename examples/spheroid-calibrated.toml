@@ -1,0 +1,26 @@
+# A spheroid whose oxygen is set by measured ones (chapter 25).
+#
+# The uptake is chosen so that a core forms where it would in a sphere with
+# the melanoma spheroids' oxygen: Browning and colleagues (eLife, 2021) saw
+# cores appear at a radius of about 237 micrometres, a disc with the same
+# diffusion length forms its core at sqrt(2/3) of that, 194, and at about a
+# micrometre per pixel this uptake puts the first core near 196 pixels. The
+# rest of the structure is the model's own, set against the measured one by
+# scripts/compare-spheroids.py.
+#
+# It stops after step 625, when the spheroid has passed 338 pixels, about the
+# measured spheroids' largest radii. The box is large and the uptake small, so
+# the field takes many sweeps to settle each step: expect this run to take
+# tens of minutes.
+
+width = 800
+height = 800
+mcs = 626
+temperature = 10.0
+snapshot_interval = 25
+output_dir = "output-spheroid-calibrated"
+oxygen_uptake = 0.00002
+network = "networks/ras-erk.toml"
+
+[oxygen_source]
+kind = "bath"

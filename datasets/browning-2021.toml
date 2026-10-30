@@ -1,0 +1,35 @@
+# Tumour spheroids: their radius, and how far in their arrested and necrotic
+# regions reach, over days. No data here: where the authors published it, the
+# fingerprints, and how scripts/fetch-dataset.py copies it into
+# data/browning-2021/, which git ignores.
+
+name = "browning-2021"
+title = "Quantitative analysis of tumour spheroid structure"
+authors = "Browning AP, Sharp JA, Murphy RJ, Gunasingh G, Lawson B, Burrage K, Haass NK, Simpson MJ."
+source = "eLife 10, e73020 (2021)"
+doi = "10.7554/eLife.73020"
+licence = "CC-BY-4.0"
+what = "WM983b and WM793b melanoma spheroids seeded from 2,500, 5,000 or 10,000 cells: outer radius over 24 days, and, from confocal sections, the share of it holding arrested or dead cells and the share void of living ones."
+chapter = 25
+
+[[files]]
+# The authors' repository at the commit Software Heritage archived for the
+# paper.
+name = "AllConfocalData.csv"
+url = "https://raw.githubusercontent.com/ap-browning/Spheroids/27f9e32bb702cb56a62bacaae1e49746a3c4342d/Data/AllConfocalData.csv"
+sha256 = "ed33ada34fa3bac2e3dd6d460f295c5e48f26ad6a710f918972dcbb48e4a6682"
+
+[[files]]
+name = "IncucyteData.csv"
+url = "https://raw.githubusercontent.com/ap-browning/Spheroids/27f9e32bb702cb56a62bacaae1e49746a3c4342d/Data/IncucyteData.csv"
+sha256 = "f0665a7f45c0e895d87ca5812698369309693caecb1ba810d7059352c9dc91e1"
+
+[[outputs]]
+name = "confocal.csv"
+convert = "copy"
+from = "AllConfocalData.csv"
+
+[[outputs]]
+name = "radius.csv"
+convert = "copy"
+from = "IncucyteData.csv"

@@ -1,0 +1,19 @@
+# The cord of cord.toml with the oxygen uptake that chapter 25 fixes on
+# measured melanoma spheroids, in a box large enough for the deeper sleeve.
+#
+# Nothing here was fitted to cords. Tannock (1968) measured tumour cords in a
+# mouse mammary tumour with radii, vessel to necrosis, of 60 to 120
+# micrometres; at about a micrometre a pixel this cord's is 69.
+
+width = 300
+height = 300
+mcs = 1500
+temperature = 10.0
+snapshot_interval = 500
+output_dir = "output-cord-calibrated"
+oxygen_uptake = 0.00002
+network = "networks/ras-erk.toml"
+
+[oxygen_source]
+kind = "vessel"
+radius = 6

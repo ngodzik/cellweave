@@ -84,7 +84,7 @@ These are the numbers of the run after a review of the code. Its first run had c
 
 ## Still a placeholder
 
-Every number of the `[immunity]` table. One kind of immune cell, recognising every tumour cell alike: no antigen, no priming in a lymph node, no exhaustion but a count. One hit kills. The chemokine comes from tumour cells alone.
+Every number of the `[immunity]` table. Chapter 25 sets two of them against measured killing, at a clock fixed on spheroids: there they are several times too slow, and at the measured rates immune cells clear 8 cords of 10 by step 1000. One kind of immune cell, recognising every tumour cell alike: no antigen, no priming in a lymph node, no exhaustion but a count. One hit kills. The chemokine comes from tumour cells alone.
 
 ## References
 
