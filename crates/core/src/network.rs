@@ -20,7 +20,14 @@ use serde::{Deserialize, Serialize};
 ///
 /// These names are the engine's, not the configuration's: they exist because
 /// something outside the cell computes them. More appear as the coupling grows.
-pub const INPUT_NAMES: [&str; 4] = ["oxygen", "egf", "crowding", "stress"];
+pub const INPUT_NAMES: [&str; 6] = [
+    "oxygen",
+    "egf",
+    "crowding",
+    "stress",
+    "waste",
+    "necrotic_factor",
+];
 
 /// Cooperative binding: `source^n / (k^n + source^n)` stands in for `source`.
 ///
@@ -99,6 +106,18 @@ pub enum Term {
         /// How fast, at zero source.
         rate: f64,
     },
+    /// `- rate * max(0, (source - threshold) / threshold)`. Damage above a
+    /// critical level of the source, offset by nothing, as `DamagedBelow` is
+    /// below one: what is toxic past some level, as the factor necrosis
+    /// releases is to the cells around it (chapter 27).
+    DamagedAbove {
+        /// Node or input whose excess does the damage.
+        source: String,
+        /// Level above which damage begins.
+        threshold: f64,
+        /// How fast, at twice the threshold.
+        rate: f64,
+    },
 }
 
 impl Term {
@@ -108,7 +127,8 @@ impl Term {
             Self::ActivatedBy { source, .. }
             | Self::ActivatedByAbsenceOf { source, .. }
             | Self::ProducedBy { source, .. }
-            | Self::DamagedBelow { source, .. } => Some(source),
+            | Self::DamagedBelow { source, .. }
+            | Self::DamagedAbove { source, .. } => Some(source),
             Self::Decays { .. } | Self::RelaxesTo { .. } => None,
         }
     }

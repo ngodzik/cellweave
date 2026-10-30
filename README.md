@@ -85,11 +85,11 @@ ffmpeg -framerate 30 -pattern_type glob -i 'frames/*.png' run.mp4
 
 ## Learn how it works
 
-[The course](docs/README.md) explains the program from the biology up, in 27 chapters, each answering one question: what a thing is in the body, what cellweave makes of it, which choices were made and why, where in the code it lives, and what is still a placeholder. It is kept in step with the code, and its last chapter lists what the model does not say.
+[The course](docs/README.md) explains the program from the biology up, in 28 chapters, each answering one question: what a thing is in the body, what cellweave makes of it, which choices were made and why, where in the code it lives, and what is still a placeholder. It is kept in step with the code, and its last chapter lists what the model does not say.
 
 ## Under the hood
 
-Rust, in four crates whose dependency graph enforces the layering: `cellweave-core` (types, no I/O, no computation), `cellweave-engine` (the lattice, the networks, the fields, the loop), `cellweave-io` (configuration and output) and the command line; the viewer sits on top in a workspace of its own. The same seed gives the same run, byte for byte, on any machine and any number of threads, and the CI checks it on every push, with fmt, clippy, docs, 180 tests green on Linux, macOS and Windows, the oldest supported Rust, and `cargo-deny`.
+Rust, in four crates whose dependency graph enforces the layering: `cellweave-core` (types, no I/O, no computation), `cellweave-engine` (the lattice, the networks, the fields, the loop), `cellweave-io` (configuration and output) and the command line; the viewer sits on top in a workspace of its own. The same seed gives the same run, byte for byte, on any machine and any number of threads, and the CI checks it on every push, with fmt, clippy, docs, 209 tests green on Linux, macOS and Windows, the oldest supported Rust, and `cargo-deny`.
 
 ```bash
 cargo fmt --all -- --check

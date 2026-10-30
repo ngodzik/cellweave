@@ -1,0 +1,49 @@
+# A single cell in a bath grows into a spheroid in a volume, starves from the
+# inside, and its dead core breaks down into fluid; the still medium around it
+# leaves less oxygen at its surface the larger it grows, and it stops near the
+# measured spheroids' end (chapter 27).
+#
+# A voxel stands for about 3.0 micrometres: a melanoma spheroid's cell is
+# 18.7 micrometres across (Browning and colleagues, eLife, 2021), and a cell
+# that grows through its cycle holds about 130 voxels. The medium is still, as
+# in a well nothing stirs: oxygen diffuses through it at 0.606, 3.03 times the
+# tissue's 0.2, between 1.54 times for a medium nothing moves (oxygen's
+# measured diffusions in culture medium and in tumour tissue) and about 6.7
+# times for the flowing medium of Mueller-Klieser's spheroids. Inside that
+# bracket it is the one value set against the measured spheroids' end, 348
+# micrometres. The uptake puts the core's onset where the measured spheroids
+# have theirs, at 237 micrometres, 80 voxels: 0.00017 with the medium stirred,
+# divided by 1 + 2k with it still, k = 0.2 / 0.606 = 0.33. The dead tissue
+# loses 0.024 of its volume a step, the rate Greenspan's model asks of the
+# measured spheroids' end structure against how fast their cells grow, and the
+# lattice is swept four times a step so that the tissue carries what the core
+# loses out to its surface. Each cell runs a cycle of its own, of about 20
+# steps; contact counts edges and corners, so that the ball does not square;
+# the cells hold their volume less stiffly, so that the surface holds round.
+#
+# The box is 320 voxels on a side, about 33 million voxels: expect this run
+# to take hours.
+
+width = 320
+height = 320
+depth = 320
+max_cells = 200000
+mcs = 1500
+temperature = 10.0
+snapshot_interval = 20
+output_dir = "output-spheroid-3d"
+oxygen_uptake = 0.0001024
+debris_loss = 0.024
+sweeps_per_step = 4
+contact_order = 3
+network = "networks/ras-erk-soft.toml"
+
+[oxygen_source]
+kind = "bath"
+
+[cycle]
+median = 20.0
+spread = 0.3
+
+[still_medium]
+diffusion = 0.606

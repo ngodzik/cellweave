@@ -70,7 +70,7 @@ The first test is the formula above. A ball of radius 10 voxels taking up 0.006 
 - A first cell of radius 3 voxels, set by what a computer can hold rather than by a cell.
 - The contact energies, λ and the temperature are the plane's. A voxel has six neighbours where a pixel has four, and nothing has been tuned for it.
 - In a volume the cycle is the twenty steps between checks for division more than the time a cell takes to grow, and the first divisions come in waves.
-- The voxel's size, 2.5 to 3 µm, from the size of a cell and nothing else yet.
+- The voxel's size, about 2.8 µm, from the size of the melanoma spheroids' cells (chapter 27) and nothing else.
 
 ## References
 

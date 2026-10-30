@@ -1,8 +1,8 @@
 //! TOML simulation configuration.
 
 use cellweave_core::{
-    Angiogenesis, CellweaveError, CloneId, Exposure, Immunity, NetworkSpec, OxygenSource, Seeding,
-    Tracing,
+    Angiogenesis, CellweaveError, CloneId, Cycle, Exposure, Immunity, NecroticFactor, NetworkSpec,
+    OxygenSource, Seeding, StillMedium, Tracing, Waste,
 };
 use cellweave_engine::simulation::{DEFAULT_MAX_CELLS, DEFAULT_SEED, Lesion, Scenario};
 use serde::{Deserialize, Serialize};
@@ -104,6 +104,39 @@ pub struct SimConfig {
     /// one it always was.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tracing: Option<Tracing>,
+    /// The share of a dead cell's volume its debris loses per step, broken
+    /// down into fluid that leaves the tissue, as a spheroid's necrotic core
+    /// loses mass. Left out, a dead cell loses a pixel only when a neighbour
+    /// takes it, and the run is the one it always was.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub debris_loss: Option<f64>,
+    /// Monte Carlo sweeps of the lattice each step; one when left out.
+    #[serde(default = "default_sweeps_per_step")]
+    pub sweeps_per_step: u32,
+    /// A cell cycle that takes time, each cell drawing how long its own
+    /// lasts and growing through it. Left out, a cell divides once it is big
+    /// enough at a check, and the run is the one it always was.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cycle: Option<Cycle>,
+    /// How far two pixels count as touching, for the contact energy, 1 to
+    /// 3: across a face only when left out; in a volume 3 counts edges and
+    /// corners too.
+    #[serde(default = "default_contact_order")]
+    pub contact_order: u8,
+    /// A waste the living release and the bath washes away, read by each
+    /// cell's network as its `waste` input. Left out, there is none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub waste: Option<Waste>,
+    /// A factor the dead release and the bath washes away, read by each
+    /// cell's network as its `necrotic_factor` input. Left out, there is
+    /// none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub necrotic_factor: Option<NecroticFactor>,
+    /// A bath whose medium is still, so that the oxygen next to the tissue
+    /// falls as the tissue takes up more. Left out, the medium is held at
+    /// the source's level up to the tissue.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub still_medium: Option<StillMedium>,
 }
 
 /// A lesion as a configuration states it: its network by file name, where
@@ -134,6 +167,14 @@ fn default_depth() -> u32 {
 
 fn default_max_cells() -> usize {
     DEFAULT_MAX_CELLS
+}
+
+fn default_sweeps_per_step() -> u32 {
+    1
+}
+
+fn default_contact_order() -> u8 {
+    1
 }
 
 /// The RAS/ERK network, compiled in so that the built-in hypothesis and one you
@@ -201,6 +242,13 @@ impl SimConfig {
             angiogenesis: self.angiogenesis,
             immunity: self.immunity,
             tracing: self.tracing,
+            debris_loss: self.debris_loss,
+            sweeps_per_step: self.sweeps_per_step,
+            cycle: self.cycle,
+            contact_order: self.contact_order,
+            waste: self.waste,
+            necrotic_factor: self.necrotic_factor,
+            still_medium: self.still_medium,
         })
     }
 
@@ -318,6 +366,13 @@ impl Default for SimConfig {
             angiogenesis: None,
             immunity: None,
             tracing: None,
+            debris_loss: None,
+            sweeps_per_step: default_sweeps_per_step(),
+            cycle: None,
+            contact_order: default_contact_order(),
+            waste: None,
+            necrotic_factor: None,
+            still_medium: None,
         }
     }
 }
@@ -409,6 +464,42 @@ mod tests {
         .unwrap();
         let scenario = volume.scenario(None).unwrap();
         assert_eq!((scenario.depth, scenario.max_cells), (40, 90_000));
+    }
+
+    #[test]
+    fn debris_loss_extra_sweeps_and_a_wider_contact_are_left_out_unless_stated() {
+        let base = "width = 50\nheight = 50\nmcs = 10\ntemperature = 10.0\nsnapshot_interval = 5\noutput_dir = \"o\"\n";
+        assert_eq!(SimConfig::from_toml(base).unwrap().debris_loss, None);
+        let lossy = SimConfig::from_toml(&format!("{base}debris_loss = 0.01\n")).unwrap();
+        assert_eq!(lossy.scenario(None).unwrap().debris_loss, Some(0.01));
+        assert_eq!(lossy.scenario(None).unwrap().sweeps_per_step, 1);
+        let swept = SimConfig::from_toml(&format!("{base}sweeps_per_step = 4\n")).unwrap();
+        assert_eq!(swept.scenario(None).unwrap().sweeps_per_step, 4);
+        assert_eq!(lossy.scenario(None).unwrap().contact_order, 1);
+        let wide = SimConfig::from_toml(&format!("{base}contact_order = 3\n")).unwrap();
+        assert_eq!(wide.scenario(None).unwrap().contact_order, 3);
+    }
+
+    #[test]
+    fn a_cycle_of_its_own_is_left_out_unless_stated() {
+        let base = "width = 50\nheight = 50\nmcs = 10\ntemperature = 10.0\nsnapshot_interval = 5\noutput_dir = \"o\"\n";
+        assert_eq!(
+            SimConfig::from_toml(base)
+                .unwrap()
+                .scenario(None)
+                .unwrap()
+                .cycle,
+            None
+        );
+        let cycled =
+            SimConfig::from_toml(&format!("{base}[cycle]\nmedian = 20.0\nspread = 0.3\n")).unwrap();
+        assert_eq!(
+            cycled.scenario(None).unwrap().cycle,
+            Some(Cycle {
+                median: 20.0,
+                spread: 0.3
+            })
+        );
     }
 
     #[test]

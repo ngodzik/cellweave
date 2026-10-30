@@ -59,7 +59,7 @@ flowchart LR
 
 **The grid is the truth about volume.** `divide` counts the parent's pixels from the grid and rewrites both records from that count, so any earlier drift in the bookkeeping is corrected rather than carried. A test checks that records still match the grid after dividing, stepping, dividing again and stepping again.
 
-**Resorption at a fixed rate**, two pixels per step, rather than instantly. A dead cell that vanished at once would free its whole area in one step. Two pixels per step clears a cell in about seventy steps, a few generations, which is at least the right order.
+**Resorption at a fixed rate**, two pixels per step, rather than instantly. A dead cell that vanished at once would free its whole area in one step. Two pixels per step clears a cell in about seventy steps, a few generations, which is at least the right order. It clears a dead cell only where something takes its pixels, which in the middle of a core of dead cells nothing does; a configuration's `debris_loss` replaces it with a loss wherever the debris lies, the tissue closing over what goes (chapter 27).
 
 **One slot per cell, asserted.** Identifier `i + 1` names the cell whose network is at index `i`. That pairing is what every fate and every target relies on, and it is checked after every round of division rather than trusted: were the two to drift, a network would quietly drive the wrong cell and no test would notice.
 

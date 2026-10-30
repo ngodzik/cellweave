@@ -1,0 +1,22 @@
+# The softer RAS/ERK network of ras-erk-soft.toml, its cells killed by the
+# factor the dead release as well as by anoxia (chapter 27).
+#
+# Extracts of spheroids with extensive necrosis stop cells growing and kill
+# them, and so does the medium the spheroids grew in (Freyer, Cancer
+# Research, 1988). Here BCL2, the survival node, is damaged past a level of 1
+# of the factor, as it is below fifteen percent of the source's oxygen, and
+# as fast at twice that level as at no oxygen at all. How much the dead
+# release, the scenario's [necrotic_factor] says.
+
+extends = "ras-erk-soft.toml"
+
+[[nodes]]
+name = "bcl2"
+initial = 0.70
+terms = [
+  { kind = "produced_by", source = "erk", rate = 0.2 },
+  { kind = "produced_by", source = "hif1", rate = 0.1 },
+  { kind = "relaxes_to", value = 0.5, rate = 0.15 },
+  { kind = "damaged_below", source = "oxygen", threshold = 0.15, rate = 0.25 },
+  { kind = "damaged_above", source = "necrotic_factor", threshold = 1.0, rate = 0.25 },
+]

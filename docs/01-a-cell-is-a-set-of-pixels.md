@@ -50,7 +50,7 @@ Because every accepted move is a random draw, the same **seed** gives the same d
 
 **Pixels rather than points.** Other simulators represent a cell as a point with a position, which is cheaper, but a point has no shape and no surface. Shape and contact are what the biology here is about, so a lattice it is.
 
-**Four neighbours, not eight.** The energy counts boundary along pixel faces. Diagonal contacts are not boundary. This is the usual choice and it keeps the geometry simple; it does mean a cell one pixel wide is a valid wall.
+**Four neighbours, not eight.** The energy counts boundary along pixel faces. Diagonal contacts are not boundary. This is the usual choice and it keeps the geometry simple; it does mean a cell one pixel wide is a valid wall, and that a boundary along a diagonal costs more than one along the lattice's rows, which in a volume squares a tissue into a cube; chapter 27 counts contact across edges and corners as well, where that matters.
 
 **The Kronecker delta is on identity, not kind.** Two pixels of the same cell share no boundary and cost nothing; two distinct cells of the same kind in contact do pay `J(kind, kind)`. Getting this wrong was the first real bug in the project: the energy was charged by kind, so a cell was paying for boundary with itself, and the boundary loop skipped a term. It compiled, passed lint, and had twelve green tests. It was wrong anyway, and only a picture showed it. Four tests now pin values that can be computed by hand: punching a hole in a cell costs four boundary units, growing an isolated bump costs two, sliding a diagonal corner costs nothing.
 

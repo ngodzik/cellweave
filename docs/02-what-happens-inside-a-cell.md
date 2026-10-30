@@ -67,6 +67,7 @@ Each line of the table above is a **term**, and terms come from a closed catalog
 | `decays` | `- rate * self` | first order turnover, which is what gives a node a steady state at all |
 | `relaxes_to` | `- rate * (self - value)` | held near a set point rather than driven to zero |
 | `damaged_below` | `- rate * max(0, (threshold - source) / threshold)` | energy failure, the one term nothing above cancels |
+| `damaged_above` | `- rate * max(0, (source - threshold) / threshold)` | what is toxic past some level, offset by nothing (chapter 27) |
 
 `activated_by` also takes a **Hill** response, `source^n / (k^n + source^n)` in place of `source`, where `n` is how sharply it switches and `k` the level at which it is half way. With a large `n` a graded signal becomes a decision.
 
@@ -96,7 +97,7 @@ Run against the healthy network in the cord of chapter 5, under the same seed fo
 
 A node whose name appears in both **replaces** the inherited one whole, rather than merging term by term. Replacing is the more predictable of the two: what a node is, after the override, is written in one place. A new name is appended, and roles and mechanics are inherited when left out. A file that extends itself round a loop is refused, with the loop named.
 
-Every name a term reads is resolved when the file is loaded, against the nodes and against the three names the environment provides, `oxygen`, `egf` and `crowding` (chapter 7). A term reading anything else is an error naming what it read and listing what is known, rather than a silent zero in the middle of a run.
+Every name a term reads is resolved when the file is loaded, against the nodes and against the names the environment provides: `oxygen`, `egf`, `crowding` (chapter 7), `stress` (chapter 8), and `waste` and `necrotic_factor` (chapter 27). A term reading anything else is an error naming what it read and listing what is known, rather than a silent zero in the middle of a run.
 
 ### How the equations are solved
 

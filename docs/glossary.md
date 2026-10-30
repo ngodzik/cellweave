@@ -26,6 +26,8 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Caspase** (8). The enzymes that carry out apoptosis, cutting the cell's own proteins apart. Here one node, switched on sharply by p53.
 
+**Cell cycle** (27). What a cell goes through from its birth to its division: a first gap (G1), copying its DNA (S), a second gap (G2) and mitosis (M). With `[cycle]`, each cell draws at its birth how many steps its cycle lasts, log-normal around a median, and does not divide before they have passed.
+
 **Cell competition** (7, 11). Cells eliminating their neighbours by outdoing them. In chapter 7 cells with higher ERK press their neighbours small, and the squeezed ones differentiate and leave; chapter 11 shows the oesophagus's pattern needs cells that do not compete by size.
 
 **Cellular Potts model, CPM** (1). Cells as sets of pixels on a lattice, moving pixel by pixel to lower an energy.
@@ -46,6 +48,8 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Contact inhibition** (7). A cell with no room around it behaving differently from one with room: here, differentiating more readily.
 
+**Contact order** (27). How far two pixels count as touching, for the contact energy: across a face only at 1, as everywhere before chapter 27; at 3 in a volume across edges and corners too, the 26 voxels around a voxel, so that a boundary costs nearly the same whatever its direction, and a tissue rounds into a ball rather than a cube. Copies are proposed across faces whatever it is.
+
 **Convergent evolution** (6). The same outcome reached through different changes. Seven evolving cords out of eight outgrew their steady state, by at least three routes.
 
 **Cord, tumour cord** (5). Tumour tissue living around a vessel out to the depth oxygen reaches, dead beyond. A steady state with turnover.
@@ -56,9 +60,11 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Crowding** (7). How squeezed a cell is: how far below its reference size it sits, as a fraction of it. An input every network can read, like oxygen.
 
+**Debris loss** (27). The share of a dead cell's volume its debris loses each step, broken down into fluid that leaves the tissue; the tissue closes over what goes, and gives it up at its surface. What stops a spheroid growing, in Greenspan's model and here.
+
 **Depth** (26). The number of slices of the lattice. One is a plane, run exactly as it always was; more is a volume.
 
-**Determinism** (1, 9, 14, 16, 27). The same seed gives the same simulation, byte for byte. Checked on every push.
+**Determinism** (1, 9, 14, 16, 28). The same seed gives the same simulation, byte for byte. Checked on every push.
 
 **Differentiation** (7). A cell giving up dividing to become a specialised cell. In an epithelium, a basal cell that commits leaves the layer. Here, a chance per step set by the network's differentiation node.
 
@@ -74,7 +80,7 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **EGF** (2). Epidermal growth factor, the growth signal. A hardcoded input for every cell today.
 
-**Emergence** (6, 7, 12, 14, 20, 27). Behaviour that follows from the model without any rule naming it. The necrotic core, the compact cell, the cord's thickness.
+**Emergence** (6, 7, 12, 14, 20, 28). Behaviour that follows from the model without any rule naming it. The necrotic core, the compact cell, the cord's thickness.
 
 **Endothelial cell** (14). A cell of the thin layer that lines every blood vessel. The cells that sprout.
 
@@ -94,7 +100,7 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Free rider** (15). A cell that benefits from what its neighbours secrete without secreting any itself.
 
-**FUCCI** (25). The fluorescent ubiquitination cell cycle indicator: two fluorescent proteins, one marking a cell in the first gap of its cycle and one marking it past copying its DNA, so that a section through a tissue shows where cells cycle and where they have stopped.
+**FUCCI** (25, 27). The fluorescent ubiquitination cell cycle indicator: two fluorescent proteins, one marking a cell in the first gap of its cycle and one marking it past copying its DNA, so that a section through a tissue shows where cells cycle and where they have stopped.
 
 **Gone** (4, 7). A cell that has left the tissue for good: resorbed to nothing after dying, or shed after differentiating. Its slot is empty; the lattice keeps a tombstone.
 
@@ -136,7 +142,9 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Mutation rate** (6). The probability that a daughter is born with a mutation. One in twenty in the evolving cord, a placeholder.
 
-**Necrosis, necrotic** (2, 4). Death by energy failure. A kind on the lattice: stops consuming, network frozen, resorbed.
+**Necrosis, necrotic** (2, 4, 27). Death by energy failure. A kind on the lattice: stops consuming, network frozen, resorbed, or with a debris loss broken down where it lies.
+
+**Necrotic factor** (27). What dying cells release that stops and kills the living around them (Freyer, 1988), diffusing out through the spheroid; released here by every dead pixel and read by each cell's network. Not tumour necrosis factor (TNF), a cytokine of immune cells.
 
 **Necrotic core** (5). The dead centre of a spheroid too large for oxygen to reach.
 
@@ -147,6 +155,8 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 **Obstacle** (1, 3). A pixel no cell can take. A vessel is an obstacle held at full oxygen.
 
 **ODE** (2). Ordinary differential equation: rates of change in time only. The network is five of them.
+
+**p27** (27). p27Kip1, a cyclin-dependent kinase inhibitor: a protein that holds a cell in the first gap of its cycle (G1). Higher in the arrested inner cells of melanoma spheroids. Here the node that arrests a cell in `ras-erk-waste.toml`, raised by HIF-1α and by the waste.
 
 **p53** (8). The protein that rises when a cell is damaged and decides between repair and apoptosis. Here switched on by the stress.
 
@@ -200,7 +210,7 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Sister fates, r** (12, 24). What the two cells of one division do next. r is the chance both divide, which equals the chance both leave; a quarter if sisters were independent, below a quarter when they tend to do opposite things, as in the mouse and in the sheet. In the sheet it does not set how fast clones grow: a daughter that leaves long after its birth leaves its clone to drift meanwhile.
 
-**Snapshot** (4, 27). A file listing every living cell's state and the oxygen it reads, one per interval.
+**Snapshot** (4, 28). A file listing every living cell's state and the oxygen it reads, one per interval.
 
 **SOR** (3). Successive over-relaxation, the sweep that solves for a steady state in about L passes rather than L².
 
@@ -211,6 +221,8 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 **Stalk cell** (14). An endothelial cell behind the tip of a sprout, which divides and makes the new vessel's tube. Not modelled as a cell here: the tip lays vessel behind it.
 
 **Steady state, equilibrium** (3). A field that has stopped changing. Where oxygen always is, at the scale of a cell's decisions.
+
+**Still medium** (27). Medium nothing stirs, so that oxygen reaches a tissue's surface only by diffusing through it, and the medium next to the surface is depleted the more, the more the tissue takes up. Here a bath whose level next to a spheroid in a volume is that of a still medium around a ball, in the spheroid in a volume and wherever a configuration asks for it.
 
 **Stroma** (3). Ordinary tissue between and around tumour cells. Consumes too.
 
@@ -236,3 +248,5 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 
 **Voxel** (26). A pixel of a lattice in a volume: a little cube with six neighbours, four in its slice and one in each slice beside it.
+
+**Waste** (27). Greenspan's inhibitor: something every living cell releases, which diffuses and which the bath washes away, so that it is highest in a spheroid's middle and holds cells there out of their cycle. Here an optional field a cell's network reads as its `waste` input.

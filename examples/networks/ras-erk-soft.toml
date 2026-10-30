@@ -1,0 +1,17 @@
+# The RAS/ERK network of ras-erk.toml, its cells holding to their volume less
+# stiffly (chapter 27).
+#
+# A voxel a cell holds above its target is worth 2 lambda to it, 100 at a
+# lambda of 50, once it gives it up to medium, against some 16 for each
+# contact with medium the surface has. In a spheroid whose dead core breaks
+# down, the cells at the edge of the dead tissue are always a voxel or so
+# above their targets, and that excess finds the nearest medium: a valley
+# nearer to the core than the rest of the surface takes more than its share
+# and deepens. At a lambda of 20 the quantum is 40, and the surface's tension
+# holds the ball round for longer.
+
+extends = "ras-erk.toml"
+
+[mechanics]
+growth_coefficient = 1.5
+lambda_volume = 20.0

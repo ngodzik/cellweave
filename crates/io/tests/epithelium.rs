@@ -39,6 +39,13 @@ fn sheet(size: u32) -> Scenario {
         angiogenesis: None,
         immunity: None,
         tracing: None,
+        debris_loss: None,
+        sweeps_per_step: 1,
+        cycle: None,
+        contact_order: 1,
+        waste: None,
+        necrotic_factor: None,
+        still_medium: None,
     }
 }
 
