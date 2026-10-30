@@ -3,7 +3,7 @@
 
 #![allow(clippy::unwrap_used)]
 
-use cellweave_core::{CellId, CloneId, NetworkSpec, OxygenSource, Seeding};
+use cellweave_core::{CellId, CloneId, NetworkSpec, OxygenSource, Seeding, Tracing};
 use cellweave_engine::simulation::{DEFAULT_SEED, Running, Scenario};
 use cellweave_engine::{Fate, Simulation};
 use cellweave_io::SimConfig;
@@ -36,6 +36,7 @@ fn sheet(size: u32) -> Scenario {
         revert: None,
         angiogenesis: None,
         immunity: None,
+        tracing: None,
     }
 }
 
@@ -146,4 +147,69 @@ fn sisters_do_opposite_things_more_often_than_chance() {
     assert!(fates.pairs() > 1000, "{fates:?}");
     let r = fates.r().unwrap();
     assert!(r < 0.24, "r = {r}");
+}
+
+#[test]
+fn marking_gives_every_cell_a_clone_of_its_own_and_changes_nothing_else() {
+    let traced = Scenario {
+        tracing: Some(Tracing { at: 100, every: 10 }),
+        ..sheet(60)
+    };
+    let (mut marked, _) = Simulation::new(traced, &spec()).unwrap().start().unwrap();
+    let (mut plain, _) = Simulation::new(sheet(60), &spec())
+        .unwrap()
+        .start()
+        .unwrap();
+    let in_layer = |sim: &Simulation<Running>| {
+        let m = sim.measure();
+        m.cycling + m.quiescent + m.differentiating
+    };
+    for _ in 0..100 {
+        marked.step().unwrap();
+        plain.step().unwrap();
+    }
+    assert!(
+        marked.traced_clones().is_empty(),
+        "nothing is marked before the step"
+    );
+
+    marked.step().unwrap();
+    plain.step().unwrap();
+    // Marked at the start of the step, a cell may divide before its end.
+    let at_marking = marked.traced_clones();
+    assert!(at_marking.iter().all(|&(_, cells)| cells <= 2));
+    assert_eq!(
+        at_marking.iter().map(|&(_, cells)| cells).sum::<usize>(),
+        in_layer(&marked),
+        "every cell in the layer carries a mark"
+    );
+
+    for _ in 0..300 {
+        marked.step().unwrap();
+        plain.step().unwrap();
+    }
+    assert_eq!(
+        marked.measure(),
+        plain.measure(),
+        "marking draws nothing, so the run is the unmarked run"
+    );
+    let later = marked.traced_clones();
+    assert_eq!(
+        later.iter().map(|&(_, cells)| cells).sum::<usize>(),
+        in_layer(&marked),
+        "every cell in the layer descends from a cell marked then"
+    );
+    assert!(
+        later.len() < at_marking.len(),
+        "marked clones are lost by drift"
+    );
+}
+
+#[test]
+fn tracing_every_zero_steps_is_refused() {
+    let traced = Scenario {
+        tracing: Some(Tracing { at: 10, every: 0 }),
+        ..sheet(60)
+    };
+    assert!(Simulation::new(traced, &spec()).is_err());
 }

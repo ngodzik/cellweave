@@ -54,7 +54,7 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Crowding** (7). How squeezed a cell is: how far below its reference size it sits, as a fraction of it. An input every network can read, like oxygen.
 
-**Determinism** (1, 9, 14, 16, 24). The same seed gives the same simulation, byte for byte. Checked on every push.
+**Determinism** (1, 9, 14, 16, 25). The same seed gives the same simulation, byte for byte. Checked on every push.
 
 **Differentiation** (7). A cell giving up dividing to become a specialised cell. In an epithelium, a basal cell that commits leaves the layer. Here, a chance per step set by the network's differentiation node.
 
@@ -70,7 +70,7 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **EGF** (2). Epidermal growth factor, the growth signal. A hardcoded input for every cell today.
 
-**Emergence** (6, 7, 12, 14, 20, 24). Behaviour that follows from the model without any rule naming it. The necrotic core, the compact cell, the cord's thickness.
+**Emergence** (6, 7, 12, 14, 20, 25). Behaviour that follows from the model without any rule naming it. The necrotic core, the compact cell, the cord's thickness.
 
 **Endothelial cell** (14). A cell of the thin layer that lines every blood vessel. The cells that sprout.
 
@@ -108,13 +108,15 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Kinase** (2). An enzyme that activates another protein by attaching a phosphate group.
 
+**Kolmogorov-Smirnov distance** (24). The largest gap, over every size, between the shares of two samples at or below that size: 0 for samples from one distribution, 1 for two that do not overlap.
+
 **Lattice** (1). A regular grid, the word from garden trellis. Here 200 by 200 pixels.
 
 **Lethal stress** (8). An abstract agent that comes in where oxygen does, is taken up by the cells it reaches, and raises what the network says it raises. Stands for nothing in particular.
 
 **Lineage reference volume** (4). The size a lineage divides at, inherited unchanged. How a cell type keeps its size across generations.
 
-**Lineage tracing** (7, 12). Marking cells with a heritable label and following what their descendants become. A sheet labels every cell as its own clone.
+**Lineage tracing** (7, 12, 24). Marking cells with a heritable label and following what their descendants become. A sheet labels every cell as its own clone, and `[tracing]` marks every cell again once the sheet has settled.
 
 **Loss of function** (11). A mutation that stops a gene's product from working, rather than turning it up or down. Here a lost term, through rewiring.
 
@@ -154,6 +156,8 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Poiseuille's law** (19). The flow through a tube is the difference of pressure across it times the fourth power of its radius, over its length and the blood's viscosity. A vessel twice as wide carries sixteen times as much.
 
+**Progenitor share** (24). The share of basal cells still dividing rather than committed to leave: 0.65 in the mouse oesophagus as Piedrafita and colleagues fit it.
+
 **Proliferating** (4). Alive, cycling, dividing. The default fate under enough oxygen.
 
 **Pruning** (16, 21). A vessel network removing some of its segments, usually those carrying the least blood, after growing more than it keeps.
@@ -186,11 +190,11 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Selection** (6). Variants leaving more descendants because of what they do where they are. Nobody chooses the winner.
 
-**Single progenitor model** (12). Every dividing basal cell alike; a division makes two dividing cells, two differentiating ones, or one of each, by chance and on average one of each.
+**Single progenitor model** (12, 24). Every dividing basal cell alike; a division makes two dividing cells, two differentiating ones, or one of each, by chance and on average one of each. In the mouse oesophagus each of the first two happens one division in ten.
 
-**Sister fates, r** (12). What the two cells of one division do next. r is the chance both divide, which equals the chance both leave; a quarter if sisters were independent, below a quarter when they tend to do opposite things, as in the mouse and in the sheet.
+**Sister fates, r** (12, 24). What the two cells of one division do next. r is the chance both divide, which equals the chance both leave; a quarter if sisters were independent, below a quarter when they tend to do opposite things, as in the mouse and in the sheet. In the sheet it does not set how fast clones grow: a daughter that leaves long after its birth leaves its clone to drift meanwhile.
 
-**Snapshot** (4, 24). A file listing every living cell's state and the oxygen it reads, one per interval.
+**Snapshot** (4, 25). A file listing every living cell's state and the oxygen it reads, one per interval.
 
 **SOR** (3). Successive over-relaxation, the sweep that solves for a steady state in about L passes rather than L².
 
@@ -221,3 +225,5 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 **Viable depth** (5). How far living tissue reaches from where its oxygen comes in: from the edge inward in a spheroid, from the wall outward around a vessel.
 
 **Volume constraint, λ** (1). The cost of being a different size than the target, times a stiffness lambda.
+
+**Voter model** (24). Every cell that leaves replaced by the daughter of a neighbour, picked at random. The most local replacement a sheet could have, with nothing coordinating sisters.

@@ -2,6 +2,7 @@
 
 use cellweave_core::{
     Angiogenesis, CellweaveError, CloneId, Exposure, Immunity, NetworkSpec, OxygenSource, Seeding,
+    Tracing,
 };
 use cellweave_engine::simulation::{DEFAULT_SEED, Lesion, Scenario};
 use serde::{Deserialize, Serialize};
@@ -89,6 +90,11 @@ pub struct SimConfig {
     /// is the one it always was.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub immunity: Option<Immunity>,
+    /// Every cell marked at one step and the clones the marks make written
+    /// down as the run goes. Left out, nothing is marked, and the run is the
+    /// one it always was.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tracing: Option<Tracing>,
 }
 
 /// A lesion as a configuration states it: its network by file name, where
@@ -174,6 +180,7 @@ impl SimConfig {
             revert: None,
             angiogenesis: self.angiogenesis,
             immunity: self.immunity,
+            tracing: self.tracing,
         })
     }
 
@@ -288,6 +295,7 @@ impl Default for SimConfig {
             lesion: None,
             angiogenesis: None,
             immunity: None,
+            tracing: None,
         }
     }
 }

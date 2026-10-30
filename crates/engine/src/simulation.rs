@@ -14,7 +14,7 @@ use std::marker::PhantomData;
 use cellweave_core::{
     Angiogenesis, CellId, CellInputs, CellKind, CellSnapshot, CellweaveError, CloneId,
     Concentration, DiffusionField, Exposure, Immunity, NetworkSpec, OxygenSource, Perfusion, Pos2,
-    Seeding, SignalingNetwork, SimSnapshot, TimeStep, Volume,
+    Seeding, SignalingNetwork, SimSnapshot, TimeStep, Tracing, Volume,
 };
 use rand::rngs::StdRng;
 use rand::{RngExt, SeedableRng};
@@ -209,6 +209,9 @@ pub struct Scenario {
     pub angiogenesis: Option<Angiogenesis>,
     /// Immune cells that come for the tumour. Left out, none do.
     pub immunity: Option<Immunity>,
+    /// Every cell marked at one step and the clones the marks make
+    /// followed. Left out, nothing is marked.
+    pub tracing: Option<Tracing>,
 }
 
 /// One immune cell in the tissue.
@@ -369,6 +372,9 @@ pub struct Simulation<S: SimState> {
     immune: Vec<ImmuneCell>,
     /// Tumour cells immune cells have killed.
     killed: u64,
+    /// The mark each slot's cell carries, if tracing has marked it or an
+    /// ancestor: the slot of the cell marked at the tracing step.
+    marks: Vec<Option<u32>>,
     _state: PhantomData<S>,
 }
 
@@ -381,8 +387,9 @@ impl Simulation<Configured> {
     /// # Errors
     ///
     /// [`CellweaveError::Config`] when the grid dimensions are invalid, the
-    /// network does not compile, the mutation rate is not a probability, or a
-    /// sheet is asked for with oxygen consumed or cells too small to divide.
+    /// network does not compile, the mutation rate is not a probability, a
+    /// sheet is asked for with oxygen consumed or cells too small to divide,
+    /// or tracing writes clones down every zero steps.
     pub fn new(scenario: Scenario, spec: &NetworkSpec) -> Result<Self, CellweaveError> {
         if !(0.0..=1.0).contains(&scenario.mutation_rate) {
             return Err(CellweaveError::Config(format!(
@@ -395,6 +402,13 @@ impl Simulation<Configured> {
                 "rewiring is {}; it is the probability that a mutation rewires, between 0 and 1",
                 scenario.rewiring
             )));
+        }
+        if scenario.tracing.is_some_and(|t| t.every == 0) {
+            return Err(CellweaveError::Config(
+                "tracing every 0 steps: the clones are written down every so many steps, at \
+                 least one"
+                    .to_owned(),
+            ));
         }
         if let Some(max) = spec.mechanics.and_then(|m| m.max_target)
             && (max.is_nan() || max < DIVISION_RATIO)
@@ -774,6 +788,7 @@ impl Simulation<Configured> {
             chemokine,
             immune: Vec::new(),
             killed: 0,
+            marks: vec![None; cells],
             _state: PhantomData,
         })
     }
@@ -823,6 +838,7 @@ impl Simulation<Configured> {
             chemokine: self.chemokine,
             immune: self.immune,
             killed: self.killed,
+            marks: self.marks,
             _state: PhantomData,
         };
         Ok((running, sweeps))
@@ -844,6 +860,9 @@ impl Simulation<Running> {
         }
         if self.scenario.lesion.as_ref().is_some_and(|l| l.at == mcs) {
             self.place_lesion(mcs);
+        }
+        if self.scenario.tracing.is_some_and(|t| t.at == mcs) {
+            self.mark_every_cell();
         }
 
         // 1. Downward coupling: the field settles against the current layout of
@@ -1118,6 +1137,7 @@ impl Simulation<Running> {
             .set_volume_target(id, Volume(IMMUNE_VOLUME), IMMUNE_LAMBDA);
         self.networks.push(None);
         self.lineage.push(CloneId(0));
+        self.marks.push(None);
         self.immune.push(ImmuneCell {
             slot: self.networks.len() - 1,
             arrived: mcs,
@@ -1319,6 +1339,7 @@ impl Simulation<Running> {
                 }
                 self.networks.push(daughter);
                 self.lineage.push(clone);
+                self.marks.push(self.marks[i]);
                 self.lives.divided(i, self.networks.len() - 1);
                 born += 1;
             }
@@ -1416,6 +1437,17 @@ impl Simulation<Running> {
             }
         }
         network
+    }
+
+    /// Mark every cell in the layer, each with its own slot, as the basal
+    /// cells an experiment marks are of every kind. Draws nothing.
+    fn mark_every_cell(&mut self) {
+        for i in 0..self.marks.len() {
+            let in_layer = self.in_layer(cell_of(i));
+            if let Some(mark) = self.marks.get_mut(i) {
+                *mark = in_layer.then_some(i as u32);
+            }
+        }
     }
 
     /// Turn every living cell whose centre lies within the lesion's radius of
@@ -1778,6 +1810,32 @@ impl<S: SimState> Simulation<S> {
         self.killed
     }
 
+    /// Whether a cell is in the layer as an experiment counts basal cells:
+    /// cycling, quiescent, or committed to differentiate and not yet gone.
+    fn in_layer(&self, id: CellId) -> bool {
+        matches!(
+            self.fate(id),
+            Some(Fate::Cycling | Fate::Quiescent | Fate::Differentiating)
+        ) && self.lattice.volume(id).is_some_and(|v| v.0 > 0)
+    }
+
+    /// The cells in the layer carrying each mark, as `(mark, cells)`, for
+    /// every mark some cell in the layer still carries, in the order of the
+    /// marks: the clone of each cell marked at the tracing step, counted as
+    /// an experiment counts basal cells, cycling, quiescent, or committed to
+    /// differentiate and not yet gone. Empty before marking and without
+    /// tracing.
+    pub fn traced_clones(&self) -> Vec<(u32, usize)> {
+        let mut counts = std::collections::BTreeMap::new();
+        for (i, mark) in self.marks.iter().enumerate() {
+            let Some(mark) = mark else { continue };
+            if self.in_layer(cell_of(i)) {
+                *counts.entry(*mark).or_insert(0) += 1;
+            }
+        }
+        counts.into_iter().collect()
+    }
+
     /// The mean level of the evasion node over the living tumour cells, or
     /// `None` when their networks name none or none is living.
     pub fn evasion(&self) -> Option<f64> {
@@ -1877,6 +1935,7 @@ mod tests {
             revert: None,
             angiogenesis: None,
             immunity: None,
+            tracing: None,
         }
     }
 
@@ -2260,6 +2319,7 @@ mod tests {
             run(Scenario {
                 angiogenesis: None,
                 immunity: None,
+                tracing: None,
                 ..growing(1e9)
             })
         );
