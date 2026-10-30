@@ -10,7 +10,7 @@ mcs = 1500
 temperature = 10.0
 snapshot_interval = 100
 output_dir = "output-cord-evolving-immune"
-oxygen_uptake = 0.00003
+oxygen_uptake = 0.00002  # calibrated on measured melanoma spheroids (chapter 25)
 mutation_rate = 0.05
 network = "networks/ras-erk-pdl1.toml"
 
@@ -21,8 +21,8 @@ radius = 6
 [immunity]
 from = 200
 arrival = 0.1
-kill = 0.05
-kills = 5
+kill = 0.3   # one to three hours of contact to kill, as Weigelin and colleagues measured (chapter 25)
+kills = 20   # enough to kill within the 1 to 20 a day they cite
 lifetime = 300
 chemotaxis = 200.0
 reach = 20.0

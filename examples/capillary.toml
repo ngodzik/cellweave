@@ -4,9 +4,10 @@
 # The capillary runs across the box a quarter of the way down, seven pixels
 # wide, held at full oxygen; the box is a window onto a longer one, and the
 # tissue may reach its left and right sides. One cell is seeded against its
-# lower wall, and the tissue grows into a layer along it. A line feeds
-# deeper than a point, so the uptake is three times the cord's, which makes
-# the layer as deep as the cord's sleeve.
+# lower wall, and the tissue grows into a layer along it. The uptake is the
+# one chapter 25 fixes on measured spheroids, as for every tumour; before
+# that chapter it was 0.0001, three times the cord's, chosen to make the
+# layer as deep as the cord's sleeve.
 
 width = 300
 height = 300
@@ -14,7 +15,7 @@ mcs = 1500
 temperature = 10.0
 snapshot_interval = 100
 output_dir = "output-capillary"
-oxygen_uptake = 0.0001
+oxygen_uptake = 0.00002  # calibrated on measured melanoma spheroids (chapter 25)
 network = "networks/ras-erk.toml"
 
 [oxygen_source]

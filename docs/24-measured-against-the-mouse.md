@@ -35,7 +35,7 @@ At step `at`, before anything else happens, every cell in the layer is given a m
 
 **Comparing.** `scripts/compare-clones.py` takes runs and the mouse's table and, at each of the four times, sets the clones with a cell in the layer against the clones with a basal cell: their mean size, the shares larger than one, two and three times it, and the **Kolmogorov-Smirnov distance**, the largest gap between the two shares of clones at or below any size, 0 for samples from the same distribution and 1 for two that do not overlap. With `--division-days 2.414` each run's step stands for whatever makes its own division interval after marking 2.414 days, the mouse's, which is chapter 12's calibration done run by run: a setting that changes how fast the layer turns over is still compared after as many divisions as the mouse's. With `--progenitors 0.65` it also gives the share of the layer not committed to differentiate, averaged from marking on.
 
-`examples/epithelium-traced.toml` is the neutral sheet of chapter 7, marked at step 1000. The tiled sheet starts with every cell the same size, and divides in waves for its first few hundred steps.
+`examples/epithelium-traced.toml` is the neutral sheet of chapter 7, marked at step 1000. The tiled sheet starts with every cell the same size, and divides in waves for its first few hundred steps. The campaigns below ran it with NOTCH as chapter 7 set it; since this chapter, the sheet's default is the setting they found nearest the mouse (see the end of this section), so the same command now runs that one.
 
 ### The sheet as it was
 
@@ -82,7 +82,7 @@ Predicted before trying it, over eight settings of ten seeds, temperature 10 or 
 
 Predicted before a sweep of crowding's rate (0.3, 1, 3), its half way point (75% or 85% of the reference size, `k` 0.25 or 0.15) and NOTCH's baseline (as in chapter 7, or a fifth of it): (a) some setting under twice the mouse's clones at 84 days with between 0.45 and 0.8 of the layer not committed; (b) the clones smaller as crowding's rate rises; (c) the best setting within a distance of 0.2 at every time.
 
-Ten settings of twelve emptied the layer: every cell committed and none was left dividing. Only a rate of 0.3, half way at 75%, held. With chapter 7's baseline it is the stronger crowding above. With a fifth of it, `examples/epithelium-crowded-traced.toml`:
+Ten settings of twelve emptied the layer: every cell committed and none was left dividing. Only a rate of 0.3, half way at 75%, held. With chapter 7's baseline it is the stronger crowding above. With a fifth of it, now the sheet's default, `examples/networks/epithelium.toml`, run 11,000 steps by `examples/epithelium-traced.toml`:
 
 | days | mean, mouse | mean, sheet | ratio | distance |
 |---|---|---|---|---|
@@ -98,6 +98,10 @@ For a month this sheet's clones are near the mouse's: a third larger, with distr
 ### What it says
 
 The sheet couples a cell's departure to a neighbour's division through the room it leaves, as Mesa and colleagues saw, and its clones grow about six times as fast as the mouse's per division. The mouse's clones need about four divisions in five to end with one daughter staying and one gone soon after. Being squeezed at birth supplies some of that for a month, and not for six. What would supply the rest, a signal between sisters, an asymmetry at division, or a committed cell's room going to its own sister, the clones alone do not say; each makes a prediction about something else that could be measured, and the sheet can now be set against it.
+
+### The default since
+
+Of every setting tried, the last one's clones come nearest the mouse's at every time, and nothing it does is further from the mouse than the sheet as it was: the share of the layer not committed is the same, 0.87 against 0.88. It is now the sheet's NOTCH, in `examples/networks/epithelium.toml`, and the lesions of chapter 13 make NOTCH at 0.7 and 0.3 of its rate from both its sources. Its cells divide about every 104 steps rather than 97, so a step of the sheet is about 0.56 hours, which every sheet configuration now states. Chapters 7, 11, 12 and 13 ran with the setting before, and say so.
 
 ## Choices, and why
 
@@ -115,7 +119,7 @@ The sheet couples a cell's departure to a neighbour's division through the room 
 
 `crates/core/src/types.rs`: `Tracing`. `crates/engine/src/simulation.rs`: `Scenario::tracing`, where every cell is marked and a daughter inherits its mark, `Simulation::traced_clones`. `crates/io/src/config.rs`: the `[tracing]` table. `crates/io/src/output.rs`: `TraceLog`, `traced.csv`. `src/main.rs`: where the clones are written down. `crates/io/tests/epithelium.rs`: that marking changes nothing else.
 
-`datasets/piedrafita-2020.toml`, `scripts/fetch-dataset.py`, `scripts/compare-clones.py`, `scripts/voter-model.py`. `examples/epithelium-traced.toml`, `examples/epithelium-crowded-traced.toml`, `examples/networks/epithelium-crowded.toml`.
+`datasets/piedrafita-2020.toml`, `scripts/fetch-dataset.py`, `scripts/compare-clones.py`, `scripts/voter-model.py`. `examples/epithelium-traced.toml`, `examples/networks/epithelium.toml`, whose NOTCH is the setting this chapter found nearest the mouse.
 
 ## Still a placeholder
 

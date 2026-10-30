@@ -2,6 +2,8 @@
 
 A tumour cord lives around its vessel out to the depth oxygen reaches, and starves beyond it. This chapter lets the starving cells call new vessels to them, and asks what the tumour becomes.
 
+**Calibrated since.** Chapter 25 fixed the tumour's oxygen uptake on measured melanoma spheroids at 0.00002, where this chapter's runs used 0.00003. The mechanisms are the same; the shipped examples now run at the calibrated value, and rerunning them gives other numbers than those quoted here.
+
 ## In the body
 
 **A tumour is limited by its vessels.** The cord of chapter 5 is not a model's quirk. Tannock (British Journal of Cancer, 1968) cut a transplanted mouse mammary tumour into sections and found its living tissue in cords around single vessels, with necrosis beyond them. Most cords had a radius between 60 and 120 µm, and cells divided less the further they lay from their vessel. A tumour that cannot get more vessels stays small. Gimbrone and colleagues (1972) placed tumour fragments where vessels could not reach them, and the fragments stayed small for as long as six weeks; their fast growth began when vessels arrived. Folkman and Hochberg (1973) saw the same limit in tumours grown in a dish, which stopped growing at a diameter of 3 to 4 mm.

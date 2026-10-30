@@ -2,6 +2,8 @@
 
 The same history replayed with one event taken out, everything else identical, to see which events made it and which only came along.
 
+**Calibrated since.** Chapter 25 fixed the tumour's oxygen uptake on measured melanoma spheroids at 0.00002, where this chapter's runs used 0.00003. The mechanisms are the same; the shipped examples now run at the calibrated value, and rerunning them gives other numbers than those quoted here.
+
 ## In the body
 
 A tumour carries many mutations, and most of them did nothing for it. A few are **drivers**: they gave the cell that carried them an advantage, and the tumour is what that advantage grew into. The rest are **passengers**: neutral changes that happened to arise in a cell that was going to win anyway, and were carried along with it. Telling the two apart is one of the central problems of cancer genomics, and it is done by statistics: a gene mutated across many tumours more often than chance would explain is a likely driver.

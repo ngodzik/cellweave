@@ -2,6 +2,8 @@
 
 A tumour whose cells mutate is a population under selection (chapter 6). With killer immune cells in the tissue (chapter 22), a change that shields a cell from them is one selection could favour. This chapter gives the tumour's network such a shield, lets it mutate, and asks whether immune cells select the cells that carry more of it.
 
+**Calibrated since.** Chapter 25 fixed the tumour's oxygen uptake on measured melanoma spheroids at 0.00002, where this chapter's runs used 0.00003. The mechanisms are the same; the shipped examples now run at the calibrated value, and rerunning them gives other numbers than those quoted here. Chapter 25 also set immune cells' killing on measured rates, a chance of 0.3 a step of contact and at most 20 kills, where this chapter's runs used 0.05 and 5: at those rates immune cells clear 8 cords of 10.
+
 ## In the body
 
 **A shield on the cell's surface.** **PD-L1**, programmed death-ligand 1, is a protein on a cell's surface that binds PD-1, programmed cell death protein 1, on a killer T cell, and holds the killer back. Many tissues show it, which keeps an immune response from doing more damage than it must; many tumours show it too. Juneja and colleagues (2017) deleted PD-L1 from mouse tumour cells and found that PD-L1 on the tumour cells "potently inhibited CD8+ T cell cytotoxicity", CD8 marking the killer T cells, and that tumour cells keeping it "outcompeted PD-L1-deleted MC38 cells in vivo, demonstrating tumor PD-L1 confers a selective advantage".

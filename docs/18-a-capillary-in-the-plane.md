@@ -2,6 +2,8 @@
 
 The vessel of the cord is seen end on: a disc in the middle of the box, with blood running through it out of the plane. Nothing can flow through the vessels that grow from it, because they all start and end on the same disc. This chapter lays a capillary across the tissue instead, with an end where blood comes in and one where it leaves, and asks what the tumour does against it.
 
+**Calibrated since.** Chapter 25 fixed the tumour's oxygen uptake on measured melanoma spheroids at 0.00002, where this chapter's runs used 0.0001. The mechanisms are the same; the shipped examples now run at the calibrated value, and rerunning them gives other numbers than those quoted here.
+
 ## In the body
 
 **Vessels run through tissue.** A capillary is a tube, and tissue lies along it as well as around it. Some tumours begin by growing along the vessels already there, which is **co-option**, as Holash and colleagues (Science, 1999) found (chapter 16), before they call any new ones. Seen in a section cut across a vessel, the tissue is a sleeve around a disc, the cord of chapter 5; cut along it, a layer on each side of a line.

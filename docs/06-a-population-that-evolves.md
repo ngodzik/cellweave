@@ -2,6 +2,8 @@
 
 Daughters that are not quite copies, and what selection makes of them when nobody says what to select.
 
+**Calibrated since.** Chapter 25 fixed the tumour's oxygen uptake on measured melanoma spheroids at 0.00002, where this chapter's runs used 0.00003. The mechanisms are the same; the shipped examples now run at the calibrated value, and rerunning them gives other numbers than those quoted here.
+
 ## In the body
 
 A tumour is not one cell type. It is a population descended from one cell, and every division copies a genome of three billion letters with a few mistakes. Most mistakes change nothing. Some change how much of a protein the cell makes, or how strongly a protein acts. A **mutation** is such a heritable change: the daughter carries it, and so does every cell descended from her.

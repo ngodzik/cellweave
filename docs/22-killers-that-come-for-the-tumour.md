@@ -2,6 +2,8 @@
 
 Every tumour of this course has grown in tissue with no immune system. This chapter lets killer immune cells arrive through the vessels, find the tumour and kill the cells they touch, and asks whether they clear it, hold it, or neither.
 
+**Calibrated since.** Chapter 25 fixed the tumour's oxygen uptake on measured melanoma spheroids at 0.00002, where this chapter's runs used 0.00003. The mechanisms are the same; the shipped examples now run at the calibrated value, and rerunning them gives other numbers than those quoted here. Chapter 25 also set immune cells' killing on measured rates, a chance of 0.3 a step of contact and at most 20 kills, where this chapter's runs used 0.05 and 5: at those rates immune cells clear 8 cords of 10.
+
 ## In the body
 
 **Killers that patrol.** A **killer T cell**, or cytotoxic T lymphocyte, recognises a cell that is infected or abnormal and kills it by contact, punching holes in its membrane and setting off its apoptosis (chapter 8). Killer T cells leave the blood through the walls of small vessels and crawl through tissue, drawn by **chemokines**, small proteins cells secrete that attract other cells up their gradient, which is **chemotaxis**.

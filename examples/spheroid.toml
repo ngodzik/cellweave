@@ -1,16 +1,26 @@
-# A single cell in a bath grows into a spheroid and starves from the inside.
+# A single cell in a bath grows into a spheroid and starves from the inside,
+# with its oxygen set by measured spheroids (chapter 25).
 #
-# This is the default configuration, written out. The bath holds the medium
-# around the tissue at full oxygen, so the size of the grid is not a biological
-# parameter; the run stops the moment the tissue touches the edge of the box.
+# The uptake is chosen so that a core forms where it would in a sphere with
+# the melanoma spheroids' oxygen: Browning and colleagues (eLife, 2021) saw
+# cores appear at a radius of about 237 micrometres, a disc with the same
+# diffusion length forms its core at sqrt(2/3) of that, 194, and at about a
+# micrometre per pixel this uptake puts the first core near 196 pixels. The
+# rest of the structure is the model's own, set against the measured one by
+# scripts/compare-spheroids.py.
+#
+# It stops after step 625, when the spheroid has passed 338 pixels, about the
+# measured spheroids' largest radii. The box is large and the uptake small, so
+# the field takes many sweeps to settle each step: expect this run to take
+# tens of minutes.
 
-width = 200
-height = 200
-mcs = 500
+width = 800
+height = 800
+mcs = 626
 temperature = 10.0
-snapshot_interval = 50
+snapshot_interval = 25
 output_dir = "output"
-oxygen_uptake = 0.0003
+oxygen_uptake = 0.00002
 network = "networks/ras-erk.toml"
 
 [oxygen_source]

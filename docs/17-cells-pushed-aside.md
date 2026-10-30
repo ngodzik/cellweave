@@ -2,6 +2,8 @@
 
 A vessel growing through a tumour here takes the pixels of the cells in its way, and a cell left with none dies. This chapter counts how many die that way, lets the vessel push them aside instead, and asks whether the results of chapter 14 depended on it.
 
+**Calibrated since.** Chapter 25 fixed the tumour's oxygen uptake on measured melanoma spheroids at 0.00002, where this chapter's runs used 0.00003. The mechanisms are the same; the shipped examples now run at the calibrated value, and rerunning them gives other numbers than those quoted here.
+
 ## In the body
 
 **A sprout makes its way.** A sprout grows through the **extracellular matrix**, the mesh of protein fibres between cells, and its tip cell (chapter 14) digests the matrix in front of it with enzymes it secretes. Bauer and colleagues (PLoS Computational Biology, 2009), whose speeds chapter 14 uses, model "proteolytic matrix degradation by the tip cell", the matrix broken down by those enzymes, and how the density of its fibres sets how fast a sprout can go.

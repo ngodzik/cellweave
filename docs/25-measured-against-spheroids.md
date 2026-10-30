@@ -39,9 +39,9 @@ The uptake was set so that the disc's core appears at $\sqrt{2/3}$ of 237 µm, 1
 
 ```bash
 python3 scripts/fetch-dataset.py datasets/browning-2021.toml
-./target/release/cellweave --config examples/spheroid-calibrated.toml
+./target/release/cellweave --config examples/spheroid.toml
 python3 scripts/compare-spheroids.py --data data/browning-2021/confocal.csv \
-  --line 983b output-spheroid-calibrated
+  --line 983b output
 ```
 
 In the first run, under the default seed, the core first appeared between radii of 189 and 204 pixels, a cut of 196 against the 194 aimed at, so the uptake stayed as set; the run was then repeated under seeds 2 and 3. Pooled over the three, read every 25 steps to step 625:
@@ -63,7 +63,7 @@ So oxygen, consumed at one rate and read through the network's two thresholds, g
 Predicted before the run: with the uptake fitted to the spheroids, nothing fitted to cords, the cord's radius, the vessel's six pixels and the viable depth, between Tannock's 60 and 120 µm in at least 8 runs of 10.
 
 ```bash
-./target/release/cellweave --config examples/cord-calibrated.toml --seeds 1-10 --output runs/cord-calibrated
+./target/release/cellweave --config examples/cord.toml --seeds 1-10 --mcs 1500 --output runs/cord
 ```
 
 **Held**, in all 10: 68.1 to 70.1 µm at step 1499, 69 in the median, with 50 to 53 living cells. The cord of chapter 5, at its uptake of 0.00003, has about 59. A melanoma in a dish and a mammary tumour in a mouse are not the same cells, so this is a check of order, not a fit: the spheroids' oxygen puts a cord where cords are measured.
@@ -86,11 +86,13 @@ Sprouts are several times too slow, which a model whose tip may not move more th
 
 ### Immune cells at measured rates
 
-`examples/cord-immune-measured.toml` is chapter 22's `cord-immune.toml` with a kill chance of 0.3 a step of contact, one to three hours of contact at this clock, and at most 20 kills, enough for an immune cell in steady contact to kill within the 1 to 20 a day Weigelin and colleagues cite. When immune cells arrive, how long they live and how strongly they climb the chemokine are not measured, and stay as they were. Predicted before the campaign, at step 1000 against chapter 22's rates: (a) fewer living tumour cells in at least 8 pairs of 10; (b) no living tumour cell left in at least 3; (c) more tumour cells killed in at least 9.
+Chapter 22's `cord-immune.toml` is now set to kill with a chance of 0.3 a step of contact, one to three hours of contact at this clock, and at most 20 kills, enough for an immune cell in steady contact to kill within the 1 to 20 a day Weigelin and colleagues cite. When immune cells arrive, how long they live and how strongly they climb the chemokine are not measured, and stay as they were. Predicted before the campaign, at step 1000 against chapter 22's rates: (a) fewer living tumour cells in at least 8 pairs of 10; (b) no living tumour cell left in at least 3; (c) more tumour cells killed in at least 9.
 
 ```bash
-./target/release/cellweave --config examples/cord-immune.toml \
-  --versus examples/cord-immune-measured.toml --seeds 1-10 --mcs 1000 --output runs/immune-measured
+# cord-immune.toml now kills at the measured rates; chapter 22's, in a copy beside it
+sed -e 's/^kill = .*/kill = 0.05/' -e 's/^kills = .*/kills = 5/' examples/cord-immune.toml > examples/cord-immune-22.toml
+./target/release/cellweave --config examples/cord-immune-22.toml \
+  --versus examples/cord-immune.toml --seeds 1-10 --mcs 1000 --output runs/immune-measured
 ```
 
 | seed | living, chapter 22's rates | measured rates | killed, chapter 22's | measured |
@@ -118,11 +120,11 @@ Chapter 22 found immune cells holding a cord without clearing it. At killing rat
 
 **Structure against size.** As Browning and colleagues recommend: the model's spheroid starts from one cell and theirs from thousands, and size, not time, is what they share.
 
-**The defaults left as they were.** `examples/spheroid.toml` and `examples/cord.toml` keep the uptakes every earlier chapter's numbers come from. The calibrated ones are `examples/spheroid-calibrated.toml` and `examples/cord-calibrated.toml`, and `examples/cord-immune.toml` keeps chapter 22's killing rates beside `examples/cord-immune-measured.toml`.
+**The calibrated values are the defaults.** What a public measurement fixes, the shipped configurations and the program use: the uptake of 0.00002 in every tumour configuration, against a capillary as well as a vessel and in a bath, and as the program's default; the measured killing in `examples/cord-immune.toml` and `examples/cord-evolving-immune.toml`. The chapters whose runs used the values before say so at their top, with the values they used.
 
 ## Where in the code
 
-`datasets/browning-2021.toml`, `scripts/fetch-dataset.py`, `scripts/compare-spheroids.py`. `examples/spheroid-calibrated.toml`, `examples/cord-calibrated.toml`, `examples/cord-immune-measured.toml`. The thresholds the comparison reads: `QUIESCENCE_THRESHOLD` and `DEATH_THRESHOLD` in `crates/engine/src/simulation.rs`; the network's in `examples/networks/ras-erk.toml`.
+`datasets/browning-2021.toml`, `scripts/fetch-dataset.py`, `scripts/compare-spheroids.py`. `examples/spheroid.toml`, `examples/cord.toml`, `examples/cord-immune.toml`; the program's default uptake in `crates/io/src/config.rs`. The thresholds the comparison reads: `QUIESCENCE_THRESHOLD` and `DEATH_THRESHOLD` in `crates/engine/src/simulation.rs`; the network's in `examples/networks/ras-erk.toml`.
 
 ## Still a placeholder
 
