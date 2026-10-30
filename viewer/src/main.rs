@@ -3,9 +3,19 @@
 //! Usage:
 //!
 //! ```text
-//! cellweave-viewer [--config <path>] [--seed <n>] [--view fate|oxygen|clone|stress]
+//! cellweave-viewer [--config <path>] [--seed <n>] [--view fate|oxygen|clone|stress|vegf|flow]
 //!                  [--beside <path> | --undo <clone>,<clone>... [--undo-at <step>]]
+//!                  [--batch <steps>] [--zoom <factor>] [--spin] [--no-panel]
+//!                  [--record <dir> [--until <step>]]
 //! ```
+//!
+//! `--batch` sets how many steps are taken between two pictures, `--zoom`
+//! starts the camera that many times closer, `--spin` starts it turning and
+//! `--no-panel` hides the panel. With
+//! `--record`, every step the run newly shows is saved to the directory as
+//! `frame_<step>.png`, taken from what the renderer draws rather than from
+//! the screen, and with `--until` the viewer quits after that step, or when
+//! the run stops: the frames make an animation of the run.
 //!
 //! With `--beside`, a second configuration runs to the right of the first,
 //! under the first's seed. With `--undo`, the right is the same run with the
@@ -30,6 +40,7 @@ mod glow;
 mod orbit;
 mod paint;
 mod panel;
+mod record;
 mod relief;
 mod runner;
 
@@ -154,45 +165,78 @@ fn main() -> Result<()> {
         });
     }
 
-    App::new()
-        .add_plugins(DefaultPlugins.set(WindowPlugin {
-            primary_window: Some(Window {
-                title: format!("cellweave · {}", experiment.label),
-                ..default()
-            }),
+    let flag = |name: &str| args.iter().any(|a| a == name);
+    let value = |name: &str| args.windows(2).find(|w| w[0] == name).map(|w| w[1].clone());
+    let mut pace = runner::Pace::default();
+    if let Some(n) = value("--batch") {
+        pace.steps_per_batch = n
+            .parse()
+            .map_err(|e| anyhow!("--batch must be a whole number of steps: {e}"))?;
+    }
+    let mut orbit = orbit::Orbit::framing(&experiment.scenario, sides.len());
+    if let Some(z) = value("--zoom") {
+        let factor: f32 = z
+            .parse()
+            .map_err(|e| anyhow!("--zoom must be a number, how many times closer: {e}"))?;
+        orbit = orbit.zoomed(factor);
+    }
+    orbit.spinning = flag("--spin");
+    let recording = match value("--record") {
+        None => None,
+        Some(dir) => {
+            std::fs::create_dir_all(&dir).map_err(|e| anyhow!("--record {dir}: {e}"))?;
+            let until = value("--until")
+                .map(|n| n.parse::<u64>())
+                .transpose()
+                .map_err(|e| anyhow!("--until must be a step: {e}"))?;
+            Some(record::Recording::new(dir.into(), until))
+        }
+    };
+
+    let mut app = App::new();
+    if let Some(recording) = recording {
+        app.insert_resource(recording);
+    }
+    app.add_plugins(DefaultPlugins.set(WindowPlugin {
+        primary_window: Some(Window {
+            title: format!("cellweave · {}", experiment.label),
             ..default()
-        }))
-        .add_plugins(EguiPlugin::default())
-        .insert_resource(ClearColor(paint::BACKGROUND))
-        .insert_resource(runner::Pace::default())
-        .insert_resource(runner::Divergence::default())
-        .insert_resource(orbit::Orbit::framing(&experiment.scenario, sides.len()))
-        .insert_resource(Sides(sides))
-        .insert_resource(view)
-        .insert_resource(experiment)
-        .add_systems(Startup, setup)
-        .add_systems(
-            Update,
-            (
-                runner::keys,
-                runner::collect,
-                runner::compare,
-                // Between the two: the simulation is back from the pool and
-                // not yet sent off again, the one moment it can be read.
-                paint::repaint,
-                glow::retarget,
-                relief::retarget,
-                runner::dispatch,
-                orbit::steer,
-                orbit::spin,
-                relief::toggle,
-                relief::animate,
-                glow::animate,
-            )
-                .chain(),
+        }),
+        ..default()
+    }))
+    .add_plugins(EguiPlugin::default())
+    .insert_resource(ClearColor(paint::BACKGROUND))
+    .insert_resource(pace)
+    .insert_resource(runner::Divergence::default())
+    .insert_resource(orbit)
+    .insert_resource(panel::Shown(!flag("--no-panel")))
+    .insert_resource(Sides(sides))
+    .insert_resource(view)
+    .insert_resource(experiment)
+    .add_systems(Startup, setup)
+    .add_systems(
+        Update,
+        (
+            runner::keys,
+            runner::collect,
+            runner::compare,
+            // Between the two: the simulation is back from the pool and
+            // not yet sent off again, the one moment it can be read.
+            paint::repaint,
+            glow::retarget,
+            relief::retarget,
+            runner::dispatch,
+            orbit::steer,
+            orbit::spin,
+            relief::toggle,
+            relief::animate,
+            glow::animate,
+            record::capture,
         )
-        .add_systems(EguiPrimaryContextPass, panel::draw)
-        .run();
+            .chain(),
+    )
+    .add_systems(EguiPrimaryContextPass, panel::draw)
+    .run();
     Ok(())
 }
 

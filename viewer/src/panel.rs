@@ -10,11 +10,17 @@ use crate::Experiment;
 use crate::paint::{self, View};
 use crate::runner::{Divergence, Pace, Runner};
 
+/// Whether the panel is drawn at all: hidden, the window shows the tissue
+/// alone, as an animation of it wants.
+#[derive(Resource, Debug)]
+pub struct Shown(pub bool);
+
 /// Draw the panel, and apply what was clicked in it.
 ///
 /// The first run on screen is described in full; any run beside it gets a
 /// line of its own, and where the two stopped being the same run.
 pub fn draw(
+    shown: Res<Shown>,
     mut contexts: EguiContexts,
     mut runners: Query<&mut Runner>,
     mut pace: ResMut<Pace>,
@@ -22,6 +28,9 @@ pub fn draw(
     mut view: ResMut<View>,
     experiment: Res<Experiment>,
 ) -> Result {
+    if !shown.0 {
+        return Ok(());
+    }
     let ctx = contexts.ctx_mut()?;
     let mut restart = false;
     let mut sides: Vec<Mut<Runner>> = runners.iter_mut().collect();

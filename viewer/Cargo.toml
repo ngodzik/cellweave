@@ -30,7 +30,7 @@ bevy = { version = "0.20.0", default-features = false, features = [
     "std", "async_executor", "multi_threaded", "bevy_log", "bevy_winit", "bevy_window",
     "x11", "wayland", "bevy_render", "bevy_core_pipeline", "bevy_asset", "bevy_color", "hdr",
     "bevy_post_process", "bevy_camera", "bevy_mesh", "bevy_image", "bevy_shader", "bevy_material",
-    "bevy_pbr", "bevy_light", "mouse", "keyboard",
+    "bevy_pbr", "bevy_light", "mouse", "keyboard", "png",
 ] }
 # bevy_egui 0.43 is the release for Bevy 0.20 and egui 0.36, which egui_plot
 # 0.37 is built on.
