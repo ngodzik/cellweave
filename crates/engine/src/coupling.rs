@@ -25,19 +25,15 @@ fn consumes(kind: CellKind) -> bool {
 /// since the last call stops consuming where it no longer is.
 pub fn apply_uptake(field: &mut ScalarField, lattice: &CpmLattice, rate: f64) {
     field.clear_uptake();
-    let (w, h) = lattice.dims();
-    for y in 0..h {
-        for x in 0..w {
-            let id = lattice.occupant(x, y);
-            if id == 0 || id == OBSTACLE {
-                continue;
-            }
-            let alive = lattice
-                .cell_kind(cellweave_core::CellId(id))
-                .is_some_and(consumes);
-            if alive {
-                field.set_uptake(x, y, rate);
-            }
+    for (i, &id) in lattice.grid.iter().enumerate() {
+        if id == 0 || id == OBSTACLE {
+            continue;
+        }
+        let alive = lattice
+            .cell_kind(cellweave_core::CellId(id))
+            .is_some_and(consumes);
+        if alive {
+            field.set_uptake_at(i, rate);
         }
     }
 }
@@ -49,12 +45,9 @@ pub fn apply_uptake(field: &mut ScalarField, lattice: &CpmLattice, rate: f64) {
 /// from the vessel and hand oxygen back to cells that should be starving. Call
 /// after [`apply_uptake`], which clears the sinks first.
 pub fn apply_background_uptake(field: &mut ScalarField, lattice: &CpmLattice, rate: f64) {
-    let (w, h) = lattice.dims();
-    for y in 0..h {
-        for x in 0..w {
-            if lattice.occupant(x, y) == 0 {
-                field.set_uptake(x, y, rate);
-            }
+    for (i, &id) in lattice.grid.iter().enumerate() {
+        if id == 0 {
+            field.set_uptake_at(i, rate);
         }
     }
 }
@@ -67,18 +60,14 @@ pub fn apply_background_uptake(field: &mut ScalarField, lattice: &CpmLattice, ra
 /// is. A cell missing from `per_cell` secretes nothing.
 pub fn apply_production(field: &mut ScalarField, lattice: &CpmLattice, per_cell: &[f64]) {
     field.clear_production();
-    let (w, h) = lattice.dims();
-    for y in 0..h {
-        for x in 0..w {
-            let id = lattice.occupant(x, y);
-            if id == 0 || id == OBSTACLE {
-                continue;
-            }
-            if let Some(&rate) = per_cell.get(id as usize)
-                && rate > 0.0
-            {
-                field.set_production(x, y, rate);
-            }
+    for (i, &id) in lattice.grid.iter().enumerate() {
+        if id == 0 || id == OBSTACLE {
+            continue;
+        }
+        if let Some(&rate) = per_cell.get(id as usize)
+            && rate > 0.0
+        {
+            field.set_production_at(i, rate);
         }
     }
 }
@@ -89,7 +78,7 @@ pub fn apply_production(field: &mut ScalarField, lattice: &CpmLattice, per_cell:
 /// oxygen at its wall at a fixed level. This is the geometry of a tumour cord,
 /// tissue living around a capillary out to the depth diffusion can feed.
 pub fn hold_obstacles_at(field: &mut ScalarField, lattice: &CpmLattice, value: f64) {
-    field.hold_pixels(value, |x, y| lattice.occupant(x, y) == OBSTACLE);
+    field.hold_where(value, |i| lattice.occupant_at(i) == OBSTACLE);
 }
 
 /// Hold every obstacle pixel `carries` says carries blood at `value`.
@@ -103,8 +92,9 @@ pub fn hold_vessels_at(
     value: f64,
     carries: impl Fn(u32, u32) -> bool,
 ) {
-    field.hold_pixels(value, |x, y| {
-        lattice.occupant(x, y) == OBSTACLE && carries(x, y)
+    field.hold_where(value, |i| {
+        let (x, y, _) = lattice.position(i);
+        lattice.occupant_at(i) == OBSTACLE && carries(x, y)
     });
 }
 
@@ -164,7 +154,7 @@ pub fn hold_vessels_by(
 /// Reachability is decided by [`ScalarField::hold_bath`]; this only says which
 /// pixels are open, namely those no cell occupies.
 pub fn hold_medium_bath(field: &mut ScalarField, lattice: &CpmLattice, value: f64) {
-    field.hold_bath(value, |x, y| lattice.occupant(x, y) == 0);
+    field.hold_bath_at(value, |i| lattice.occupant_at(i) == 0);
 }
 
 /// Mean concentration over each cell's pixels, indexed by identifier.
@@ -175,18 +165,14 @@ pub fn mean_per_cell(field: &ScalarField, lattice: &CpmLattice) -> Vec<f64> {
     let n = lattice.cell_count() + 1;
     let mut sum = vec![0.0; n];
     let mut count = vec![0u32; n];
-    let (w, h) = lattice.dims();
-    for y in 0..h {
-        for x in 0..w {
-            let id = lattice.occupant(x, y);
-            if id == 0 || id == OBSTACLE {
-                continue;
-            }
-            let id = id as usize;
-            if id < n {
-                sum[id] += field.concentration_at(x, y);
-                count[id] += 1;
-            }
+    for (i, &id) in lattice.grid.iter().enumerate() {
+        if id == 0 || id == OBSTACLE {
+            continue;
+        }
+        let id = id as usize;
+        if id < n {
+            sum[id] += field.value_at(i);
+            count[id] += 1;
         }
     }
     sum.iter()

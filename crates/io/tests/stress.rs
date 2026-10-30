@@ -6,7 +6,7 @@
 use cellweave_core::{
     CellKind, DiffusionField, Exposure, NetworkSpec, OxygenSource, Schedule, SignalingNetwork,
 };
-use cellweave_engine::simulation::{DEFAULT_SEED, Running, Scenario};
+use cellweave_engine::simulation::{DEFAULT_MAX_CELLS, DEFAULT_SEED, Running, Scenario};
 use cellweave_engine::{Fate, Simulation};
 use cellweave_io::SimConfig;
 
@@ -24,6 +24,8 @@ fn exposed(exposure: Option<Exposure>) -> Scenario {
     Scenario {
         width: 80,
         height: 80,
+        depth: 1,
+        max_cells: DEFAULT_MAX_CELLS,
         temperature: 10.0,
         oxygen_source: OxygenSource::Bath,
         oxygen_uptake: 0.0003,

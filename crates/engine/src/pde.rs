@@ -1,6 +1,8 @@
 //! Scalar extracellular diffusion field, explicit finite differences.
 //!
-//! Solves ∂c/∂t = D·∇²c − λ·c + S on a 2D grid.
+//! Solves ∂c/∂t = D·∇²c − λ·c + S on a grid, flat or in a volume: a volume
+//! stacks slices, and each voxel has two neighbours more. A flat field
+//! visits and sums what it always did, in the same order.
 //!
 //! The walls of the simulated square let nothing through. Everything that arrives
 //! comes from [`ScalarField::hold_bath`], and that is deliberate: when the edge of
@@ -21,10 +23,15 @@
 use cellweave_core::{CellweaveError, DiffusionField, TimeStep};
 use rayon::prelude::*;
 
-/// Scalar 2D diffusion field with no-flux walls.
+/// Scalar diffusion field with no-flux walls, flat or in a volume.
+///
+/// Values are stored slice after slice, row after row, so that the first
+/// slice is a flat field's every pixel and `(x, y)` alone names a pixel of it.
 pub struct ScalarField {
     width: u32,
     height: u32,
+    /// Slices: one for a flat field.
+    depth: u32,
     /// Current concentration on each pixel.
     values: Vec<f64>,
     /// Scratch buffer for the next time step.
@@ -41,8 +48,8 @@ pub struct ScalarField {
     uptake: Vec<f64>,
     /// Source per pixel, what the tissue secretes per unit time.
     production: Vec<f64>,
-    /// Scratch: breadth-first frontier for the bath fill.
-    frontier: Vec<(u32, u32)>,
+    /// Scratch: breadth-first frontier for the bath fill, by flat index.
+    frontier: Vec<usize>,
 }
 
 /// A box of pixels, each side an inclusive range.
@@ -50,6 +57,7 @@ pub struct ScalarField {
 struct Span {
     x: (u32, u32),
     y: (u32, u32),
+    z: (u32, u32),
 }
 
 /// Rows one parallel task takes at least.
@@ -60,11 +68,12 @@ struct Span {
 /// one, four, eight, sixteen and thirty-two, with eight a close second.
 const ROWS_PER_TASK: usize = 4;
 
-/// Largest `D · dt` an explicit five point stencil stays stable at, on a unit grid.
+/// Largest `D · dt` an explicit five point stencil stays stable at, on a unit
+/// grid: one over twice the number of dimensions, so a third less in a volume.
 const DIFFUSION_LIMIT: f64 = 0.25;
 
 impl ScalarField {
-    /// Create a field holding `initial` everywhere.
+    /// Create a flat field holding `initial` everywhere.
     ///
     /// # Errors
     ///
@@ -77,9 +86,26 @@ impl ScalarField {
         decay: f64,
         initial: f64,
     ) -> Result<Self, CellweaveError> {
-        if width == 0 || height == 0 {
+        Self::with_depth(width, height, 1, d, decay, initial)
+    }
+
+    /// Create a field `depth` slices deep holding `initial` everywhere: flat
+    /// for a depth of one.
+    ///
+    /// # Errors
+    ///
+    /// As [`ScalarField::new`], and when the depth is zero.
+    pub fn with_depth(
+        width: u32,
+        height: u32,
+        depth: u32,
+        d: f64,
+        decay: f64,
+        initial: f64,
+    ) -> Result<Self, CellweaveError> {
+        if width == 0 || height == 0 || depth == 0 {
             return Err(CellweaveError::Config(format!(
-                "field dimensions must be positive, got {width}x{height}"
+                "field dimensions must be positive, got {width}x{height}x{depth}"
             )));
         }
         if !d.is_finite() || !decay.is_finite() || d < 0.0 || decay < 0.0 {
@@ -87,10 +113,11 @@ impl ScalarField {
                 "diffusion and decay must be finite and not negative, got D = {d}, decay = {decay}"
             )));
         }
-        let n = width as usize * height as usize;
+        let n = width as usize * height as usize * depth as usize;
         Ok(Self {
             width,
             height,
+            depth,
             values: vec![initial; n],
             next: vec![initial; n],
             d,
@@ -135,6 +162,44 @@ impl ScalarField {
         }
         let i = self.idx(x, y);
         self.production[i] = rate.max(0.0);
+    }
+
+    /// Set how much the pixel at flat index `i` takes up per unit time, as
+    /// [`ScalarField::set_uptake`] does by coordinates. An index past the end
+    /// is ignored.
+    pub fn set_uptake_at(&mut self, i: usize, rate: f64) {
+        if let Some(u) = self.uptake.get_mut(i) {
+            *u = rate.max(0.0);
+        }
+    }
+
+    /// Set how much the pixel at flat index `i` secretes per unit time. An
+    /// index past the end is ignored.
+    pub fn set_production_at(&mut self, i: usize, rate: f64) {
+        if let Some(p) = self.production.get_mut(i) {
+            *p = rate.max(0.0);
+        }
+    }
+
+    /// The concentration at flat index `i`, counted along rows, then down,
+    /// then through the slices; zero past the end.
+    pub fn value_at(&self, i: usize) -> f64 {
+        self.values.get(i).copied().unwrap_or(0.0)
+    }
+
+    /// Pixels in the field, every slice counted.
+    pub fn len(&self) -> usize {
+        self.values.len()
+    }
+
+    /// Whether the field has no pixel, which construction never allows.
+    pub fn is_empty(&self) -> bool {
+        self.values.is_empty()
+    }
+
+    /// Width, height and depth.
+    pub fn dims3(&self) -> (u32, u32, u32) {
+        (self.width, self.height, self.depth)
     }
 
     /// Forget every source, before what the tissue secretes is read in again.
@@ -183,11 +248,6 @@ impl ScalarField {
         tolerance: f64,
         max_sweeps: usize,
     ) -> Result<usize, CellweaveError> {
-        // The optimal factor for a Poisson problem on an N by N grid is close to
-        // 2 / (1 + sin(π / N)); a little under it stays safe with the floor.
-        let n = f64::from(self.width.max(self.height));
-        let omega = (2.0 / (1.0 + (std::f64::consts::PI / n).sin())).min(1.95);
-
         // A held pixel is a boundary condition and never changes, so only the
         // smallest box around the free ones is swept. A bath holds everything
         // outside the tissue, and a spheroid starts as a speck in a box sized
@@ -196,6 +256,24 @@ impl ScalarField {
         let Some(span) = self.free_span() else {
             // Nothing to balance: the first sweep would move nothing.
             return Ok(1);
+        };
+
+        // The optimal factor for a Poisson problem on an N by N grid is close to
+        // 2 / (1 + sin(π / N)). The plane stays a little under it, capped at
+        // 1.95, which is what its runs were made with. A volume takes the
+        // optimum for the box it sweeps: a factor that stays below two keeps
+        // the floored iteration converging, and capped at 1.95 a box 250 on a
+        // side settles about ten times slower.
+        let omega = if self.depth > 1 {
+            let longest = [span.x, span.y, span.z]
+                .iter()
+                .map(|&(lo, hi)| hi - lo + 1)
+                .max()
+                .unwrap_or(1);
+            2.0 / (1.0 + (std::f64::consts::PI / f64::from(longest.max(2))).sin())
+        } else {
+            let n = f64::from(self.width.max(self.height));
+            (2.0 / (1.0 + (std::f64::consts::PI / n).sin())).min(1.95)
         };
         self.next.copy_from_slice(&self.values);
         for done in 1..=max_sweeps {
@@ -225,16 +303,18 @@ impl ScalarField {
     /// The smallest box holding every pixel not held, or `None` when every
     /// pixel is.
     fn free_span(&self) -> Option<Span> {
-        let w = self.width as usize;
+        let (w, h) = (self.width as usize, self.height as usize);
         let mut span: Option<Span> = None;
         for (i, _) in self.held.iter().enumerate().filter(|(_, held)| !**held) {
-            let (x, y) = ((i % w) as u32, (i / w) as u32);
+            let (x, y, z) = ((i % w) as u32, ((i / w) % h) as u32, (i / (w * h)) as u32);
             let s = span.get_or_insert(Span {
                 x: (x, x),
                 y: (y, y),
+                z: (z, z),
             });
             s.x = (s.x.0.min(x), s.x.1.max(x));
-            s.y.1 = y;
+            s.y = (s.y.0.min(y), s.y.1.max(y));
+            s.z.1 = z;
         }
         span
     }
@@ -247,26 +327,34 @@ impl ScalarField {
     /// does not depend on the order it is taken in: one thread or twenty, the
     /// field is the same to the last bit.
     fn half_sweep(&mut self, omega: f64, colour: u32, span: Span) -> f64 {
-        let (width, height) = (self.width, self.height);
+        let (width, height, depth) = (self.width, self.height, self.depth);
         let (d, decay, source) = (self.d, self.decay, self.source);
         let (values, held, uptake) = (&self.values, &self.held, &self.uptake);
         let production = &self.production;
-        let at = |x: u32, y: u32| values[y as usize * width as usize + x as usize];
-        let w = width as usize;
-        let rows = span.y.0 as usize * w..(span.y.1 as usize + 1) * w;
+        let (w, h) = (width as usize, height as usize);
+        let slice = w * h;
+        // Rows are counted down the stacked slices. From the span's first row
+        // to its last, which in a volume takes in rows of the slices between
+        // that lie outside the span and are skipped.
+        let first = span.z.0 as usize * h + span.y.0 as usize;
+        let last = span.z.1 as usize * h + span.y.1 as usize;
 
-        let moved = self.next[rows]
+        let moved = self.next[first * w..(last + 1) * w]
             .par_chunks_mut(w)
             .with_min_len(ROWS_PER_TASK)
             .enumerate()
-            .map(|(row_in_span, row)| {
-                let y = span.y.0 + row_in_span as u32;
+            .map(|(k, row)| {
+                let stacked = first + k;
+                let (y, z) = ((stacked % h) as u32, (stacked / h) as u32);
                 let mut moved: f64 = 0.0;
+                if y < span.y.0 || y > span.y.1 {
+                    return moved;
+                }
                 for x in span.x.0..=span.x.1 {
                     let out = &mut row[x as usize];
-                    let i = y as usize * w + x as usize;
+                    let i = stacked * w + x as usize;
                     let before = values[i];
-                    if (x + y) % 2 != colour || held[i] {
+                    if (x + y + z) % 2 != colour || held[i] {
                         *out = before;
                         continue;
                     }
@@ -275,19 +363,29 @@ impl ScalarField {
                     let mut sum = 0.0;
                     let mut real = 0.0;
                     if x > 0 {
-                        sum += at(x - 1, y);
+                        sum += values[i - 1];
                         real += 1.0;
                     }
                     if x + 1 < width {
-                        sum += at(x + 1, y);
+                        sum += values[i + 1];
                         real += 1.0;
                     }
                     if y > 0 {
-                        sum += at(x, y - 1);
+                        sum += values[i - w];
                         real += 1.0;
                     }
                     if y + 1 < height {
-                        sum += at(x, y + 1);
+                        sum += values[i + w];
+                        real += 1.0;
+                    }
+                    // Last, so that a flat field adds what it always did in
+                    // the order it always did.
+                    if z > 0 {
+                        sum += values[i - slice];
+                        real += 1.0;
+                    }
+                    if z + 1 < depth {
+                        sum += values[i + slice];
                         real += 1.0;
                     }
                     // A pixel that secretes nothing adds an exact zero, so a
@@ -331,6 +429,17 @@ impl ScalarField {
         }
     }
 
+    /// Hold every pixel `is_source` names, by flat index, at `value`: as
+    /// [`ScalarField::hold_pixels`], through every slice of a volume.
+    pub fn hold_where(&mut self, value: f64, is_source: impl Fn(usize) -> bool) {
+        for i in 0..self.values.len() {
+            if is_source(i) {
+                self.held[i] = true;
+                self.values[i] = value;
+            }
+        }
+    }
+
     /// Hold every pixel `level` gives a value at that value, each its own.
     ///
     /// A source whose strength varies from place to place: a vessel network
@@ -347,7 +456,7 @@ impl ScalarField {
         }
     }
 
-    /// Hold every pixel a bath can reach at `value`.
+    /// Hold every pixel a bath can reach at `value`, on a flat field.
     ///
     /// `is_open` answers "can the bath occupy this pixel", which in practice means
     /// "is this pixel empty medium rather than tissue". Starting from the edge of
@@ -367,30 +476,93 @@ impl ScalarField {
     /// conservative reading of an ambiguous case: leaving a pocket unsupplied
     /// costs a little realism, leaking a source into the tissue costs the result.
     pub fn hold_bath(&mut self, value: f64, is_open: impl Fn(u32, u32) -> bool) {
+        let w = self.width as usize;
+        self.hold_bath_at(value, |i| is_open((i % w) as u32, (i / w) as u32));
+    }
+
+    /// Hold every pixel a bath can reach at `value`, `is_open` asked by flat
+    /// index: as [`ScalarField::hold_bath`], and in a volume from all six of
+    /// its faces, spreading through the faces of voxels.
+    ///
+    /// Only the box around every closed pixel, one pixel wider, is flooded.
+    /// Everything outside it is open, and reaches a face of the box along a
+    /// straight line that never enters it, so it is held without being
+    /// visited; the flood starts from the box's outer layer, open by
+    /// construction and touching what is held. The pixels held are those a
+    /// flood of the whole field would hold.
+    pub fn hold_bath_at(&mut self, value: f64, is_open: impl Fn(usize) -> bool) {
         self.frontier.clear();
+        let (w, h, d) = (
+            self.width as usize,
+            self.height as usize,
+            self.depth as usize,
+        );
+        let slice = w * h;
+        let at = |i: usize| [i % w, (i / w) % h, i / slice];
 
-        let (last_x, last_y) = (self.width - 1, self.height - 1);
-        for x in 0..self.width {
-            self.reach(x, 0, &is_open);
-            self.reach(x, last_y, &is_open);
-        }
-        for y in 0..self.height {
-            self.reach(0, y, &is_open);
-            self.reach(last_x, y, &is_open);
-        }
-
-        while let Some((x, y)) = self.frontier.pop() {
-            if x > 0 {
-                self.reach(x - 1, y, &is_open);
+        let mut closed: Option<[(usize, usize); 3]> = None;
+        for i in (0..self.values.len()).filter(|&i| !is_open(i)) {
+            let p = at(i);
+            let s = closed.get_or_insert([(p[0], p[0]), (p[1], p[1]), (p[2], p[2])]);
+            for (axis, c) in s.iter_mut().zip(p) {
+                *axis = (axis.0.min(c), axis.1.max(c));
             }
-            if x < last_x {
-                self.reach(x + 1, y, &is_open);
+        }
+        let limits = [w, h, d];
+        let span = closed.map(|mut s| {
+            for (axis, limit) in s.iter_mut().zip(limits) {
+                *axis = (axis.0.saturating_sub(1), (axis.1 + 1).min(limit - 1));
+            }
+            s
+        });
+        let inside = |p: [usize; 3]| {
+            span.is_some_and(|s| s.iter().zip(p).all(|(axis, c)| axis.0 <= c && c <= axis.1))
+        };
+        for i in 0..self.values.len() {
+            if !inside(at(i)) {
+                self.held[i] = true;
+            }
+        }
+        if let Some(s) = span {
+            // The outer layer of the box. A flat field's one slice is its
+            // whole area, so its first and last slice are not a layer.
+            let outer = |p: [usize; 3]| {
+                p[0] == s[0].0
+                    || p[0] == s[0].1
+                    || p[1] == s[1].0
+                    || p[1] == s[1].1
+                    || (d > 1 && (p[2] == s[2].0 || p[2] == s[2].1))
+            };
+            for z in s[2].0..=s[2].1 {
+                for y in s[1].0..=s[1].1 {
+                    for x in s[0].0..=s[0].1 {
+                        if outer([x, y, z]) {
+                            self.reach(z * slice + y * w + x, &is_open);
+                        }
+                    }
+                }
+            }
+        }
+
+        while let Some(i) = self.frontier.pop() {
+            let (x, y, z) = (i % w, (i / w) % h, i / slice);
+            if x > 0 {
+                self.reach(i - 1, &is_open);
+            }
+            if x + 1 < w {
+                self.reach(i + 1, &is_open);
             }
             if y > 0 {
-                self.reach(x, y - 1, &is_open);
+                self.reach(i - w, &is_open);
             }
-            if y < last_y {
-                self.reach(x, y + 1, &is_open);
+            if y + 1 < h {
+                self.reach(i + w, &is_open);
+            }
+            if z > 0 {
+                self.reach(i - slice, &is_open);
+            }
+            if z + 1 < d {
+                self.reach(i + slice, &is_open);
             }
         }
 
@@ -402,30 +574,39 @@ impl ScalarField {
     }
 
     /// Mark one pixel as held by the bath, unless it is closed or already marked.
-    fn reach(&mut self, x: u32, y: u32, is_open: &impl Fn(u32, u32) -> bool) {
-        let i = self.idx(x, y);
-        if self.held[i] || !is_open(x, y) {
+    fn reach(&mut self, i: usize, is_open: &impl Fn(usize) -> bool) {
+        if self.held[i] || !is_open(i) {
             return;
         }
         self.held[i] = true;
-        self.frontier.push((x, y));
+        self.frontier.push(i);
     }
 
     fn idx(&self, x: u32, y: u32) -> usize {
         y as usize * self.width as usize + x as usize
     }
 
-    /// Laplacian via a five point stencil, with no-flux walls.
+    /// Laplacian via a five point stencil, seven in a volume, with no-flux
+    /// walls, at flat index `i`.
     ///
     /// At the edge of the box the missing neighbour is replaced by the pixel
     /// itself, which makes the flux through the wall exactly zero.
-    fn laplacian(&self, x: u32, y: u32) -> f64 {
-        let c = self.values[self.idx(x, y)];
-        let left = self.values[self.idx(x.saturating_sub(1), y)];
-        let right = self.values[self.idx((x + 1).min(self.width - 1), y)];
-        let up = self.values[self.idx(x, y.saturating_sub(1))];
-        let down = self.values[self.idx(x, (y + 1).min(self.height - 1))];
-        left + right + up + down - 4.0 * c
+    fn laplacian(&self, i: usize) -> f64 {
+        let (w, h) = (self.width as usize, self.height as usize);
+        let slice = w * h;
+        let (x, y, z) = (i % w, (i / w) % h, i / slice);
+        let c = self.values[i];
+        let at = |j: usize, there: bool| if there { self.values[j] } else { c };
+        let mut lap = at(i.wrapping_sub(1), x > 0)
+            + at(i + 1, x + 1 < w)
+            + at(i.wrapping_sub(w), y > 0)
+            + at(i + w, y + 1 < h)
+            - 4.0 * c;
+        if self.depth > 1 {
+            lap += at(i.wrapping_sub(slice), z > 0) + at(i + slice, z + 1 < self.depth as usize)
+                - 2.0 * c;
+        }
+        lap
     }
 
     /// Refuse a time step the explicit scheme cannot take.
@@ -440,9 +621,14 @@ impl ScalarField {
                 "time step must be positive, got {dt}"
             )));
         }
-        if self.d * dt > DIFFUSION_LIMIT {
+        let limit = if self.depth > 1 {
+            DIFFUSION_LIMIT * 2.0 / 3.0
+        } else {
+            DIFFUSION_LIMIT
+        };
+        if self.d * dt > limit {
             return Err(CellweaveError::Config(format!(
-                "unstable time step: D·dt = {:.4} is above {DIFFUSION_LIMIT} (D = {}, dt = {dt})",
+                "unstable time step: D·dt = {:.4} is above {limit} (D = {}, dt = {dt})",
                 self.d * dt,
                 self.d
             )));
@@ -463,23 +649,20 @@ impl DiffusionField for ScalarField {
         let dt = dt.0;
         self.check_step(dt)?;
 
-        for y in 0..self.height {
-            for x in 0..self.width {
-                let i = self.idx(x, y);
-                let c = self.values[i];
-                if self.held[i] {
-                    // A bath pixel is a boundary condition, not an unknown.
-                    self.next[i] = c;
-                    continue;
-                }
-                let lap = self.laplacian(x, y);
-                let change = self.d * lap - self.decay * c + self.source + self.production[i]
-                    - self.uptake[i];
-                // The floor is physics, not a safety net: tissue cannot take up
-                // what is not there. Diffusion and decay alone never go below
-                // zero, the stability check sees to that.
-                self.next[i] = (c + dt * change).max(0.0);
+        for i in 0..self.values.len() {
+            let c = self.values[i];
+            if self.held[i] {
+                // A bath pixel is a boundary condition, not an unknown.
+                self.next[i] = c;
+                continue;
             }
+            let lap = self.laplacian(i);
+            let change =
+                self.d * lap - self.decay * c + self.source + self.production[i] - self.uptake[i];
+            // The floor is physics, not a safety net: tissue cannot take up
+            // what is not there. Diffusion and decay alone never go below
+            // zero, the stability check sees to that.
+            self.next[i] = (c + dt * change).max(0.0);
         }
 
         // Swap buffers, no allocation.
@@ -912,7 +1095,8 @@ mod tests {
             field.free_span(),
             Some(Span {
                 x: (4, 8),
-                y: (11, 13)
+                y: (11, 13),
+                z: (0, 0)
             })
         );
 
@@ -944,5 +1128,53 @@ mod tests {
             }
         }
         assert!(field.concentration_at(20, 20) < 1.0, "the centre starves");
+    }
+
+    #[test]
+    fn a_starving_ball_settles_where_the_sphere_formula_puts_it() {
+        // Uptake u inside a ball of radius R in a bath held at one: the
+        // centre sits at 1 - u R^2 / (6 D), where a disc's would be at
+        // 1 - u R^2 / (4 D), a volume being fed from more directions.
+        let (side, r, u) = (31_u32, 10.0_f64, 0.006);
+        let mut field = ScalarField::with_depth(side, side, side, D, 0.0, 1.0).unwrap();
+        let c = f64::from(side / 2);
+        let inside = |i: usize| {
+            let s = side as usize;
+            let (x, y, z) = ((i % s) as f64, ((i / s) % s) as f64, (i / (s * s)) as f64);
+            (x - c).powi(2) + (y - c).powi(2) + (z - c).powi(2) <= r * r
+        };
+        for i in 0..field.len() {
+            if inside(i) {
+                field.set_uptake_at(i, u);
+            }
+        }
+        field.hold_bath_at(1.0, |i| !inside(i));
+        field.relax(TimeStep(1.0), 1e-10, 1_000_000).unwrap();
+        let centre = field
+            .value_at((side as usize / 2) * (side as usize * side as usize + side as usize + 1));
+        let expected = 1.0 - u * r * r / (6.0 * D);
+        assert!(
+            (centre - expected).abs() < 0.05,
+            "centre {centre:.3}, the sphere formula {expected:.3}"
+        );
+    }
+
+    #[test]
+    fn a_bath_reaches_a_volume_through_its_six_faces() {
+        // Open only along a column through the middle, which touches no side
+        // of the box and both its front and back faces.
+        let column = |i: usize| i % 64 == 4 * 8 + 4;
+        let mut volume = ScalarField::with_depth(8, 8, 8, D, 0.0, 0.0).unwrap();
+        volume.hold_bath_at(1.0, column);
+        assert_eq!(
+            volume.value_at(3 * 64 + 4 * 8 + 4),
+            1.0,
+            "reached from the faces"
+        );
+        assert_eq!(volume.value_at(3 * 64 + 4 * 8 + 3), 0.0, "closed");
+        // In the plane the same pixel is walled in on every side.
+        let mut flat = ScalarField::new(8, 8, D, 0.0, 0.0).unwrap();
+        flat.hold_bath_at(1.0, column);
+        assert_eq!(flat.value_at(4 * 8 + 4), 0.0, "a pocket in the plane");
     }
 }

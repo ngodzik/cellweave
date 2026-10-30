@@ -14,7 +14,7 @@ use std::marker::PhantomData;
 use cellweave_core::{
     Angiogenesis, CellId, CellInputs, CellKind, CellSnapshot, CellweaveError, CloneId,
     Concentration, DiffusionField, Exposure, Immunity, NetworkSpec, OxygenSource, Perfusion, Pos2,
-    Seeding, SignalingNetwork, SimSnapshot, TimeStep, Tracing, Volume,
+    Pos3, Seeding, SignalingNetwork, SimSnapshot, TimeStep, Tracing, Volume,
 };
 use rand::rngs::StdRng;
 use rand::{RngExt, SeedableRng};
@@ -50,10 +50,24 @@ const DIVISION_RATIO: f64 = 1.4;
 /// cell freed in twenty steps splitting at once.
 const DIVISION_CHECK_EVERY: u64 = 20;
 
-/// Refuse to go past this many living cells, as a guard against runaway
-/// growth. Counted among the living rather than among every cell ever born,
-/// since a tissue that turns over keeps its size while its births add up.
-const MAX_CELLS: usize = 2000;
+/// Refuse to go past this many living cells unless a scenario says
+/// otherwise, as a guard against runaway growth. Counted among the living
+/// rather than among every cell ever born, since a tissue that turns over
+/// keeps its size while its births add up.
+pub const DEFAULT_MAX_CELLS: usize = 2000;
+
+/// Radius of the first cell in the plane, in pixels: a disc of about two
+/// hundred pixels, which every later cell is measured against.
+const FIRST_CELL_RADIUS: u32 = 8;
+
+/// Radius of the first cell in a volume, in voxels: a ball of 123 voxels.
+///
+/// A volume cannot be cut as finely as a plane. A cell about 16 pixels
+/// across in the plane would be some two thousand voxels, and a spheroid as
+/// large as measured ones tens of thousands of cells, a lattice of billions.
+/// At three, a cell is about seven voxels across, a voxel some 2.5 to 3 µm,
+/// and the measured spheroids fit in a box of a few hundred on a side.
+const FIRST_CELL_RADIUS_3D: u32 = 3;
 
 /// Oxygen diffusion coefficient, in pixels squared per unit time.
 const OXYGEN_DIFFUSION: f64 = 0.2;
@@ -159,6 +173,11 @@ pub struct Scenario {
     pub width: u32,
     /// Grid height in pixels.
     pub height: u32,
+    /// Grid depth in voxels: one for a tissue in the plane, more for one in
+    /// a volume.
+    pub depth: u32,
+    /// The most living cells the run lets divide.
+    pub max_cells: usize,
     /// CPM temperature.
     pub temperature: f64,
     /// Where the oxygen comes from, which also decides where the first cell goes.
@@ -418,10 +437,25 @@ impl Simulation<Configured> {
                  cell divides at {DIVISION_RATIO}; no cell could ever divide"
             )));
         }
-        let mut lattice = CpmLattice::new(scenario.width, scenario.height, scenario.temperature)
-            .map_err(|e| CellweaveError::Config(e.to_string()))?;
+        let volume = scenario.depth > 1;
+        if volume {
+            refuse_in_a_volume(&scenario)?;
+        }
+        let mut lattice = CpmLattice::with_depth(
+            scenario.width,
+            scenario.height,
+            scenario.depth,
+            scenario.temperature,
+        )
+        .map_err(|e| CellweaveError::Config(e.to_string()))?;
         let cx = scenario.width / 2;
         let cy = scenario.height / 2;
+        let cz = scenario.depth / 2;
+        let first_radius = if volume {
+            FIRST_CELL_RADIUS_3D
+        } else {
+            FIRST_CELL_RADIUS
+        };
 
         match scenario.oxygen_source {
             OxygenSource::Bath => {}
@@ -442,22 +476,31 @@ impl Simulation<Configured> {
         }
         let first = match scenario.seeding {
             Seeding::Single => match scenario.oxygen_source {
-                OxygenSource::Bath => lattice.add_cell(CellKind::Tumor, Pos2 { x: cx, y: cy }, 8),
-                OxygenSource::Vessel { radius } => lattice.add_cell(
+                OxygenSource::Bath => lattice.add_ball(
                     CellKind::Tumor,
-                    Pos2 {
-                        x: cx + radius + 8,
+                    Pos3 {
+                        x: cx,
                         y: cy,
+                        z: cz,
                     },
-                    8,
+                    first_radius,
+                ),
+                OxygenSource::Vessel { radius } => lattice.add_ball(
+                    CellKind::Tumor,
+                    Pos3 {
+                        x: cx + radius + first_radius,
+                        y: cy,
+                        z: cz,
+                    },
+                    first_radius,
                 ),
                 OxygenSource::Capillary { radius } => lattice.add_cell(
                     CellKind::Tumor,
                     Pos2 {
                         x: cx,
-                        y: capillary_row(scenario.height) + radius + 8,
+                        y: capillary_row(scenario.height) + radius + FIRST_CELL_RADIUS,
                     },
-                    8,
+                    FIRST_CELL_RADIUS,
                 ),
             },
             Seeding::Sheet { side } => {
@@ -558,9 +601,10 @@ impl Simulation<Configured> {
             OxygenSource::Bath => 1.0,
             OxygenSource::Vessel { .. } | OxygenSource::Capillary { .. } => 0.0,
         };
-        let oxygen = ScalarField::new(
+        let oxygen = ScalarField::with_depth(
             scenario.width,
             scenario.height,
+            scenario.depth,
             OXYGEN_DIFFUSION,
             0.0,
             initial,
@@ -595,9 +639,10 @@ impl Simulation<Configured> {
                             .into(),
                     ));
                 }
-                Some(ScalarField::new(
+                Some(ScalarField::with_depth(
                     scenario.width,
                     scenario.height,
+                    scenario.depth,
                     STRESS_DIFFUSION,
                     0.0,
                     0.0,
@@ -1005,7 +1050,7 @@ impl Simulation<Running> {
             Seeding::Single => DIVISION_CHECK_EVERY,
             Seeding::Sheet { .. } => 1,
         };
-        if mcs.is_multiple_of(every) && self.living() < MAX_CELLS {
+        if mcs.is_multiple_of(every) && self.living() < self.scenario.max_cells {
             self.born += self.divide_ready_cells(mcs);
         }
 
@@ -1281,12 +1326,29 @@ impl Simulation<Running> {
 
         let mut born = 0;
         let living = self.living();
-        for i in ready {
-            if living + born as usize >= MAX_CELLS {
+        let ids: Vec<CellId> = ready.iter().map(|&i| cell_of(i)).collect();
+        let pixels = self.lattice.pixels_of(&ids);
+        for (i, pixels) in ready.into_iter().zip(pixels) {
+            if living + born as usize >= self.scenario.max_cells {
                 break;
             }
-            let angle = self.rng.random::<f64>() * std::f64::consts::PI;
-            if self.lattice.divide(cell_of(i), angle).is_some() {
+            // In the plane, a line at an angle drawn uniformly; in a volume, a
+            // plane whose normal is drawn uniformly over the sphere, with two
+            // draws, so that a run in the plane draws what it always did.
+            let normal = if self.scenario.depth > 1 {
+                let z = 2.0 * self.rng.random::<f64>() - 1.0;
+                let around = self.rng.random::<f64>() * std::f64::consts::TAU;
+                let r = (1.0 - z * z).max(0.0).sqrt();
+                (r * around.cos(), r * around.sin(), z)
+            } else {
+                let angle = self.rng.random::<f64>() * std::f64::consts::PI;
+                (angle.cos(), angle.sin(), 0.0)
+            };
+            if self
+                .lattice
+                .divide_across(cell_of(i), &pixels, normal)
+                .is_some()
+            {
                 let mut daughter = self.networks[i].clone();
                 let mut clone = self.lineage[i];
                 // The rate is tested before anything is drawn, so that a run
@@ -1625,11 +1687,12 @@ impl<S: SimState> Simulation<S> {
     /// Whether any cell occupies a pixel on the edge of the box.
     fn touches_the_edge(&self) -> bool {
         let lattice = &self.lattice;
-        let (w, h) = lattice.dims();
+        let (w, h, d) = lattice.dims3();
+        let slice = w as usize * h as usize;
         // Only a cell carrying a network is tissue: an immune cell wandering
         // to the edge, alive or breaking up, is not the tissue reaching it.
-        let is_cell = |x: u32, y: u32| {
-            let id = lattice.occupant(x, y);
+        let is_cell = |x: u32, y: u32, z: u32| {
+            let id = lattice.occupant_at(z as usize * slice + (y * w + x) as usize);
             id != 0
                 && id != OBSTACLE
                 && self
@@ -1639,10 +1702,15 @@ impl<S: SimState> Simulation<S> {
         };
         // Along a capillary the left and right sides of the box cut through a
         // layer that goes on beyond them, the way the plane cuts through a
-        // cord; only the edges away from the capillary bound the tissue.
+        // cord; only the edges away from the capillary bound the tissue. In a
+        // volume, a vessel runs through the front and back faces, which cut
+        // through a cord the same way.
         let sides = !matches!(self.scenario.oxygen_source, OxygenSource::Capillary { .. });
-        (0..w).any(|x| is_cell(x, 0) || is_cell(x, h - 1))
-            || (sides && (0..h).any(|y| is_cell(0, y) || is_cell(w - 1, y)))
+        let faces = d > 1 && !self.scenario.oxygen_source.is_vessel();
+        (0..d).any(|z| {
+            (0..w).any(|x| is_cell(x, 0, z) || is_cell(x, h - 1, z))
+                || (sides && (0..h).any(|y| is_cell(0, y, z) || is_cell(w - 1, y, z)))
+        }) || (faces && (0..h).any(|y| (0..w).any(|x| is_cell(x, y, 0) || is_cell(x, y, d - 1))))
     }
 
     /// Index of the step last taken, which labels what is read off the
@@ -1879,6 +1947,31 @@ fn delivered(vessels: &Vessels, x: u32, y: u32, half: f64) -> f64 {
     (q * (1.0 + half) / (q + half)).min(1.0)
 }
 
+/// Refuse what a volume cannot run yet: what is built on vessels laid in the
+/// plane, on a sheet, or on places named in the plane. A tumour in a bath or
+/// around a straight vessel, mutating or exposed to a stress, runs in either.
+fn refuse_in_a_volume(scenario: &Scenario) -> Result<(), CellweaveError> {
+    let refused = if matches!(scenario.oxygen_source, OxygenSource::Capillary { .. }) {
+        Some("a capillary lying in the plane")
+    } else if matches!(scenario.seeding, Seeding::Sheet { .. }) {
+        Some("a sheet, which is a layer one cell thick")
+    } else if scenario.angiogenesis.is_some() {
+        Some("vessels that grow")
+    } else if scenario.immunity.is_some() {
+        Some("immune cells")
+    } else if scenario.lesion.is_some() {
+        Some("a lesion")
+    } else {
+        None
+    };
+    match refused {
+        Some(what) => Err(CellweaveError::Config(format!(
+            "{what} runs only in the plane for now; set depth = 1"
+        ))),
+        None => Ok(()),
+    }
+}
+
 /// The row a capillary lying across the box runs along: a quarter of the way
 /// down, so that the tissue growing below it has most of the box.
 pub fn capillary_row(height: u32) -> u32 {
@@ -1921,6 +2014,8 @@ mod tests {
         Scenario {
             width: 80,
             height: 80,
+            depth: 1,
+            max_cells: DEFAULT_MAX_CELLS,
             temperature: 10.0,
             oxygen_source,
             oxygen_uptake: 0.0003,
@@ -1937,6 +2032,82 @@ mod tests {
             immunity: None,
             tracing: None,
         }
+    }
+
+    /// A tumour in a bath, in a box 40 voxels on every side.
+    fn in_a_volume(oxygen_source: OxygenSource) -> Scenario {
+        Scenario {
+            width: 40,
+            height: 40,
+            depth: 40,
+            ..scenario(oxygen_source)
+        }
+    }
+
+    #[test]
+    fn in_a_volume_the_first_cell_is_a_ball_at_the_centre() {
+        let sim = Simulation::new(in_a_volume(OxygenSource::Bath), &spec()).unwrap();
+        assert_eq!(sim.lattice().volume(CellId(1)), Some(Volume(123)));
+        // Its centre voxel, in the middle slice.
+        assert_eq!(sim.lattice().occupant_at((20 * 40 + 20) * 40 + 20), 1);
+        let m = sim.measure();
+        // A ball of 123 voxels has the radius of a sphere of that volume.
+        assert!((m.tissue_radius - 3.08).abs() < 0.01, "{}", m.tissue_radius);
+    }
+
+    #[test]
+    fn a_tumour_in_a_volume_grows_and_one_seed_gives_one_run() {
+        let run = || {
+            let (mut sim, _) = Simulation::new(in_a_volume(OxygenSource::Bath), &spec())
+                .unwrap()
+                .start()
+                .unwrap();
+            for _ in 0..120 {
+                sim.step().unwrap();
+            }
+            (sim.living(), format!("{:?}", sim.snapshot()))
+        };
+        let (living, first) = run();
+        assert!(living > 1, "nothing divided");
+        assert_eq!(first, run().1);
+    }
+
+    #[test]
+    fn around_a_vessel_in_a_volume_the_vessel_runs_through_the_box() {
+        let sim =
+            Simulation::new(in_a_volume(OxygenSource::Vessel { radius: 4 }), &spec()).unwrap();
+        let lattice = sim.lattice();
+        let vessel = lattice.grid.iter().filter(|&&v| v == OBSTACLE).count();
+        let per_slice = (0..1600)
+            .filter(|&i| lattice.occupant_at(i) == OBSTACLE)
+            .count();
+        assert_eq!(vessel, 40 * per_slice);
+        // The first cell sits against its wall, in the middle slice.
+        assert_eq!(lattice.occupant_at((20 * 40 + 20) * 40 + 20 + 4 + 3), 1);
+    }
+
+    #[test]
+    fn what_runs_only_in_the_plane_is_refused_in_a_volume() {
+        let refused = |scenario: Scenario| {
+            matches!(
+                Simulation::new(scenario, &spec()),
+                Err(CellweaveError::Config(m)) if m.contains("only in the plane")
+            )
+        };
+        assert!(refused(in_a_volume(OxygenSource::Capillary { radius: 3 })));
+        assert!(refused(Scenario {
+            seeding: Seeding::Sheet { side: 10 },
+            oxygen_uptake: 0.0,
+            ..in_a_volume(OxygenSource::Bath)
+        }));
+        assert!(refused(Scenario {
+            angiogenesis: growing(0.3).angiogenesis,
+            ..in_a_volume(OxygenSource::Vessel { radius: 4 })
+        }));
+        assert!(refused(Scenario {
+            immunity: immune(0, 0.5, 0.5).immunity,
+            ..in_a_volume(OxygenSource::Vessel { radius: 4 })
+        }));
     }
 
     #[test]

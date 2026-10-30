@@ -1,8 +1,12 @@
 //! Cellular Potts Model lattice (Graner & Glazier 1992).
 //!
-//! Uses the checkerboard update scheme so parallel spin flips never race.
+//! Flat or in a volume. A flat lattice is one slice; a volume stacks slices,
+//! and each voxel has two neighbours more, above and below. Everything that
+//! only reads neighbours works in either, and a flat lattice draws, visits
+//! and sums what it always did, in the same order, so that a run in the
+//! plane is the run it was before the lattice had a depth.
 
-use cellweave_core::{CellId, CellKind, Pos2, Volume};
+use cellweave_core::{CellId, CellKind, Pos2, Pos3, Volume};
 use ndarray::Array2;
 // rand 0.10 split the trait: Rng carries the raw bits, RngExt the helpers.
 // Public signatures keep the Rng bound, since RngExt is blanket implemented.
@@ -13,8 +17,8 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum CpmError {
     /// Grid dimensions are zero or larger than 65535.
-    #[error("invalid grid dimensions ({0}×{1})")]
-    InvalidDims(u32, u32),
+    #[error("invalid grid dimensions ({0}×{1}×{2})")]
+    InvalidDims(u32, u32, u32),
 }
 
 /// Contact energy `J` for every pair of cell kinds.
@@ -132,6 +136,37 @@ const MIN_DIVIDE_VOLUME: u32 = 8;
 /// out of it is simply never proposed.
 pub const OBSTACLE: u32 = u32::MAX;
 
+/// A pixel's neighbours, as `(row, col)` on the stacked lattice: at most
+/// six, held in place rather than allocated for every attempted flip.
+#[derive(Debug, Clone, Copy, Default)]
+struct Neighbours {
+    cells: [(u32, u32); 6],
+    len: usize,
+}
+
+impl Neighbours {
+    fn push(&mut self, at: (u32, u32)) {
+        self.cells[self.len] = at;
+        self.len += 1;
+    }
+
+    fn len(&self) -> usize {
+        self.len
+    }
+
+    fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    fn at(&self, k: usize) -> (u32, u32) {
+        self.cells[k]
+    }
+
+    fn iter(&self) -> std::slice::Iter<'_, (u32, u32)> {
+        self.cells[..self.len].iter()
+    }
+}
+
 /// Per-cell properties tracked by the lattice.
 #[derive(Debug, Clone)]
 pub struct CellRecord {
@@ -145,7 +180,7 @@ pub struct CellRecord {
     pub lambda_volume: f64,
 }
 
-/// 2D Cellular Potts Model lattice.
+/// Cellular Potts Model lattice, flat or in a volume.
 ///
 /// Each pixel stores a `CellId` (0 = medium). Monte Carlo spin flips are
 /// proposed randomly; accepted with the Boltzmann probability.
@@ -154,7 +189,12 @@ pub struct CpmLattice {
     pub width: u32,
     /// Height in pixels.
     pub height: u32,
-    /// Lattice: each pixel → CellId (0 = medium).
+    /// Depth in voxels: one for a flat lattice.
+    pub depth: u32,
+    /// Lattice: each pixel → CellId (0 = medium). In a volume the slices are
+    /// stacked one below the other, the voxel at `(x, y, z)` on row
+    /// `z * height + y`, so that the first slice is where a flat lattice's
+    /// pixels are and every voxel's flat index is `row * width + x`.
     pub grid: Array2<u32>,
     /// Per-cell records indexed by CellId.
     cells: Vec<CellRecord>,
@@ -170,15 +210,28 @@ pub struct CpmLattice {
 }
 
 impl CpmLattice {
-    /// Create an empty lattice filled with medium.
+    /// Create an empty flat lattice filled with medium.
     pub fn new(width: u32, height: u32, temperature: f64) -> Result<Self, CpmError> {
-        if width == 0 || height == 0 || width > 65535 || height > 65535 {
-            return Err(CpmError::InvalidDims(width, height));
+        Self::with_depth(width, height, 1, temperature)
+    }
+
+    /// Create an empty lattice `depth` voxels deep filled with medium: flat
+    /// for a depth of one.
+    pub fn with_depth(
+        width: u32,
+        height: u32,
+        depth: u32,
+        temperature: f64,
+    ) -> Result<Self, CpmError> {
+        let bad = |side: u32| side == 0 || side > 65535;
+        if bad(width) || bad(height) || bad(depth) {
+            return Err(CpmError::InvalidDims(width, height, depth));
         }
         Ok(Self {
             width,
             height,
-            grid: Array2::zeros((height as usize, width as usize)),
+            depth,
+            grid: Array2::zeros((height as usize * depth as usize, width as usize)),
             // Id 0 = medium; pre-populate the slot so indices are stable.
             cells: vec![CellRecord {
                 kind: CellKind::Medium,
@@ -193,24 +246,46 @@ impl CpmLattice {
         })
     }
 
-    /// Add a circular cell of `kind` centred at `centre` with radius `r`.
+    /// Add a circular cell of `kind` centred at `centre` with radius `r`, in
+    /// the first slice: on a flat lattice, a disc.
     ///
     /// Returns the new `CellId`.
     pub fn add_cell(&mut self, kind: CellKind, centre: Pos2, radius: u32) -> CellId {
+        self.add_ball(
+            kind,
+            Pos3 {
+                x: centre.x,
+                y: centre.y,
+                z: 0,
+            },
+            radius,
+        )
+    }
+
+    /// Add a cell of `kind` holding every free voxel within `radius` of
+    /// `centre`: a ball in a volume, a disc on a flat lattice.
+    ///
+    /// Returns the new `CellId`.
+    pub fn add_ball(&mut self, kind: CellKind, centre: Pos3, radius: u32) -> CellId {
         let id = self.cells.len() as u32;
         let mut vol = 0u32;
         let cx = centre.x as i64;
         let cy = centre.y as i64;
+        let cz = centre.z as i64;
         let r2 = (radius * radius) as i64;
 
-        for row in 0..self.height {
-            for col in 0..self.width {
-                let dx = col as i64 - cx;
-                let dy = row as i64 - cy;
-                let free = self.grid[[row as usize, col as usize]] != OBSTACLE;
-                if dx * dx + dy * dy <= r2 && free {
-                    self.grid[[row as usize, col as usize]] = id;
-                    vol += 1;
+        for z in 0..self.depth {
+            let dz = z as i64 - cz;
+            for row in 0..self.height {
+                let stacked = (z * self.height + row) as usize;
+                for col in 0..self.width {
+                    let dx = col as i64 - cx;
+                    let dy = row as i64 - cy;
+                    let free = self.grid[[stacked, col as usize]] != OBSTACLE;
+                    if dx * dx + dy * dy + dz * dz <= r2 && free {
+                        self.grid[[stacked, col as usize]] = id;
+                        vol += 1;
+                    }
                 }
             }
         }
@@ -250,7 +325,8 @@ impl CpmLattice {
         CellId(id)
     }
 
-    /// Fill a disc with obstacle, overwriting whatever was there.
+    /// Fill a disc with obstacle, overwriting whatever was there, in every
+    /// slice: in a volume, a cylinder through its whole depth.
     ///
     /// Any cell pixels overwritten are taken off their cells' volumes, so the
     /// records stay true to the grid. Called before cells are placed for a
@@ -263,18 +339,21 @@ impl CpmLattice {
         // Only the square around the disc can be in it.
         let rows = centre.y.saturating_sub(radius)..(centre.y + radius + 1).min(self.height);
         let cols = centre.x.saturating_sub(radius)..(centre.x + radius + 1).min(self.width);
-        for row in rows {
-            for col in cols.clone() {
-                let dx = i64::from(col) - cx;
-                let dy = i64::from(row) - cy;
-                if dx * dx + dy * dy > r2 {
-                    continue;
+        for z in 0..self.depth {
+            for row in rows.clone() {
+                let stacked = (z * self.height + row) as usize;
+                for col in cols.clone() {
+                    let dx = i64::from(col) - cx;
+                    let dy = i64::from(row) - cy;
+                    if dx * dx + dy * dy > r2 {
+                        continue;
+                    }
+                    let was = self.grid[[stacked, col as usize]];
+                    if was != 0 && was != OBSTACLE {
+                        self.cells[was as usize].volume.0 -= 1;
+                    }
+                    self.grid[[stacked, col as usize]] = OBSTACLE;
                 }
-                let was = self.grid[[row as usize, col as usize]];
-                if was != 0 && was != OBSTACLE {
-                    self.cells[was as usize].volume.0 -= 1;
-                }
-                self.grid[[row as usize, col as usize]] = OBSTACLE;
             }
         }
     }
@@ -420,12 +499,38 @@ impl CpmLattice {
         }
     }
 
-    /// Execute one full Monte Carlo step (W×H spin-flip attempts).
+    /// Execute one full Monte Carlo step: one spin-flip attempt per pixel,
+    /// at pixels drawn at random.
     ///
-    /// Uses a simple sequential scan rather than checkerboard for the
-    /// foundation milestone. Parallelism is wired in once tests pass.
+    /// Sequential: each attempt sees every flip before it, and the run is
+    /// one ordering of draws from one generator.
+    ///
+    /// In a volume the attempts are drawn only inside the box around
+    /// everything that is not medium, one voxel wider on every side, and
+    /// there are as many as it has voxels. Outside it a voxel and all its
+    /// neighbours are medium, and a flip there would change nothing, so each
+    /// voxel that can change is tried as often as before, and a tumour that
+    /// starts as a speck in a box sized for its end does not spend its first
+    /// hundred steps drawing voxels of empty medium. A plane draws over the
+    /// whole box, as it always did.
     pub fn monte_carlo_step(&mut self, rng: &mut impl Rng) {
-        let n = (self.width * self.height) as usize;
+        if self.depth > 1 {
+            if let Some(span) = self.occupied_span() {
+                let n = span
+                    .iter()
+                    .map(|&(lo, hi)| (hi - lo + 1) as usize)
+                    .product();
+                for _ in 0..n {
+                    let col = rng.random_range(span[0].0..=span[0].1);
+                    let row = rng.random_range(span[1].0..=span[1].1);
+                    let z = rng.random_range(span[2].0..=span[2].1);
+                    self.try_flip(z * self.height + row, col, rng);
+                }
+            }
+            self.mcs += 1;
+            return;
+        }
+        let n = self.voxels();
         for _ in 0..n {
             let col = rng.random_range(0..self.width);
             let row = rng.random_range(0..self.height);
@@ -434,7 +539,29 @@ impl CpmLattice {
         self.mcs += 1;
     }
 
-    /// Attempt a spin flip at `(row, col)`, Boltzmann acceptance.
+    /// The box around every voxel that is not medium, one voxel wider on
+    /// every side and clipped to the lattice, as inclusive ranges of x, y
+    /// and z; `None` when everything is medium.
+    pub fn occupied_span(&self) -> Option<[(u32, u32); 3]> {
+        let mut span: Option<[(u32, u32); 3]> = None;
+        for (i, _) in self.grid.iter().enumerate().filter(|(_, id)| **id != 0) {
+            let (x, y, z) = self.position(i);
+            let s = span.get_or_insert([(x, x), (y, y), (z, z)]);
+            for (axis, at) in s.iter_mut().zip([x, y, z]) {
+                *axis = (axis.0.min(at), axis.1.max(at));
+            }
+        }
+        let limits = [self.width, self.height, self.depth];
+        span.map(|mut s| {
+            for (axis, limit) in s.iter_mut().zip(limits) {
+                *axis = (axis.0.saturating_sub(1), (axis.1 + 1).min(limit - 1));
+            }
+            s
+        })
+    }
+
+    /// Attempt a spin flip at `(row, col)`, `row` counted down the stacked
+    /// slices, Boltzmann acceptance.
     fn try_flip(&mut self, row: u32, col: u32, rng: &mut impl Rng) {
         let src = self.grid[[row as usize, col as usize]];
 
@@ -443,7 +570,7 @@ impl CpmLattice {
         if neighbours.is_empty() {
             return;
         }
-        let (nr, nc) = neighbours[rng.random_range(0..neighbours.len())];
+        let (nr, nc) = neighbours.at(rng.random_range(0..neighbours.len()));
         let dst = self.grid[[nr as usize, nc as usize]];
 
         if src == dst || src == OBSTACLE || dst == OBSTACLE {
@@ -489,7 +616,7 @@ impl CpmLattice {
     /// before the flip but a real cost afterwards, so it must not be skipped.
     fn contact_delta_h(&self, row: u32, col: u32, src: u32, dst: u32) -> f64 {
         let mut dh = 0.0;
-        for (nr, nc) in self.von_neumann(row, col) {
+        for &(nr, nc) in self.von_neumann(row, col).iter() {
             let neighbour = self.grid[[nr as usize, nc as usize]];
             dh += self.contact_energy(dst, neighbour) - self.contact_energy(src, neighbour);
         }
@@ -537,13 +664,16 @@ impl CpmLattice {
             .map_or(CellKind::Medium, |r| r.kind)
     }
 
-    /// Von Neumann neighbourhood (4-connected), boundary-clipped.
-    fn von_neumann(&self, row: u32, col: u32) -> Vec<(u32, u32)> {
-        let mut out = Vec::with_capacity(4);
-        if row > 0 {
+    /// Von Neumann neighbourhood, boundary-clipped: the four in the slice,
+    /// up, down, left, right, then in a volume the two in the slices before
+    /// and after. `row` is counted down the stacked slices.
+    fn von_neumann(&self, row: u32, col: u32) -> Neighbours {
+        let mut out = Neighbours::default();
+        let (y, z) = (row % self.height, row / self.height);
+        if y > 0 {
             out.push((row - 1, col));
         }
-        if row + 1 < self.height {
+        if y + 1 < self.height {
             out.push((row + 1, col));
         }
         if col > 0 {
@@ -552,7 +682,32 @@ impl CpmLattice {
         if col + 1 < self.width {
             out.push((row, col + 1));
         }
+        if z > 0 {
+            out.push((row - self.height, col));
+        }
+        if z + 1 < self.depth {
+            out.push((row + self.height, col));
+        }
         out
+    }
+
+    /// Pixels in the lattice, every slice counted.
+    pub fn voxels(&self) -> usize {
+        self.width as usize * self.height as usize * self.depth as usize
+    }
+
+    /// The identifier occupying the voxel at flat index `i`, counted along
+    /// rows, then down, then through the slices: 0 for medium,
+    /// [`OBSTACLE`] for a voxel no cell can take, medium past the end.
+    pub fn occupant_at(&self, i: usize) -> u32 {
+        let w = self.width as usize;
+        self.grid.get([i / w, i % w]).copied().unwrap_or(0)
+    }
+
+    /// Where the voxel at flat index `i` is, as `(x, y, z)`.
+    pub fn position(&self, i: usize) -> (u32, u32, u32) {
+        let (w, h) = (self.width as usize, self.height as usize);
+        ((i % w) as u32, ((i / w) % h) as u32, (i / (w * h)) as u32)
     }
 
     /// Number of registered cells (excluding medium).
@@ -591,8 +746,9 @@ impl CpmLattice {
         }
     }
 
-    /// The identifier occupying one pixel: 0 for medium, [`OBSTACLE`] for a
-    /// pixel no cell can take.
+    /// The identifier occupying one pixel of the first slice, which on a flat
+    /// lattice is every pixel: 0 for medium, [`OBSTACLE`] for a pixel no cell
+    /// can take.
     ///
     /// Coordinates outside the grid read as medium.
     pub fn occupant(&self, x: u32, y: u32) -> u32 {
@@ -605,6 +761,11 @@ impl CpmLattice {
     /// Width and height.
     pub fn dims(&self) -> (u32, u32) {
         (self.width, self.height)
+    }
+
+    /// Width, height and depth.
+    pub fn dims3(&self) -> (u32, u32, u32) {
+        (self.width, self.height, self.depth)
     }
 
     /// Apply the volume parameters a cell's signaling network asks for.
@@ -638,40 +799,95 @@ impl CpmLattice {
         if id.0 == 0 {
             return None;
         }
-        let parent = self.cells.get(id.0 as usize)?.clone();
+        let pixels = self.pixels_of(&[id]).pop().unwrap_or_default();
+        self.divide_across(id, &pixels, (angle.cos(), angle.sin(), 0.0))
+    }
 
-        let mut pixels = Vec::with_capacity(parent.volume.0 as usize);
-        for y in 0..self.height {
-            for x in 0..self.width {
-                if self.grid[[y as usize, x as usize]] == id.0 {
-                    pixels.push((x, y));
-                }
+    /// Every pixel each of `ids` holds, as flat indices in the lattice's
+    /// order, one list per identifier, found in one pass over the lattice.
+    ///
+    /// Splitting one cell relabels only its own pixels, so lists read before
+    /// a round of divisions stay true for every cell not yet split.
+    pub fn pixels_of(&self, ids: &[CellId]) -> Vec<Vec<usize>> {
+        let mut slot = vec![usize::MAX; self.cells.len()];
+        for (k, id) in ids.iter().enumerate() {
+            if let Some(s) = slot.get_mut(id.0 as usize) {
+                *s = k;
             }
         }
+        let mut lists = vec![Vec::new(); ids.len()];
+        for (i, &occupant) in self.grid.iter().enumerate() {
+            if let Some(&k) = slot.get(occupant as usize)
+                && k != usize::MAX
+            {
+                lists[k].push(i);
+            }
+        }
+        lists
+    }
+
+    /// Split a cell in two across the plane through its centre of mass with
+    /// `normal`, given every pixel it holds as [`CpmLattice::pixels_of`] lists
+    /// them. On a flat lattice the plane is a line and only the first two
+    /// components count.
+    ///
+    /// Pixels on the side `normal` points to go to a new cell, as
+    /// [`CpmLattice::divide`] describes. Returns the daughter's identifier,
+    /// or `None` with nothing changed.
+    pub fn divide_across(
+        &mut self,
+        id: CellId,
+        pixels: &[usize],
+        normal: (f64, f64, f64),
+    ) -> Option<CellId> {
+        if id.0 == 0 {
+            return None;
+        }
+        let parent = self.cells.get(id.0 as usize)?.clone();
         // The grid is the truth about volume; the record is a cache of it.
         let total = pixels.len() as u32;
         if total < MIN_DIVIDE_VOLUME {
             return None;
         }
 
+        let at: Vec<(f64, f64, f64)> = pixels
+            .iter()
+            .map(|&i| {
+                let (x, y, z) = self.position(i);
+                (f64::from(x), f64::from(y), f64::from(z))
+            })
+            .collect();
         let n = f64::from(total);
-        let cx = pixels.iter().map(|(x, _)| f64::from(*x)).sum::<f64>() / n;
-        let cy = pixels.iter().map(|(_, y)| f64::from(*y)).sum::<f64>() / n;
-        let (nx, ny) = (angle.cos(), angle.sin());
+        let cx = at.iter().map(|p| p.0).sum::<f64>() / n;
+        let cy = at.iter().map(|p| p.1).sum::<f64>() / n;
+        let (nx, ny, nz) = normal;
+        // Only a volume has a third term, so that on a flat lattice the side
+        // of the line is the sum it always was.
+        let volume = self.depth > 1;
+        let cz = if volume {
+            at.iter().map(|p| p.2).sum::<f64>() / n
+        } else {
+            0.0
+        };
 
+        let w = self.width as usize;
         let daughter_id = self.cells.len() as u32;
         let mut moved = 0u32;
-        for (x, y) in &pixels {
-            if (f64::from(*x) - cx) * nx + (f64::from(*y) - cy) * ny > 0.0 {
-                self.grid[[*y as usize, *x as usize]] = daughter_id;
+        for (&i, &(x, y, z)) in pixels.iter().zip(&at) {
+            let mut side = (x - cx) * nx + (y - cy) * ny;
+            if volume {
+                side += (z - cz) * nz;
+            }
+            if side > 0.0 {
+                self.grid[[i / w, i % w]] = daughter_id;
                 moved += 1;
             }
         }
 
-        // A line that leaves one side empty is not a division. Put it back.
+        // A plane that leaves one side empty is not a division. Put it back.
         if moved == 0 || moved == total {
-            for (x, y) in &pixels {
-                self.grid[[*y as usize, *x as usize]] = id.0;
+            for &i in pixels {
+                self.grid[[i / w, i % w]] = id.0;
             }
             return None;
         }
@@ -1115,5 +1331,114 @@ mod tests {
             "from {start} to {}",
             centre_x(&lat)
         );
+    }
+
+    #[test]
+    fn a_ball_in_a_volume_holds_the_voxels_within_its_radius() {
+        let mut lat = CpmLattice::with_depth(30, 30, 30, 10.0).unwrap();
+        let id = lat.add_ball(
+            CellKind::Tumor,
+            Pos3 {
+                x: 15,
+                y: 15,
+                z: 15,
+            },
+            3,
+        );
+        // The lattice points within three of the centre.
+        assert_eq!(lat.volume(id), Some(Volume(123)));
+        assert!(records_match_grid(&lat));
+        assert_eq!(lat.voxels(), 27_000);
+    }
+
+    #[test]
+    fn a_voxel_has_six_neighbours_where_a_pixel_has_four() {
+        let flat = CpmLattice::new(10, 10, 10.0).unwrap();
+        assert_eq!(flat.von_neumann(5, 5).len(), 4);
+        let volume = CpmLattice::with_depth(10, 10, 10, 10.0).unwrap();
+        // Row 5 of slice 5, counted down the stacked slices.
+        assert_eq!(volume.von_neumann(5 * 10 + 5, 5).len(), 6);
+        // On the first slice there is nothing before it.
+        assert_eq!(volume.von_neumann(5, 5).len(), 5);
+    }
+
+    #[test]
+    fn a_cell_in_a_volume_keeps_near_its_size() {
+        let mut lat = CpmLattice::with_depth(30, 30, 30, 10.0).unwrap();
+        let id = lat.add_ball(
+            CellKind::Tumor,
+            Pos3 {
+                x: 15,
+                y: 15,
+                z: 15,
+            },
+            4,
+        );
+        let v0 = lat.volume(id).unwrap().0;
+        let mut rng = StdRng::seed_from_u64(42);
+        for _ in 0..10 {
+            lat.monte_carlo_step(&mut rng);
+        }
+        let v1 = lat.volume(id).unwrap().0;
+        let deviation = (f64::from(v1) - f64::from(v0)).abs() / f64::from(v0);
+        assert!(deviation < 0.20, "volume drifted {:.1}%", deviation * 100.0);
+        assert!(records_match_grid(&lat));
+    }
+
+    #[test]
+    fn a_plane_through_a_ball_halves_it_on_the_side_it_faces() {
+        let mut lat = CpmLattice::with_depth(30, 30, 30, 10.0).unwrap();
+        let parent = lat.add_ball(
+            CellKind::Tumor,
+            Pos3 {
+                x: 15,
+                y: 15,
+                z: 15,
+            },
+            5,
+        );
+        let pixels = lat.pixels_of(&[parent]).pop().unwrap();
+        let daughter = lat.divide_across(parent, &pixels, (0.0, 0.0, 1.0)).unwrap();
+        let (a, b) = (
+            lat.volume(parent).unwrap().0,
+            lat.volume(daughter).unwrap().0,
+        );
+        // The centre slice stays with the parent, so the daughter is the
+        // half above it.
+        assert_eq!(a + b, pixels.len() as u32);
+        assert!(a > b && b * 2 > a, "{a} and {b}");
+        for (i, &id) in lat.grid.iter().enumerate() {
+            if id == daughter.0 {
+                assert!(lat.position(i).2 > 15, "a daughter voxel below the plane");
+            }
+        }
+        assert!(records_match_grid(&lat));
+    }
+
+    #[test]
+    fn a_disc_of_obstacle_runs_through_every_slice() {
+        let mut flat = CpmLattice::new(30, 30, 10.0).unwrap();
+        flat.add_obstacle_disc(Pos2 { x: 15, y: 15 }, 4);
+        let disc = flat.grid.iter().filter(|&&v| v == OBSTACLE).count();
+        let mut volume = CpmLattice::with_depth(30, 30, 7, 10.0).unwrap();
+        volume.add_obstacle_disc(Pos2 { x: 15, y: 15 }, 4);
+        let cylinder = volume.grid.iter().filter(|&&v| v == OBSTACLE).count();
+        assert_eq!(cylinder, 7 * disc);
+    }
+
+    #[test]
+    fn listing_pixels_and_cutting_across_is_dividing() {
+        let cut = |by_list: bool| {
+            let mut lat = CpmLattice::new(60, 60, 10.0).unwrap();
+            let parent = lat.add_cell(CellKind::Tumor, Pos2 { x: 30, y: 30 }, 10);
+            if by_list {
+                let pixels = lat.pixels_of(&[parent]).pop().unwrap();
+                lat.divide_across(parent, &pixels, (0.3_f64.cos(), 0.3_f64.sin(), 0.0));
+            } else {
+                lat.divide(parent, 0.3);
+            }
+            lat.grid
+        };
+        assert_eq!(cut(true), cut(false));
     }
 }
