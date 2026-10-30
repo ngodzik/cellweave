@@ -15,8 +15,8 @@
 # one change per gene in a billion divisions. It compresses into a few
 # thousand steps what takes a tumour years, and it is a placeholder.
 
-width = 200
-height = 200
+width = 300
+height = 300
 mcs = 3000
 temperature = 10.0
 snapshot_interval = 50

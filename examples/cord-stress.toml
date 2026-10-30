@@ -6,8 +6,8 @@
 # perimeter; a vessel is a small circle whose flux thins out with distance, so
 # the same uptake would give a cord one cell thick.
 
-width = 200
-height = 200
+width = 300
+height = 300
 mcs = 3000
 temperature = 10.0
 snapshot_interval = 50
