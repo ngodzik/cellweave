@@ -33,6 +33,8 @@ Every cell is a set of pixels with a shape, pressing on its neighbours. Inside e
 </tr>
 </table>
 
+The animations are sped up: a few seconds stand for days to months of a tissue's life. Each says in its corner what its colours mean.
+
 Also in it: a spheroid that starves from the inside at the size measured spheroids do ([chapter 25](docs/25-measured-against-spheroids.md)), a lethal stress and the resistance it selects, rewinding a history to see what one mutation changed, and campaigns that run many histories side by side.
 
 ## Set against real data
