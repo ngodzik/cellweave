@@ -55,6 +55,8 @@ Features will be added progressively, and this README will follow as they land.
 
 ## What works today
 
+The numbers below come from the chapters of the course. Most were obtained before chapters 24 and 25 calibrated the model on public data; the shipped configurations now run at the calibrated values, and each chapter says at its top which values its runs used.
+
 - Builds clean, `cargo clippy -D warnings` passes, 164 tests green
 - 2D lattice with Monte Carlo spin flips and a volume constraint, with the boundary term pinned by four tests whose values are computable by hand
 - **The protein network is a file, not code.** Any number of proteins, any topology, each declared with the terms that move it, drawn from a closed catalogue named after what each means in biology. The file also says which node answers which question the simulation asks a cell, and how growth becomes a demand on the lattice. So stating a different hypothesis is writing a different file, and two files under the same seed differ by exactly what you changed. The RAS/ERK network that used to be literals in the source is now `examples/networks/ras-erk.toml`, compiled in as the default so that the built-in hypothesis and one you write go through the same path; a test pins that the two produce identical trajectories to twelve decimals
@@ -108,7 +110,7 @@ Requires Rust 1.97 or newer, which is the minimum CI builds against.
 cargo build --release
 cargo test --workspace
 
-# A spheroid in a bath, the default: one cell, 200x200, stops at the edge
+# A spheroid in a bath: one cell, 800x800, oxygen set by measured spheroids (tens of minutes)
 ./target/release/cellweave --config examples/spheroid.toml
 
 # A tumour cord around a vessel: steady turnover, runs as long as asked
@@ -163,15 +165,10 @@ done
 python3 scripts/compare-clones.py --data data/piedrafita-2020/lrig1-clones.csv \
     --at 1000 --division-days 2.414 --progenitors 0.65 runs/traced/*
 
-# A spheroid with the oxygen of measured melanoma spheroids, set against them (tens of minutes)
+# The spheroid, whose oxygen is set by measured melanoma spheroids, set against them (tens of minutes)
 python3 scripts/fetch-dataset.py datasets/browning-2021.toml
-./target/release/cellweave --config examples/spheroid-calibrated.toml
-python3 scripts/compare-spheroids.py --data data/browning-2021/confocal.csv \
-    --line 983b output-spheroid-calibrated
-
-# Immune cells at chapter 22's killing rates against the measured ones, ten paired histories
-./target/release/cellweave --config examples/cord-immune.toml \
-    --versus examples/cord-immune-measured.toml --seeds 1-10 --mcs 1000 --output runs/immune-measured
+./target/release/cellweave --config examples/spheroid.toml
+python3 scripts/compare-spheroids.py --data data/browning-2021/confocal.csv --line 983b output
 
 # The same configuration under another seed, written somewhere else
 ./target/release/cellweave --config examples/cord-evolving.toml --seed 3 --output runs/seed-3

@@ -2,6 +2,8 @@
 
 In chapter 16 a sprout regressed only if it carried no blood at all. Real networks prune more than that: they remove the segments that carry little. This chapter prunes by flow, and asks whether a tumour's network shrinks, and whether the tumour loses by it.
 
+**Calibrated since.** Chapter 25 fixed the tumour's oxygen uptake on measured melanoma spheroids at 0.00002, where this chapter's runs used 0.0001. The mechanisms are the same; the shipped examples now run at the calibrated value, and rerunning them gives other numbers than those quoted here.
+
 ## In the body
 
 **Low flow, pruned.** Franco and colleagues (PLoS Biology, 2015), whom chapter 16 quotes, proposed that flow "leads to stabilization of high flow/shear segments and regression of adjacent low flow/shear segments", the shear being the drag blood exerts on the vessel's wall, which grows with the flow. Owen and colleagues (Journal of Mathematical Biology, 2009) built pruning by low shear into a model of tissue whose vessels grow and carry blood, and found it "highly sensitive to the pressure drop across a vascular network". In both, what decides whether a segment stays is how much blood runs through it, not merely whether any does.

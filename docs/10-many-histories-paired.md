@@ -2,6 +2,8 @@
 
 One history proves little. Twenty, run side by side and compared two by two under the same luck, show which outcomes a hypothesis allows and how often, and here they overturned both predictions made for them.
 
+**Calibrated since.** Chapter 25 fixed the tumour's oxygen uptake on measured melanoma spheroids at 0.00002, where this chapter's runs used 0.00003. The mechanisms are the same; the shipped examples now run at the calibrated value, and rerunning them gives other numbers than those quoted here.
+
 ## In the body
 
 The same kind of tumour, in different people, does different things, and part of the reason is history: which mutations happened to arise, in which cell, at which moment (chapter 9). Faced with the same exposure, one population is wiped out and another comes back. So a question about how a population responds to something is not answered by one history but by many, and the honest answer is a distribution: in how many histories this, in how many that.

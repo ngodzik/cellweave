@@ -13,8 +13,8 @@ mutation_rate = 0.01
 rewiring = 0.3
 suppress_before = 4000
 network = "networks/epithelium-no-pressing.toml"
-# A step of the sheet is about 0.6 hours (chapter 12).
-hours_per_step = 0.6
+# A step of the sheet is about 0.56 hours (chapters 12 and 24).
+hours_per_step = 0.56
 
 [seeding]
 kind = "sheet"

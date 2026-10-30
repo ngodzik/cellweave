@@ -2,6 +2,8 @@
 
 An early tumour arising in normal tissue that is already full of mutant clones, and whether those clones get rid of it.
 
+**Calibrated since.** Chapter 24 set the sheet's NOTCH on the clones counted in the mouse oesophagus: a baseline of 0.001 and crowding at 0.3, half way at 75% of the reference size, where this chapter's runs used 0.005 and 0.03, half way at 60%, and its clones grew about six times too fast per division. A step of the sheet is now about 0.56 hours rather than 0.6. The mechanisms are the same; the shipped examples now run at the calibrated values, and rerunning them gives other numbers than those quoted here.
+
 ## In the body
 
 By middle age the lining of the oesophagus is a patchwork of mutant clones (chapters 7 and 11), many of them carrying mutations in genes known from cancer. Yet oesophageal cancer is rare. Colom and colleagues (Nature, 2021) asked what the mutant clones do to a tumour that starts among them.

@@ -2,6 +2,8 @@
 
 In chapter 19 a vessel carrying any blood at all held full oxygen at its wall, whether blood rushed through it or barely moved. This chapter makes what a vessel delivers follow the blood through it, and asks what a tumour makes of vessels that carry little.
 
+**Calibrated since.** Chapter 25 fixed the tumour's oxygen uptake on measured melanoma spheroids at 0.00002, where this chapter's runs used 0.0001. The mechanisms are the same; the shipped examples now run at the calibrated value, and rerunning them gives other numbers than those quoted here.
+
 ## In the body
 
 **Oxygen comes with the blood.** Oxygen travels bound to the red cells of the blood, and a vessel gives the tissue around it only what the blood brings. Where blood barely moves, little arrives, and what arrives is soon given off; where it rushes, the vessel stays rich along its whole length.

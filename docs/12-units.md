@@ -2,6 +2,8 @@
 
 How long a step is, measured against a mouse; two laws every renewing epithelium obeys, checked on the sheet; and one coordination between sister cells that nobody wrote, found in it.
 
+**Calibrated since.** Chapter 24 set the sheet's NOTCH on the clones counted in the mouse oesophagus: a baseline of 0.001 and crowding at 0.3, half way at 75% of the reference size, where this chapter's runs used 0.005 and 0.03, half way at 60%, and its clones grew about six times too fast per division. A step of the sheet is now about 0.56 hours rather than 0.6. The mechanisms are the same; the shipped examples now run at the calibrated values, and rerunning them gives other numbers than those quoted here.
+
 ## In the body
 
 How a basal cell of the mouse oesophagus behaves has been worked out by two kinds of experiment, brought together by Piedrafita and colleagues (Nature Communications, 2020).

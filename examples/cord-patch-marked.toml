@@ -12,7 +12,7 @@ mcs = 300
 temperature = 10.0
 snapshot_interval = 100
 output_dir = "output-cord-patch-marked"
-oxygen_uptake = 0.00003
+oxygen_uptake = 0.00002  # calibrated on measured melanoma spheroids (chapter 25)
 network = "networks/ras-erk.toml"
 
 [oxygen_source]

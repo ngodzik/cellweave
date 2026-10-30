@@ -11,7 +11,7 @@ mcs = 1500
 temperature = 10.0
 snapshot_interval = 100
 output_dir = "output-capillary-angiogenic"
-oxygen_uptake = 0.0001
+oxygen_uptake = 0.00002  # calibrated on measured melanoma spheroids (chapter 25)
 network = "networks/ras-erk.toml"
 
 [oxygen_source]

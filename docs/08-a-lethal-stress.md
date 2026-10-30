@@ -2,6 +2,8 @@
 
 A second way to die, the one a cell carries out itself, and an agent from outside that sets it off where it reaches.
 
+**Calibrated since.** Chapter 25 fixed the tumour's oxygen uptake on measured melanoma spheroids at 0.00002, where this chapter's runs used 0.00003. The mechanisms are the same; the shipped examples now run at the calibrated value, and rerunning them gives other numbers than those quoted here.
+
 ## In the body
 
 Necrosis, the death of chapter 4, is a failure: a cell runs out of energy, swells, bursts, and leaves debris that lingers. **Apoptosis** is the other way to die, and it is a programme. A cell that judges itself damaged beyond repair takes itself apart in order: it shrinks, packs its contents into small fragments wrapped in membrane, and its neighbours swallow them within hours. Nothing spills, and the tissue barely notices.

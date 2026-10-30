@@ -3,9 +3,11 @@
 # From step 200, when the cord has formed, killer immune cells arrive
 # through the vessel's wall, one in ten steps on average. They climb the
 # chemokine the living tumour cells secrete, which falls by e over 20
-# pixels, and kill a tumour cell they touch with a chance of one in twenty
-# per step, at most five each, and live 300 steps. Every number is a
-# placeholder. Everything else is cord-wide.toml.
+# pixels, and kill a tumour cell they touch with a chance of 0.3 per step,
+# at most twenty each, and live 300 steps. The killing is set on measured
+# rates at the tumour's clock (chapter 25); before that chapter it was one
+# in twenty and five at most (chapter 22). Arrival, lifetime and the
+# chemokine are placeholders. Everything else is cord-wide.toml.
 
 width = 300
 height = 300
@@ -13,7 +15,7 @@ mcs = 1500
 temperature = 10.0
 snapshot_interval = 100
 output_dir = "output-cord-immune"
-oxygen_uptake = 0.00003
+oxygen_uptake = 0.00002  # calibrated on measured melanoma spheroids (chapter 25)
 network = "networks/ras-erk.toml"
 
 [oxygen_source]
@@ -23,8 +25,8 @@ radius = 6
 [immunity]
 from = 200
 arrival = 0.1
-kill = 0.05
-kills = 5
+kill = 0.3   # one to three hours of contact to kill, as Weigelin and colleagues measured (chapter 25)
+kills = 20   # enough to kill within the 1 to 20 a day they cite
 lifetime = 300
 chemotaxis = 200.0
 reach = 20.0

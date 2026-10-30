@@ -9,13 +9,13 @@
 
 width = 200
 height = 200
-mcs = 8500
+mcs = 11000
 temperature = 10.0
 snapshot_interval = 1000
 output_dir = "output-epithelium-traced"
 oxygen_uptake = 0.0
 network = "networks/epithelium.toml"
-hours_per_step = 0.6
+hours_per_step = 0.56
 
 [seeding]
 kind = "sheet"

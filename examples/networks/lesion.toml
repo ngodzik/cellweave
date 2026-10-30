@@ -1,7 +1,9 @@
 # The cells of an early tumour arising in the sheet of chapter 11.
 #
-# Everything comes from epithelium-no-pressing.toml except NOTCH's baseline,
-# slowed to 0.7 of its rate: a cell of the lesion leaves the layer on its own
+# Everything comes from epithelium-no-pressing.toml except NOTCH, made at
+# 0.7 of its rate from both its sources, the baseline and crowding
+# (chapter 24 made crowding the main one; before, only the baseline was
+# slowed): a cell of the lesion leaves the layer on its own
 # about a third less often than a normal one, and divides no faster. That is
 # what lineage tracing found in early oesophageal tumours of the mouse, a
 # moderate bias towards making dividing cells with no change in how often
@@ -16,7 +18,7 @@ extends = "epithelium-no-pressing.toml"
 name = "notch"
 initial = 0.01
 terms = [
-  { kind = "relaxes_to", value = 1.0, rate = 0.0035 },
+  { kind = "relaxes_to", value = 1.0, rate = 0.0007 },
   { kind = "decays", rate = 0.5 },
-  { kind = "activated_by", source = "crowding", rate = 0.03, hill = { n = 4.0, k = 0.4 } },
+  { kind = "activated_by", source = "crowding", rate = 0.21, hill = { n = 4.0, k = 0.25 } },
 ]

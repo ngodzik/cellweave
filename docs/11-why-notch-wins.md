@@ -2,6 +2,8 @@
 
 Chapter 7's ageing sheet let the wrong clones win. It named two assumptions that could be to blame; this chapter tests both, together and apart, and only one combination reproduces the oesophagus.
 
+**Calibrated since.** Chapter 24 set the sheet's NOTCH on the clones counted in the mouse oesophagus: a baseline of 0.001 and crowding at 0.3, half way at 75% of the reference size, where this chapter's runs used 0.005 and 0.03, half way at 60%, and its clones grew about six times too fast per division. A step of the sheet is now about 0.56 hours rather than 0.6. The mechanisms are the same; the shipped examples now run at the calibrated values, and rerunning them gives other numbers than those quoted here.
+
 ## In the body
 
 Sequencing the oesophagus of people without cancer (Martincorena and colleagues, Science, 2018) found it, by middle age, covered by mutant clones. Two genes stood out. **NOTCH1**, the gene for a receptor that pushes a basal cell to differentiate, was mutated in 12 to 80% of the cells of middle-aged and elderly donors. **TP53**, the gene for p53 (chapter 8), was mutated in 2 to 37%. And NOTCH1 mutations were several times more common in the normal tissue than in oesophageal cancers.

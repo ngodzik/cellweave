@@ -12,7 +12,7 @@ mcs = 1500
 temperature = 10.0
 snapshot_interval = 100
 output_dir = "output-cord-evolving-pdl1"
-oxygen_uptake = 0.00003
+oxygen_uptake = 0.00002  # calibrated on measured melanoma spheroids (chapter 25)
 mutation_rate = 0.05
 network = "networks/ras-erk-pdl1.toml"
 

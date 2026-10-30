@@ -2,6 +2,8 @@
 
 Where does oxygen come from, how far does it get, and why is it already at equilibrium whenever a cell looks?
 
+**Calibrated since.** Chapter 25 fixed the tumour's oxygen uptake on measured melanoma spheroids at 0.00002, where this chapter's runs used 0.0003 for the spheroid and 0.00003 for the cord. The mechanisms are the same; the shipped examples now run at the calibrated value, and rerunning them gives other numbers than those quoted here.
+
 ## In the body
 
 Oxygen arrives in the blood and leaves it through the walls of **capillaries**, the finest vessels, a few micrometres across. From there it does not flow; it **diffuses**, wandering from where there is more to where there is less, and every cell it passes takes some. So its concentration falls with distance from the vessel, and at some distance it is gone. That distance is about 100 to 200 micrometres, and it is why no cell in the body sits further than that from a capillary. A tumour that outgrows its vessels starves at exactly that depth.

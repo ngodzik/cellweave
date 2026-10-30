@@ -2,17 +2,18 @@
 # feed, dying beyond it and resorbed. Births balance deaths, the cord keeps its
 # thickness, and the run can go on indefinitely.
 #
-# The uptake is a tenth of the spheroid's. A bathed disc is fed from its whole
-# perimeter; a vessel is a small circle whose flux thins out with distance, so
-# the same uptake would give a cord one cell thick.
+# The uptake is the one chapter 25 fixes on melanoma spheroids, measured by
+# Browning and colleagues (eLife, 2021): with it, and nothing fitted to cords,
+# the cord's radius is about 69 micrometres, inside the 60 to 120 Tannock
+# measured in a mouse tumour (1968). Before that chapter it was 0.00003.
 
-width = 200
-height = 200
+width = 300
+height = 300
 mcs = 3000
 temperature = 10.0
 snapshot_interval = 50
 output_dir = "output-cord"
-oxygen_uptake = 0.00003
+oxygen_uptake = 0.00002  # calibrated on measured melanoma spheroids (chapter 25)
 network = "networks/ras-erk.toml"
 
 [oxygen_source]

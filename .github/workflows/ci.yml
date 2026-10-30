@@ -150,6 +150,8 @@ jobs:
       # step both times. The cord is cut short: it never stops on its own.
       # The evolving cord has founded its first clones by step 400, so the
       # pair also checks that mutation draws the same changes both times.
+      # The spheroid, in its 800 pixel box at the calibrated uptake, is cut at
+      # 150 steps: a single-threaded run to its end would take hours.
       # The ageing epithelium draws a chance of differentiating for every cell
       # at every step, the most random of the scenarios. The cord under a
       # periodic stress is cut at 900 steps, a hundred into its first exposure,
@@ -163,9 +165,9 @@ jobs:
       - name: Run each scenario twice
         run: |
           cargo build --release
-          RAYON_NUM_THREADS=1 ./target/release/cellweave --config examples/spheroid.toml
+          RAYON_NUM_THREADS=1 ./target/release/cellweave --config examples/spheroid.toml --mcs 150
           mv output spheroid-a
-          ./target/release/cellweave --config examples/spheroid.toml
+          ./target/release/cellweave --config examples/spheroid.toml --mcs 150
           mv output spheroid-b
           RAYON_NUM_THREADS=1 ./target/release/cellweave --config examples/cord.toml --mcs 400
           mv output-cord cord-a

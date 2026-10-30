@@ -2,6 +2,8 @@
 
 Normal tissue, before any tumour: a layer that renews itself, clones that win and lose by chance, and mutants that take over without anything looking wrong.
 
+**Calibrated since.** Chapter 24 set the sheet's NOTCH on the clones counted in the mouse oesophagus: a baseline of 0.001 and crowding at 0.3, half way at 75% of the reference size, where this chapter's runs used 0.005 and 0.03, half way at 60%, and its clones grew about six times too fast per division. A step of the sheet is now about 0.56 hours rather than 0.6. The mechanisms are the same; the shipped examples now run at the calibrated values, and rerunning them gives other numbers than those quoted here.
+
 ## In the body
 
 The lining of the oesophagus, like the skin, is an **epithelium**: sheets of cells stacked in layers. Only the bottom one, the **basal layer**, divides. When a basal cell commits to **differentiate**, it stops dividing and moves up, out of the basal layer, towards the surface where it is eventually shed. Every day the basal layer loses cells upwards and replaces them by division, and its size does not change: births balance departures.

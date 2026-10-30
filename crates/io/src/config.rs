@@ -27,11 +27,11 @@ pub struct SimConfig {
     #[serde(default)]
     pub oxygen_source: OxygenSource,
     /// What one consuming pixel takes up per unit time, as a fraction of the
-    /// source level. Sets how deep tissue can be before it starves, and the
-    /// right value depends on the geometry: a bathed disc is fed from its whole
-    /// perimeter, a vessel from a small circle whose flux thins out with
-    /// distance, so a cord needs roughly a tenth of what a spheroid does to reach
-    /// the same depth.
+    /// source level. Sets how deep tissue can be before it starves. It is a
+    /// property of the cells, not of the geometry: the default is the value
+    /// chapter 25 fixes on measured melanoma spheroids, at which a disc in a
+    /// bath forms its core near a radius of 200 pixels and a cord around a
+    /// vessel reaches about 69.
     #[serde(default = "default_oxygen_uptake")]
     pub oxygen_uptake: f64,
     /// File holding the protein network, relative to the configuration file.
@@ -123,8 +123,9 @@ fn default_seed() -> u64 {
 /// write go through exactly the same path.
 pub const BUILT_IN_NETWORK: &str = include_str!("../../../examples/networks/ras-erk.toml");
 
+/// The uptake fixed on measured melanoma spheroids (chapter 25).
 fn default_oxygen_uptake() -> f64 {
-    0.0003
+    0.00002
 }
 
 impl SimConfig {
@@ -369,7 +370,7 @@ mod tests {
         .unwrap();
         assert_eq!(cfg.oxygen_source, OxygenSource::Vessel { radius: 6 });
         assert_eq!(
-            cfg.oxygen_uptake, 0.0003,
+            cfg.oxygen_uptake, 0.00002,
             "uptake keeps its default when absent"
         );
     }

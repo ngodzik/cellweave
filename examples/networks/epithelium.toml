@@ -5,14 +5,20 @@
 # and differentiate. Its level is read as the cell's chance, per lattice step,
 # of committing to differentiate and leaving the basal layer.
 #
-# Two things raise it. A small constant level, so that cells leave the layer at
-# a steady rate even with room around them, which is what keeps an epithelium
-# turning over. And crowding: a cell squeezed below the size it was born to
-# differentiates more readily, which is how a crowded patch thins itself out.
-# Together they hold the layer at a steady density with nothing counting cells.
+# Two things raise it. Crowding, above all: a cell squeezed below the size it
+# was born to differentiates readily, half way at 75% of that size, and a
+# daughter is born at about 70%, so it is often a newborn that leaves, one
+# of two sisters, and a division that ends with one daughter gone leaves its
+# clone the size it was. And a small constant level, so that a cell with
+# room around it still leaves now and then. Together they hold the layer at a
+# steady density with nothing counting cells.
 #
-# Every rate is a placeholder chosen so that the layer turns over in a few
-# hundred steps on a 200 pixel grid.
+# Set against the clones Piedrafita and colleagues counted in the mouse
+# oesophagus (chapter 24): this is the setting, of those tried, whose clones
+# come nearest the mouse's at every time measured, a third larger at 10 and
+# 30 days. Before that chapter the baseline was five times stronger and
+# crowding ten times weaker, half way at 60%, and the clones grew about six
+# times too fast per division. Crowding stronger than this empties the layer.
 
 extends = "ras-erk.toml"
 
@@ -20,14 +26,13 @@ extends = "ras-erk.toml"
 name = "notch"
 initial = 0.01
 terms = [
-  # The baseline: pulled towards full on, slowly, and decaying fast, so that it
-  # settles near 0.01 and about one cell in a hundred commits each step. Both
-  # rates set the level, so a mutation that slows the first or speeds the
-  # second turns NOTCH down, as a loss of NOTCH1 does in the oesophagus.
-  { kind = "relaxes_to", value = 1.0, rate = 0.005 },
+  # The baseline: pulled towards full on, very slowly, and decaying fast.
+  # Both rates set the level, so a mutation that slows the first or speeds
+  # the second turns NOTCH down, as a loss of NOTCH1 does in the oesophagus.
+  { kind = "relaxes_to", value = 1.0, rate = 0.001 },
   { kind = "decays", rate = 0.5 },
-  # Crowding: half way at a cell squeezed to 60% of its reference size.
-  { kind = "activated_by", source = "crowding", rate = 0.03, hill = { n = 4.0, k = 0.4 } },
+  # Crowding: half way at a cell squeezed to 75% of its reference size.
+  { kind = "activated_by", source = "crowding", rate = 0.3, hill = { n = 4.0, k = 0.25 } },
 ]
 
 [roles]

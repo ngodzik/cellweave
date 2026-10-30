@@ -2,6 +2,8 @@
 
 A spheroid that starves from the inside, and a cord that lives around a vessel and never stops turning over.
 
+**Calibrated since.** Chapter 25 fixed the tumour's oxygen uptake on measured melanoma spheroids at 0.00002, where this chapter's runs used 0.0003 for the spheroid and 0.00003 for the cord. The mechanisms are the same; the shipped examples now run at the calibrated value, and rerunning them gives other numbers than those quoted here.
+
 Everything in chapters 1 to 4 is a mechanism. This chapter is what the mechanisms do together, in two geometries that the configuration chooses between. Both are classic experimental systems, and both produce a structure nobody drew.
 
 ## The spheroid

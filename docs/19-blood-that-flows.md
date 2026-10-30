@@ -2,6 +2,8 @@
 
 Until now a vessel either carried blood or did not, by a rule: from its first pixel, or once its tip had joined another vessel. This chapter lets pressure decide, as it does in the body, and asks how much of a tumour's new vessel ends up carrying any.
 
+**Calibrated since.** Chapter 25 fixed the tumour's oxygen uptake on measured melanoma spheroids at 0.00002, where this chapter's runs used 0.0001. The mechanisms are the same; the shipped examples now run at the calibrated value, and rerunning them gives other numbers than those quoted here.
+
 ## In the body
 
 **Pressure drives blood.** Blood runs from where its pressure is high to where it is low, through every path open to it, and each path takes a share that depends on how easily blood passes through it. For a narrow tube that is **Poiseuille's law**: the flow is the difference of pressure across the tube times the fourth power of its radius, over its length and the blood's viscosity. A tube twice as wide carries sixteen times as much; one twice as long, half.

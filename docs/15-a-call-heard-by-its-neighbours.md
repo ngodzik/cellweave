@@ -2,6 +2,8 @@
 
 A cell that calls for vessels calls them to where it is, and its neighbours are there too. This chapter asks how much of what a call brings goes to the cells that made it.
 
+**Calibrated since.** Chapter 25 fixed the tumour's oxygen uptake on measured melanoma spheroids at 0.00002, where this chapter's runs used 0.00003. The mechanisms are the same; the shipped examples now run at the calibrated value, and rerunning them gives other numbers than those quoted here.
+
 ## In the body
 
 Something a cell secretes into the space around it reaches every cell nearby, whether that cell made any or not. Economists call a good that everyone can use and nobody can keep to themselves a **public good**, and the cell that uses one without contributing a **free rider**. Archetti and Pienta (Nature Reviews Cancer, 2019) review what game theory, the mathematics of such situations, says about cancer cells: growth factors that cancer cells produce and that promote the growth of new vessels are among their examples, and "non-cooperative subclones can constantly invade and free-ride on the diffusible factors". What keeps the producers from being overrun is that the good does not go everywhere: "cooperation also evolves more easily if the diffusion range is low", because a producer then keeps more of what it makes, or shares it with producers like itself. How far such factors carry, they add, "remains difficult to estimate".

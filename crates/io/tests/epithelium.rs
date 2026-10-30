@@ -110,12 +110,27 @@ fn with_no_advantage_clones_are_lost_by_chance_alone() {
 
 #[test]
 fn a_cell_that_commits_leaves_the_layer() {
-    let sim = run(60, 200);
-    let leaving: Vec<CellId> = (1..=sim.lattice().cell_count() as u32)
-        .map(CellId)
-        .filter(|&id| sim.fate(id) == Some(Fate::Differentiating))
-        .collect();
-    assert!(!leaving.is_empty(), "some cell is on its way out");
+    // Cells commit by chance, mostly just after a division: step until one is
+    // on its way out rather than look at one step chosen in advance.
+    let (mut sim, _) = Simulation::new(sheet(60), &spec())
+        .unwrap()
+        .start()
+        .unwrap();
+    let mut leaving: Vec<CellId> = Vec::new();
+    for _ in 0..1000 {
+        sim.step().unwrap();
+        leaving = (1..=sim.lattice().cell_count() as u32)
+            .map(CellId)
+            .filter(|&id| sim.fate(id) == Some(Fate::Differentiating))
+            .collect();
+        if !leaving.is_empty() {
+            break;
+        }
+    }
+    assert!(
+        !leaving.is_empty(),
+        "some cell went on its way out within 1000 steps"
+    );
     let measured = sim.measure();
     assert_eq!(measured.differentiating, leaving.len());
     assert_eq!(measured.quiescent, 0, "full oxygen arrests nothing");
