@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: "If you use cellweave in your work, please cite it as below, with the version you used."
+title: "cellweave: a multiscale simulator of tissues and tumours, cell by cell"
+abstract: "cellweave couples a Cellular Potts model of cells, a network of proteins inside every cell read from a file, and reaction-diffusion fields between them, and sets the tissues it grows against public measurements. It is experimental: its results are hypotheses to test."
+type: software
+authors:
+  - family-names: Godzik
+    given-names: Nicolas
+license: MIT
+repository-code: "https://github.com/ngodzik/cellweave"
+version: 0.1.0
+date-released: 2026-10-30
+keywords:
+  - cellular Potts model
+  - multiscale modelling
+  - tumour growth
+  - lineage tracing
+  - spheroids

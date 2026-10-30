@@ -43,60 +43,8 @@ Chapters build on each other and are meant to be read in order the first time.
 | 26 | [What the model does not say](26-what-the-model-does-not-say.md) | The placeholders, the missing units, and why emergence is the whole point. |
 | | [Glossary](glossary.md) | Every word, in one place. |
 
-## How the chapters map onto the code
+## Where the code is
 
-```mermaid
-flowchart LR
-    c1["1. pixels, energy,<br/>Monte Carlo"] --> cpm["crates/engine/src/cpm.rs<br/>CpmLattice"]
-    c2["2. proteins,<br/>signalling"] --> net["crates/core/src/network.rs<br/>the hypothesis as written"]
-    c2 --> run["crates/engine/src/network.rs<br/>Network, it made runnable"]
-    c2 --> files["examples/networks/*.toml"]
-    c3["3. oxygen"] --> pde["crates/engine/src/pde.rs<br/>ScalarField"]
-    c3 --> cpl["crates/engine/src/coupling.rs"]
-    c4["4. fates,<br/>division"] --> sim["crates/engine/src/simulation.rs<br/>Simulation, the loop"]
-    c4 --> cpm
-    c5["5. two tissues"] --> cfg["crates/core/src/types.rs<br/>OxygenSource"]
-    c5 --> ex["examples/*.toml"]
-    c5 --> mea["crates/engine/src/measure.rs<br/>Measurements"]
-    c6["6. mutation,<br/>clones"] --> evo["crates/engine/src/evolution.rs<br/>CloneRecord"]
-    c6 --> run
-    c7["7. epithelium,<br/>crowding"] --> sim
-    c7 --> epi["examples/networks/epithelium.toml"]
-    c8["8. apoptosis,<br/>lethal stress"] --> sim
-    c8 --> str["examples/networks/stress-response.toml"]
-    c9["9. counterfactuals"] --> att["src/attribute.rs"]
-    c9 --> evo
-    c10["10. campaigns"] --> camp["src/campaign.rs"]
-    c11["11. competition,<br/>coverage"] --> evo
-    c11 --> nop["examples/networks/epithelium-no-pressing.toml"]
-    c12["12. units,<br/>sister fates"] --> sis["crates/engine/src/sisters.rs"]
-    c12 --> conf["crates/io/src/config.rs<br/>hours_per_step"]
-    c13["13. a lesion<br/>in the sheet"] --> sim
-    c13 --> les["examples/networks/lesion.toml"]
-    c14["14. vessels<br/>that grow"] --> ves["crates/engine/src/vessels.rs<br/>sprouts and tips"]
-    c14 --> pde
-    c14 --> sim
-    c15["15. a patch that<br/>does not call"] --> sim
-    c15 --> sil["examples/networks/ras-erk-silent.toml"]
-    c16["16. vessels<br/>that regress"] --> ves
-    c16 --> cpm
-    c17["17. cells<br/>pushed aside"] --> cpm
-    c17 --> ves
-    c18["18. a capillary<br/>in the plane"] --> cfg
-    c18 --> mea
-    c19["19. blood<br/>that flows"] --> flo["crates/engine/src/flow.rs<br/>pressures and flows"]
-    c19 --> ves
-    c20["20. what blood<br/>delivers"] --> cpl
-    c20 --> flo
-    c21["21. pruned<br/>by the flow"] --> ves
-    c22["22. immune<br/>killers"] --> sim
-    c22 --> cpm
-    c23["23. escape"] --> run
-    c23 --> pdl["examples/networks/ras-erk-pdl1.toml"]
-    c24["24. measured<br/>against the mouse"] --> sim
-    c24 --> dat["datasets/piedrafita-2020.toml<br/>scripts/fetch-dataset.py<br/>scripts/compare-clones.py"]
-    c25["25. measured<br/>against spheroids"] --> sph["datasets/browning-2021.toml<br/>scripts/compare-spheroids.py"]
-    c25 --> ex
-```
+Every chapter ends with where in the code what it describes lives, file and symbol, so that each claim can be checked.
 
-The README at the root of the repository says what works and what does not today. This course says why.
+The README at the root of the repository is the front page; this course is the whole account, and its last chapter says what the model does not say.

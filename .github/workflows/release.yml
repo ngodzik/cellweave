@@ -1,0 +1,73 @@
+name: Release
+
+# A tag such as v0.1.0 makes a release: its notes are that version's section
+# of CHANGELOG.md, and it carries the command line built for Linux, macOS and
+# Windows, with the examples it runs. While the version is 0.x the release is
+# marked as a pre-release, which is what it is.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  create:
+    name: Create the release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Notes from the changelog
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v v="$version" '/^## /{p = ($2 == v)} p' CHANGELOG.md | tail -n +2 > notes.md
+          test -s notes.md || { echo "CHANGELOG.md has no section for $version"; exit 1; }
+          flags=""
+          case "$version" in 0.*) flags="--prerelease" ;; esac
+          gh release create "$GITHUB_REF_NAME" --title "cellweave $GITHUB_REF_NAME" --notes-file notes.md $flags
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  build:
+    name: Build (${{ matrix.target }})
+    needs: create
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            exe: cellweave
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            exe: cellweave
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            exe: cellweave.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build
+        run: cargo build --release --locked
+      - name: Package
+        shell: bash
+        run: |
+          name="cellweave-${GITHUB_REF_NAME}-${{ matrix.target }}"
+          mkdir "$name"
+          cp "target/release/${{ matrix.exe }}" README.md LICENSE CHANGELOG.md CITATION.cff "$name"/
+          cp -r examples "$name"/
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            7z a "$name.zip" "$name" > /dev/null
+          else
+            tar czf "$name.tar.gz" "$name"
+          fi
+      - name: Attach to the release
+        shell: bash
+        run: gh release upload "$GITHUB_REF_NAME" cellweave-"$GITHUB_REF_NAME"-${{ matrix.target }}.*
+        env:
+          GH_TOKEN: ${{ github.token }}

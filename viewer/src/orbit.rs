@@ -47,6 +47,14 @@ impl Orbit {
         }
     }
 
+    /// The same position, `factor` times closer, within the bounds the mouse
+    /// wheel keeps to.
+    pub fn zoomed(self, factor: f32) -> Self {
+        let distance =
+            (self.distance / factor.max(f32::EPSILON)).clamp(self.nearest, self.farthest);
+        Self { distance, ..self }
+    }
+
     /// The camera's transform for this position.
     pub fn transform(&self) -> Transform {
         let around = Vec3::new(
