@@ -36,6 +36,12 @@ A configuration's `depth`, one when left out, is the number of slices. A plane i
 
 The first test is the formula above. A ball of radius 10 voxels taking up 0.006 in a bath holding one settles with its centre at 0.47, against the formula's 0.50: the lattice's ball is a little larger than the ideal one, and starves a little more. A tumour grown from one cell in a box 120 voxels on a side, at an uptake of 0.0005 chosen to bring a core inside the box, had a radius of 28 voxels at step 200 and no dead cell; at step 250 a radius of 50, and a core. The formula puts the core at 48.
 
+## Watching it
+
+In the viewer a tissue in a volume is drawn as the voxels it is made of: every face between a cell and the medium, lit from in front and from the side, and with the cut on, which is how it opens, every face of the plane through the middle of the box, so that the ball is seen as a fruit cut in half, with its core. C opens and closes the cut. A voxel touching another cell is drawn darker, which outlines the cells on the cut and on the surface. The views are the plane's: fate, protein, clone, oxygen, stress.
+
+`cargo run --release -- --config ../examples/spheroid-3d.toml` in `viewer/`.
+
 ## Choices, and why
 
 **One engine, not two.** A second, three-dimensional copy of the loop would be a second model, free to drift from the first without a test noticing, which is why the loop lives in the engine and not in the binary (chapter 1). The plane is the volume one slice deep.
@@ -64,6 +70,7 @@ The first test is the formula above. A ball of radius 10 voxels taking up 0.006 
 - `crates/engine/src/simulation.rs`: `Scenario::depth` and `Scenario::max_cells`, `DEFAULT_MAX_CELLS`; `FIRST_CELL_RADIUS` and `FIRST_CELL_RADIUS_3D`; `refuse_in_a_volume`; the plane a cell divides across in `divide_ready_cells`; `touches_the_edge` on six faces.
 - `crates/engine/src/measure.rs`: `radius_of`, the radius of a disc, a ball or a cylinder; `depth_from_vessels`, slice by slice.
 - `crates/io/src/config.rs`: `depth` and `max_cells`.
+- `viewer/src/volume.rs`: `Volume`, `build`, which turns the lattice into the faces that show, `FACES`, `rebuild` and `toggle`; `VOLUME_LAMP` in `viewer/src/main.rs`.
 
 ## Still a placeholder
 
