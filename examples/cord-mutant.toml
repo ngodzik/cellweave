@@ -4,8 +4,8 @@
 # uptake. The only difference between this run and cord.toml is one line in one
 # network file, which is what makes the comparison mean something.
 
-width = 200
-height = 200
+width = 300
+height = 300
 mcs = 3000
 temperature = 10.0
 snapshot_interval = 50

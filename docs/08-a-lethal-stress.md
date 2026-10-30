@@ -2,7 +2,7 @@
 
 A second way to die, the one a cell carries out itself, and an agent from outside that sets it off where it reaches.
 
-**Calibrated since.** Chapter 25 fixed the tumour's oxygen uptake on measured melanoma spheroids at 0.00002, where this chapter's runs used 0.00003. The mechanisms are the same; the shipped examples now run at the calibrated value, and rerunning them gives other numbers than those quoted here.
+**Calibrated since.** Chapter 25 fixed the tumour's oxygen uptake on measured melanoma spheroids at 0.00002, where this chapter's runs used 0.00003. The mechanisms are the same; the shipped examples now run at the calibrated value, in a box of 300 pixels rather than 200, since at that uptake the tissue reached the edge of the smaller box within a few hundred steps, and rerunning them gives other numbers than those quoted here.
 
 ## In the body
 
