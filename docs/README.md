@@ -39,7 +39,8 @@ Chapters build on each other and are meant to be read in order the first time.
 | 22 | [Killers that come for the tumour](22-killers-that-come-for-the-tumour.md) | When immune cells arrive through the vessels and kill the tumour cells they touch, do they clear the tumour, hold it, or neither? |
 | 23 | [Escape](23-escape.md) | When a tumour's cells can mutate a shield against immune cells, do the immune cells select the shielded ones? |
 | 24 | [Measured against the mouse](24-measured-against-the-mouse.md) | Set against the clones counted in the mouse oesophagus, how far apart are the sheet's, and what does it take to bring them together? |
-| 25 | [What the model does not say](25-what-the-model-does-not-say.md) | The placeholders, the missing units, and why emergence is the whole point. |
+| 25 | [Measured against spheroids](25-measured-against-spheroids.md) | Set against hundreds of measured spheroids, where does the model put the core and the arrest, what does that make of a cord, and how long is a step? |
+| 26 | [What the model does not say](26-what-the-model-does-not-say.md) | The placeholders, the missing units, and why emergence is the whole point. |
 | | [Glossary](glossary.md) | Every word, in one place. |
 
 ## How the chapters map onto the code
@@ -94,6 +95,8 @@ flowchart LR
     c23 --> pdl["examples/networks/ras-erk-pdl1.toml"]
     c24["24. measured<br/>against the mouse"] --> sim
     c24 --> dat["datasets/piedrafita-2020.toml<br/>scripts/fetch-dataset.py<br/>scripts/compare-clones.py"]
+    c25["25. measured<br/>against spheroids"] --> sph["datasets/browning-2021.toml<br/>scripts/compare-spheroids.py"]
+    c25 --> ex
 ```
 
 The README at the root of the repository says what works and what does not today. This course says why.

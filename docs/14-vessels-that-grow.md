@@ -138,7 +138,7 @@ The tumour that had to wait for loops did not end up with less vessel but with f
 
 **Perfused at once, unless told otherwise.** A real sprout carries blood once it has joined another vessel. By default a sprout here is held at full oxygen from its first pixel, which is generous to the tumour, and is what the first experiment used. `perfusion = "on_joining"` makes it wait, as the last section does.
 
-**The speed is the fastest the model allows.** A tip may not move more than a pixel per step, or the vessel it lays has gaps. The cord has no calibrated step (chapter 12). If a cord cell's cycle stood for a day, the 110 steps or so a living cell takes to divide here would make a step about 13 minutes, and the measured 10 to 21 µm an hour would be 2 to 4 pixels per step, at about a micrometre per pixel. On that reading the model's sprouts are slower than real ones, not faster.
+**The speed is the fastest the model allows.** A tip may not move more than a pixel per step, or the vessel it lays has gaps. The cord has no calibrated step (chapter 12). If a cord cell's cycle stood for a day, the 110 steps or so a living cell takes to divide here would make a step about 13 minutes, and the measured 10 to 21 µm an hour would be 2 to 4 pixels per step, at about a micrometre per pixel. On that reading the model's sprouts are slower than real ones, not faster. Chapter 25 fixes the tumour's step at 0.3 to 0.9 hours on a measured doubling time, which makes them 2 to 25 times too slow.
 
 **The reach is a parameter.** A decay rate fixed in the code would hide the one number that decides how much of a cell's call is heard by its neighbours rather than by itself; the next chapter varies it.
 

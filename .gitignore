@@ -27,3 +27,6 @@ output-*/
 
 # Datasets fetched by scripts/fetch-dataset.py: never committed (CONTRIBUTING.md)
 /data/
+
+# Python bytecode
+__pycache__/
