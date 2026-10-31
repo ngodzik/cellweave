@@ -170,7 +170,12 @@ pub struct Roles {
 }
 
 /// How the growth node becomes a mechanical demand on the lattice.
+///
+/// Contact energies are not a network's: the lattice prices a boundary by the
+/// kinds of the cells across it (`ContactEnergy`, chapter 1). An unknown key is
+/// refused rather than ignored, so that a file cannot set what nothing reads.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MechanicsSpec {
     /// Target volume is `reference * (1 + coefficient * growth)`.
     ///
@@ -180,13 +185,6 @@ pub struct MechanicsSpec {
     pub growth_coefficient: f64,
     /// Stiffness of the volume constraint handed to the lattice.
     pub lambda_volume: f64,
-    /// Contact energy against medium handed to the lattice.
-    pub j_medium: f64,
-    /// Contact energy against a cell of the same kind, as
-    /// `j_self_base + j_self_from_growth * (1 - growth)`.
-    pub j_self_base: f64,
-    /// How much a low growth node stiffens adhesion.
-    pub j_self_from_growth: f64,
     /// The largest target a cell asks for, as a multiple of its reference
     /// volume, however high its growth node. Left out, there is none: a cell
     /// with more growth signal tries to be larger, and presses harder on its

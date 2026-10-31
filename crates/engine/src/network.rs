@@ -677,8 +677,6 @@ impl SignalingNetwork for Network {
         CellMechanics {
             target_volume: Volume(target),
             lambda_volume: m.lambda_volume,
-            j_medium: m.j_medium,
-            j_self: m.j_self_base + m.j_self_from_growth * (1.0 - growth),
         }
     }
 }
@@ -759,12 +757,6 @@ mod tests {
         let m = net.mechanics();
         assert_eq!(m.target_volume, Volume(299));
         assert_eq!(m.lambda_volume, 50.0);
-        assert_eq!(m.j_medium, 16.0);
-        assert!(
-            (m.j_self - 7.333333815816).abs() < 1e-11,
-            "j_self is {}",
-            m.j_self
-        );
     }
 
     fn one_node(terms: Vec<Term>) -> NetworkSpec {
@@ -787,9 +779,6 @@ mod tests {
             mechanics: Some(MechanicsSpec {
                 growth_coefficient: 1.0,
                 lambda_volume: 1.0,
-                j_medium: 1.0,
-                j_self_base: 1.0,
-                j_self_from_growth: 0.0,
                 max_target: None,
             }),
         }

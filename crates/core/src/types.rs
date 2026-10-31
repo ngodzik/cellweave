@@ -354,10 +354,6 @@ pub struct CellMechanics {
     pub target_volume: Volume,
     /// Lambda volume (volume constraint strength).
     pub lambda_volume: f64,
-    /// Cell-medium contact energy.
-    pub j_medium: f64,
-    /// Cell-cell contact energy (same type).
-    pub j_self: f64,
 }
 
 // ── Simulation snapshot ───────────────────────────────────────────────────────
