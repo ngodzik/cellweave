@@ -47,6 +47,8 @@ The first way of doing that, stepping in time until the change per step was smal
 
 The sweep goes in **red-black** order. Colour the grid like a chessboard: every neighbour of a red pixel is black. So all the red pixels can be balanced at once from the black ones, then all the black ones from the new red ones, and each half can be split across every core of the machine without any pixel reading a neighbour while it is being written. This is what makes the solve parallel, and it settles in fewer sweeps than the row-by-row order it replaced. Each half reads one copy of the grid and writes another, so which core takes which rows cannot change a value: a run on one thread and a run on twenty are the same run to the last bit, and CI checks it.
 
+Only part of the grid is swept. A held pixel is a boundary condition, not an unknown: it never changes, so there is nothing to balance there. The sweep covers the smallest box that holds every pixel left free, and nothing outside it. A bath holds everything outside the tissue, and a spheroid starts as a speck in a box sized for the end of the run, so on its first hundred steps this sweeps fewer than one pixel in a hundred; the result is the same to the last bit, only sooner. On one core, the spheroid's first 120 steps went from 65 seconds to 18.
+
 ### The three clocks, in the model
 
 | clock | in the body | in cellweave |
@@ -75,7 +77,7 @@ The order is the one biology has; the ratios are compressed. The middle row was 
 
 - `ScalarField` holds the values, the sinks, and which pixels are held.
 - `step` is one explicit time step, for what needs time; `check_step` is the stability guard.
-- `relax` is the steady-state solve by SOR; `sor_sweep` is one pass, made of two `half_sweep`s, red then black, each spread over the cores by `rayon`. `ROWS_PER_TASK` is how much of the grid one task takes.
+- `relax` is the steady-state solve by SOR; `sor_sweep` is one pass, made of two `half_sweep`s, red then black, each spread over the cores by `rayon`. `ROWS_PER_TASK` is how much of the grid one task takes. `free_span` is the box of free pixels a sweep is held to.
 - `hold_bath` is the flood fill from the border; `hold_pixels` holds a given set; `release_all` forgets both.
 - `set_uptake` and `clear_uptake` are the sinks.
 

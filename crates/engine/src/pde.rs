@@ -45,6 +45,13 @@ pub struct ScalarField {
     frontier: Vec<(u32, u32)>,
 }
 
+/// A box of pixels, each side an inclusive range.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Span {
+    x: (u32, u32),
+    y: (u32, u32),
+}
+
 /// Rows one parallel task takes at least.
 ///
 /// A single row is too little work to hand to another thread, and too many
@@ -181,8 +188,18 @@ impl ScalarField {
         let n = f64::from(self.width.max(self.height));
         let omega = (2.0 / (1.0 + (std::f64::consts::PI / n).sin())).min(1.95);
 
+        // A held pixel is a boundary condition and never changes, so only the
+        // smallest box around the free ones is swept. A bath holds everything
+        // outside the tissue, and a spheroid starts as a speck in a box sized
+        // for the end of the run. Outside that box the two buffers have to
+        // agree, since a sweep no longer writes there before they are swapped.
+        let Some(span) = self.free_span() else {
+            // Nothing to balance: the first sweep would move nothing.
+            return Ok(1);
+        };
+        self.next.copy_from_slice(&self.values);
         for done in 1..=max_sweeps {
-            let moved = self.sor_sweep(omega);
+            let moved = self.sor_sweep(omega, span);
             if moved < tolerance {
                 return Ok(done);
             }
@@ -199,10 +216,27 @@ impl ScalarField {
     /// as they stand, then all the black ones from the new red ones. That is the
     /// red-black ordering of the same over-relaxation, and it is what lets the
     /// grid be swept in parallel: no pixel ever reads a neighbour being written.
-    fn sor_sweep(&mut self, omega: f64) -> f64 {
-        let red = self.half_sweep(omega, 0);
-        let black = self.half_sweep(omega, 1);
+    fn sor_sweep(&mut self, omega: f64, span: Span) -> f64 {
+        let red = self.half_sweep(omega, 0, span);
+        let black = self.half_sweep(omega, 1, span);
         red.max(black)
+    }
+
+    /// The smallest box holding every pixel not held, or `None` when every
+    /// pixel is.
+    fn free_span(&self) -> Option<Span> {
+        let w = self.width as usize;
+        let mut span: Option<Span> = None;
+        for (i, _) in self.held.iter().enumerate().filter(|(_, held)| !**held) {
+            let (x, y) = ((i % w) as u32, (i / w) as u32);
+            let s = span.get_or_insert(Span {
+                x: (x, x),
+                y: (y, y),
+            });
+            s.x = (s.x.0.min(x), s.x.1.max(x));
+            s.y.1 = y;
+        }
+        span
     }
 
     /// Balance every pixel of one colour, row by row in parallel.
@@ -212,23 +246,25 @@ impl ScalarField {
     /// row cannot change any value, and the largest change is a maximum, which
     /// does not depend on the order it is taken in: one thread or twenty, the
     /// field is the same to the last bit.
-    fn half_sweep(&mut self, omega: f64, colour: u32) -> f64 {
+    fn half_sweep(&mut self, omega: f64, colour: u32, span: Span) -> f64 {
         let (width, height) = (self.width, self.height);
         let (d, decay, source) = (self.d, self.decay, self.source);
         let (values, held, uptake) = (&self.values, &self.held, &self.uptake);
         let production = &self.production;
         let at = |x: u32, y: u32| values[y as usize * width as usize + x as usize];
+        let w = width as usize;
+        let rows = span.y.0 as usize * w..(span.y.1 as usize + 1) * w;
 
-        let moved = self
-            .next
-            .par_chunks_mut(width as usize)
+        let moved = self.next[rows]
+            .par_chunks_mut(w)
             .with_min_len(ROWS_PER_TASK)
             .enumerate()
-            .map(|(y, row)| {
-                let y = y as u32;
+            .map(|(row_in_span, row)| {
+                let y = span.y.0 + row_in_span as u32;
                 let mut moved: f64 = 0.0;
-                for (x, out) in (0..width).zip(row.iter_mut()) {
-                    let i = y as usize * width as usize + x as usize;
+                for x in span.x.0..=span.x.1 {
+                    let out = &mut row[x as usize];
+                    let i = y as usize * w + x as usize;
                     let before = values[i];
                     if (x + y) % 2 != colour || held[i] {
                         *out = before;
@@ -865,5 +901,48 @@ mod tests {
             0.0,
             "tissue is held by neither"
         );
+    }
+
+    #[test]
+    fn a_sweep_is_held_to_the_box_around_what_is_free() {
+        let mut field = ScalarField::new(20, 20, D, 0.0, 0.0).unwrap();
+        let tissue = |x: u32, y: u32| (4..9).contains(&x) && (11..14).contains(&y);
+        field.hold_bath(1.0, |x, y| !tissue(x, y));
+        assert_eq!(
+            field.free_span(),
+            Some(Span {
+                x: (4, 8),
+                y: (11, 13)
+            })
+        );
+
+        field.hold_pixels(1.0, |_, _| true);
+        assert_eq!(field.free_span(), None, "nothing left to balance");
+        assert_eq!(field.relax(TimeStep(1.0), 1e-9, 10).unwrap(), 1);
+    }
+
+    #[test]
+    fn the_box_swept_leaves_what_lies_outside_it_as_it_was_held() {
+        // A starving disc in a bath: the sweep never touches the bath, which
+        // must come out of the solve holding what it held going in.
+        let mut field = ScalarField::new(40, 40, D, 0.0, 1.0).unwrap();
+        let disc = |x: u32, y: u32| (x as i64 - 20).pow(2) + (y as i64 - 20).pow(2) <= 64;
+        for y in 0..40 {
+            for x in 0..40 {
+                if disc(x, y) {
+                    field.set_uptake(x, y, 0.001);
+                }
+            }
+        }
+        field.hold_bath(1.0, |x, y| !disc(x, y));
+        field.relax(TimeStep(1.0), 1e-9, 100_000).unwrap();
+        for y in 0..40 {
+            for x in 0..40 {
+                if !disc(x, y) {
+                    assert_eq!(field.concentration_at(x, y), 1.0, "bath at ({x}, {y})");
+                }
+            }
+        }
+        assert!(field.concentration_at(20, 20) < 1.0, "the centre starves");
     }
 }
