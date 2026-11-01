@@ -2,6 +2,10 @@
 
 Versions follow [semantic versioning](https://semver.org). While the version is 0.x the project is in early development: anything may change from one version to the next, configurations and results included. Each version says what changed in what a run does, so that a result can be tied to the version that produced it.
 
+## Unreleased
+
+- **Contact energies are not a network's.** A network file's `[mechanics]` carried `j_medium`, `j_self_base` and `j_self_from_growth`, read into every cell and handed to nothing: the lattice has always priced a boundary by the kinds of the cells across it (chapter 1). They are removed from the example networks, and a network that sets them, or any other unknown key under `[mechanics]`, is now refused with the key named. No run changes.
+
 ## 0.1.0 (2026-10-30)
 
 The first release: everything built so far, and the first calibration on public data. Experimental.

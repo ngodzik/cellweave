@@ -395,7 +395,6 @@ mod tests {
                 "[[nodes]]\nname = \"a\"\ninitial = 0.1\n\n",
                 "[roles]\ngrowth = \"a\"\nsurvival = \"a\"\nhypoxia_response = \"a\"\n\n",
                 "[mechanics]\ngrowth_coefficient = 1.0\nlambda_volume = 1.0\n",
-                "j_medium = 1.0\nj_self_base = 1.0\nj_self_from_growth = 0.0\n",
             ),
         )
         .unwrap();
@@ -441,7 +440,6 @@ mod tests {
         "[[nodes]]\nname = \"b\"\ninitial = 0.2\n\n",
         "[roles]\ngrowth = \"a\"\nsurvival = \"b\"\nhypoxia_response = \"b\"\n\n",
         "[mechanics]\ngrowth_coefficient = 1.0\nlambda_volume = 2.0\n",
-        "j_medium = 3.0\nj_self_base = 4.0\nj_self_from_growth = 5.0\n",
     );
 
     fn loaded(dir: &std::path::Path, name: &str) -> NetworkSpec {
@@ -554,6 +552,34 @@ mod tests {
             message.contains("one.toml") && message.contains("two.toml"),
             "{message}"
         );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_network_that_sets_a_contact_energy_is_refused() {
+        // Nothing reads a contact energy from a network: the lattice's come
+        // from the kinds of the cells.
+        let dir = nets("contact");
+        std::fs::write(dir.join("base.toml"), BASE).unwrap();
+        std::fs::write(
+            dir.join("sticky.toml"),
+            concat!(
+                "extends = \"base.toml\"\n\n",
+                "[mechanics]\ngrowth_coefficient = 1.0\nlambda_volume = 2.0\n",
+                "j_medium = 16.0\n",
+            ),
+        )
+        .unwrap();
+
+        let cfg = SimConfig {
+            network: Some("sticky.toml".into()),
+            ..SimConfig::default()
+        };
+        let Err(CellweaveError::Config(message)) = cfg.load_network(dir.join("sim.toml").to_str())
+        else {
+            panic!("a contact energy in a network must be refused");
+        };
+        assert!(message.contains("j_medium"), "{message}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

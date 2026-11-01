@@ -16,7 +16,4 @@ extends = "epithelium.toml"
 [mechanics]
 growth_coefficient = 1.5
 lambda_volume = 50.0
-j_medium = 16.0
-j_self_base = 2.0
-j_self_from_growth = 8.0
 max_target = 1.5
