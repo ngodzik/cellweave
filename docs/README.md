@@ -40,7 +40,8 @@ Chapters build on each other and are meant to be read in order the first time.
 | 23 | [Escape](23-escape.md) | When a tumour's cells can mutate a shield against immune cells, do the immune cells select the shielded ones? |
 | 24 | [Measured against the mouse](24-measured-against-the-mouse.md) | Set against the clones counted in the mouse oesophagus, how far apart are the sheet's, and what does it take to bring them together? |
 | 25 | [Measured against spheroids](25-measured-against-spheroids.md) | Set against hundreds of measured spheroids, where does the model put the core and the arrest, what does that make of a cord, and how long is a step? |
-| 26 | [What the model does not say](26-what-the-model-does-not-say.md) | The placeholders, the missing units, and why emergence is the whole point. |
+| 26 | [A tissue with depth](26-a-tissue-with-depth.md) | What changes when the lattice has a third dimension, and how a plane is kept exactly as it was? |
+| 27 | [What the model does not say](27-what-the-model-does-not-say.md) | The placeholders, the missing units, and why emergence is the whole point. |
 | | [Glossary](glossary.md) | Every word, in one place. |
 
 ## Where the code is

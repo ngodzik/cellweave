@@ -43,6 +43,17 @@ pub struct Pos2 {
     pub y: u32,
 }
 
+/// 3D lattice position: a voxel, `z` counting slices.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct Pos3 {
+    /// Horizontal coordinate.
+    pub x: u32,
+    /// Vertical coordinate.
+    pub y: u32,
+    /// Depth coordinate: the slice.
+    pub z: u32,
+}
+
 // ── Cell types ────────────────────────────────────────────────────────────────
 
 /// Biological type of a cell, determines CPM energy parameters.

@@ -4,7 +4,7 @@ use cellweave_core::{
     Angiogenesis, CellweaveError, CloneId, Exposure, Immunity, NetworkSpec, OxygenSource, Seeding,
     Tracing,
 };
-use cellweave_engine::simulation::{DEFAULT_SEED, Lesion, Scenario};
+use cellweave_engine::simulation::{DEFAULT_MAX_CELLS, DEFAULT_SEED, Lesion, Scenario};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -15,6 +15,15 @@ pub struct SimConfig {
     pub width: u32,
     /// Grid height in pixels.
     pub height: u32,
+    /// Grid depth in voxels. Left out, one: a tissue in the plane, as every
+    /// configuration was before the lattice had a depth.
+    #[serde(default = "default_depth")]
+    pub depth: u32,
+    /// The most living cells the run lets divide, a guard against runaway
+    /// growth. Left out, 2000, enough for anything in the plane; a tumour
+    /// in a volume needs tens of thousands.
+    #[serde(default = "default_max_cells")]
+    pub max_cells: usize,
     /// Number of Monte Carlo steps to run.
     pub mcs: u64,
     /// CPM temperature.
@@ -119,6 +128,14 @@ fn default_seed() -> u64 {
     DEFAULT_SEED
 }
 
+fn default_depth() -> u32 {
+    1
+}
+
+fn default_max_cells() -> usize {
+    DEFAULT_MAX_CELLS
+}
+
 /// The RAS/ERK network, compiled in so that the built-in hypothesis and one you
 /// write go through exactly the same path.
 pub const BUILT_IN_NETWORK: &str = include_str!("../../../examples/networks/ras-erk.toml");
@@ -167,6 +184,8 @@ impl SimConfig {
         Ok(Scenario {
             width: self.width,
             height: self.height,
+            depth: self.depth,
+            max_cells: self.max_cells,
             temperature: self.temperature,
             oxygen_source: self.oxygen_source,
             oxygen_uptake: self.oxygen_uptake,
@@ -278,6 +297,8 @@ impl Default for SimConfig {
         Self {
             width: 200,
             height: 200,
+            depth: default_depth(),
+            max_cells: default_max_cells(),
             mcs: 1000,
             temperature: 10.0,
             snapshot_interval: 100,
@@ -373,6 +394,21 @@ mod tests {
             cfg.oxygen_uptake, 0.00002,
             "uptake keeps its default when absent"
         );
+    }
+
+    #[test]
+    fn a_configuration_is_a_plane_unless_it_says_how_deep() {
+        let plane = SimConfig::from_toml(
+            "width = 50\nheight = 50\nmcs = 10\ntemperature = 10.0\nsnapshot_interval = 5\noutput_dir = \"o\"\n",
+        )
+        .unwrap();
+        assert_eq!((plane.depth, plane.max_cells), (1, DEFAULT_MAX_CELLS));
+        let volume = SimConfig::from_toml(
+            "width = 50\nheight = 50\ndepth = 40\nmax_cells = 90000\nmcs = 10\ntemperature = 10.0\nsnapshot_interval = 5\noutput_dir = \"o\"\n",
+        )
+        .unwrap();
+        let scenario = volume.scenario(None).unwrap();
+        assert_eq!((scenario.depth, scenario.max_cells), (40, 90_000));
     }
 
     #[test]

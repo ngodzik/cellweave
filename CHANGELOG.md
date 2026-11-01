@@ -5,6 +5,8 @@ Versions follow [semantic versioning](https://semver.org). While the version is 
 ## Unreleased
 
 - **Contact energies are not a network's.** A network file's `[mechanics]` carried `j_medium`, `j_self_base` and `j_self_from_growth`, read into every cell and handed to nothing: the lattice has always priced a boundary by the kinds of the cells across it (chapter 1). They are removed from the example networks, and a network that sets them, or any other unknown key under `[mechanics]`, is now refused with the key named. No run changes.
+- **A tissue in a volume.** A configuration's `depth` stacks slices: a tumour in a bath or around a vessel grows in three dimensions, cells dividing across planes, a vessel running through the box as a cylinder, the bath coming in from six faces, radii those of balls (chapter 26). A plane, one slice deep, runs exactly as it did: every example gives the same output, byte for byte. `max_cells` replaces the fixed ceiling of 2000 living cells.
+- **Faster.** The field is relaxed and the bath flooded only around the tissue, and in a volume the Monte Carlo step draws only there and the field is over-relaxed at its optimum: the spheroid's first 120 steps on one core take 11.5 seconds instead of 65, with the same result.
 
 ## 0.1.0 (2026-10-30)
 

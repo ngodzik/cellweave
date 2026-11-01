@@ -14,6 +14,8 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Arm** (10). One configuration in a comparison, run under the same seeds as the other.
 
+**Ball, sphere formula** (26). The oxygen at the centre of a ball of radius R taking up u in a bath falls short by u R² / 6D, where a disc's falls short by u R² / 4D: a ball forms its core at about 1.22 times a disc's radius.
+
 **Basal layer** (7). The bottom layer of an epithelium, the only one that divides. Cells leave it upwards when they differentiate.
 
 **Bath** (3). A large stirred volume of liquid around a tissue whose oxygen never drops. Modelled by holding every medium pixel the bath can reach at 1.0.
@@ -54,7 +56,9 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Crowding** (7). How squeezed a cell is: how far below its reference size it sits, as a fraction of it. An input every network can read, like oxygen.
 
-**Determinism** (1, 9, 14, 16, 26). The same seed gives the same simulation, byte for byte. Checked on every push.
+**Depth** (26). The number of slices of the lattice. One is a plane, run exactly as it always was; more is a volume.
+
+**Determinism** (1, 9, 14, 16, 27). The same seed gives the same simulation, byte for byte. Checked on every push.
 
 **Differentiation** (7). A cell giving up dividing to become a specialised cell. In an epithelium, a basal cell that commits leaves the layer. Here, a chance per step set by the network's differentiation node.
 
@@ -70,7 +74,7 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **EGF** (2). Epidermal growth factor, the growth signal. A hardcoded input for every cell today.
 
-**Emergence** (6, 7, 12, 14, 20, 26). Behaviour that follows from the model without any rule naming it. The necrotic core, the compact cell, the cord's thickness.
+**Emergence** (6, 7, 12, 14, 20, 27). Behaviour that follows from the model without any rule naming it. The necrotic core, the compact cell, the cord's thickness.
 
 **Endothelial cell** (14). A cell of the thin layer that lines every blood vessel. The cells that sprout.
 
@@ -196,7 +200,7 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Sister fates, r** (12, 24). What the two cells of one division do next. r is the chance both divide, which equals the chance both leave; a quarter if sisters were independent, below a quarter when they tend to do opposite things, as in the mouse and in the sheet. In the sheet it does not set how fast clones grow: a daughter that leaves long after its birth leaves its clone to drift meanwhile.
 
-**Snapshot** (4, 26). A file listing every living cell's state and the oxygen it reads, one per interval.
+**Snapshot** (4, 27). A file listing every living cell's state and the oxygen it reads, one per interval.
 
 **SOR** (3). Successive over-relaxation, the sweep that solves for a steady state in about L passes rather than L².
 
@@ -229,3 +233,6 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 **Volume constraint, λ** (1). The cost of being a different size than the target, times a stiffness lambda.
 
 **Voter model** (24). Every cell that leaves replaced by the daughter of a neighbour, picked at random. The most local replacement a sheet could have, with nothing coordinating sisters.
+
+
+**Voxel** (26). A pixel of a lattice in a volume: a little cube with six neighbours, four in its slice and one in each slice beside it.

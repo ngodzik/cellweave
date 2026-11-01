@@ -129,9 +129,15 @@ fn main() -> Result<()> {
 }
 
 fn run(config: SimConfig, config_path: Option<&str>) -> Result<()> {
+    // A volume says its depth; a plane says what it always did.
+    let grid = if config.depth > 1 {
+        format!("{}×{}×{}", config.width, config.height, config.depth)
+    } else {
+        format!("{}×{}", config.width, config.height)
+    };
     eprintln!(
-        "cellweave | grid {}×{} | {} MCS | {:?} | output → {}",
-        config.width, config.height, config.mcs, config.oxygen_source, config.output_dir
+        "cellweave | grid {grid} | {} MCS | {:?} | output → {}",
+        config.mcs, config.oxygen_source, config.output_dir
     );
 
     let mut output = JsonOutput::new(&config.output_dir).context("creating output directory")?;

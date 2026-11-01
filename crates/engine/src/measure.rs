@@ -16,6 +16,8 @@ use crate::simulation::{Fate, SimState, Simulation};
 /// The three radii are equivalent radii: the radius of a disc with the same
 /// area. A tissue is never a perfect disc, and the equivalent radius is the
 /// one number that does not depend on where its boundary happens to wobble.
+/// In a volume, the radius of a ball with the same volume, or around a
+/// vessel running through the box, of a cylinder as long as the box.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Measurements {
     /// Index of the step last taken.
@@ -95,6 +97,19 @@ fn equivalent_radius(area: u64) -> f64 {
     (area as f64 / std::f64::consts::PI).sqrt()
 }
 
+/// What tissue of `size` pixels has the radius of, in a box `depth` deep
+/// around `source`: a disc in the plane; in a volume, a ball in a bath, and
+/// around a vessel running through the box a cylinder as long as it.
+fn radius_of(size: u64, depth: u32, source: OxygenSource) -> f64 {
+    if depth <= 1 {
+        return equivalent_radius(size);
+    }
+    if source.is_vessel() {
+        return (size as f64 / (std::f64::consts::PI * f64::from(depth))).sqrt();
+    }
+    (3.0 * size as f64 / (4.0 * std::f64::consts::PI)).cbrt()
+}
+
 impl<S: SimState> Simulation<S> {
     /// Measure the tissue as it stands.
     ///
@@ -142,10 +157,15 @@ impl<S: SimState> Simulation<S> {
         let (vessel_area, perfused) = match self.scenario().oxygen_source {
             OxygenSource::Bath => (0, 0),
             OxygenSource::Vessel { .. } | OxygenSource::Capillary { .. } => {
-                let (w, h) = lattice.dims();
-                let vessel: Vec<(u32, u32)> = (0..h)
-                    .flat_map(|y| (0..w).map(move |x| (x, y)))
-                    .filter(|&(x, y)| lattice.occupant(x, y) == OBSTACLE)
+                let vessel: Vec<(u32, u32)> = lattice
+                    .grid
+                    .iter()
+                    .enumerate()
+                    .filter(|&(_, &id)| id == OBSTACLE)
+                    .map(|(i, _)| {
+                        let (x, y, _) = lattice.position(i);
+                        (x, y)
+                    })
                     .collect();
                 let perfused = vessel
                     .iter()
@@ -155,14 +175,13 @@ impl<S: SimState> Simulation<S> {
             }
         };
 
-        let tissue_radius =
-            equivalent_radius(vessel_area + living_area + necrotic_area + leaving_area);
-        let necrotic_radius = equivalent_radius(necrotic_area);
+        let source = self.scenario().oxygen_source;
+        let radius = |size: u64| radius_of(size, lattice.depth, source);
+        let tissue_radius = radius(vessel_area + living_area + necrotic_area + leaving_area);
+        let necrotic_radius = radius(necrotic_area);
         let viable_depth = match self.scenario().oxygen_source {
             OxygenSource::Bath => tissue_radius - necrotic_radius,
-            OxygenSource::Vessel { .. } => {
-                equivalent_radius(vessel_area + living_area) - equivalent_radius(vessel_area)
-            }
+            OxygenSource::Vessel { .. } => radius(vessel_area + living_area) - radius(vessel_area),
             OxygenSource::Capillary { .. } => {
                 let (w, h) = lattice.dims();
                 let columns = (0..w)
@@ -219,35 +238,47 @@ impl<S: SimState> Simulation<S> {
     /// tissue grew thicker sleeves or more of them.
     pub fn depth_from_vessels(&self, share: f64) -> Option<f64> {
         let lattice = self.lattice();
-        let (w, h) = lattice.dims();
-        let pixels = || (0..h).flat_map(move |y| (0..w).map(move |x| (x, y)));
-        let vessel: Vec<(i64, i64)> = pixels()
-            .filter(|&(x, y)| lattice.occupant(x, y) == OBSTACLE)
-            .map(|(x, y)| (i64::from(x), i64::from(y)))
-            .collect();
-        if vessel.is_empty() {
+        let (w, h, d) = lattice.dims3();
+        let slice = w as usize * h as usize;
+        // In a volume the vessel runs straight through the slices, so the
+        // nearest vessel is in the voxel's own slice.
+        let mut depths: Vec<f64> = Vec::new();
+        let mut any_vessel = false;
+        for z in 0..d as usize {
+            let in_slice = || (0..slice).map(move |j| (z * slice + j, j));
+            let vessel: Vec<(i64, i64)> = in_slice()
+                .filter(|&(i, _)| lattice.occupant_at(i) == OBSTACLE)
+                .map(|(_, j)| ((j % w as usize) as i64, (j / w as usize) as i64))
+                .collect();
+            if vessel.is_empty() {
+                continue;
+            }
+            any_vessel = true;
+            depths.extend(
+                in_slice()
+                    .filter(|&(i, _)| {
+                        let id = lattice.occupant_at(i);
+                        id != 0
+                            && id != OBSTACLE
+                            && matches!(
+                                self.fate(cellweave_core::CellId(id)),
+                                Some(Fate::Cycling | Fate::Quiescent)
+                            )
+                    })
+                    .map(|(_, j)| {
+                        let (x, y) = ((j % w as usize) as i64, (j / w as usize) as i64);
+                        let nearest = vessel
+                            .iter()
+                            .map(|&(vx, vy)| (vx - x).pow(2) + (vy - y).pow(2))
+                            .min()
+                            .unwrap_or(0);
+                        (nearest as f64).sqrt()
+                    }),
+            );
+        }
+        if !any_vessel {
             return None;
         }
-        let mut depths: Vec<f64> = pixels()
-            .filter(|&(x, y)| {
-                let id = lattice.occupant(x, y);
-                id != 0
-                    && id != OBSTACLE
-                    && matches!(
-                        self.fate(cellweave_core::CellId(id)),
-                        Some(Fate::Cycling | Fate::Quiescent)
-                    )
-            })
-            .map(|(x, y)| {
-                let (x, y) = (i64::from(x), i64::from(y));
-                let nearest = vessel
-                    .iter()
-                    .map(|&(vx, vy)| (vx - x).pow(2) + (vy - y).pow(2))
-                    .min()
-                    .unwrap_or(0);
-                (nearest as f64).sqrt()
-            })
-            .collect();
         if depths.is_empty() {
             return None;
         }
@@ -276,6 +307,8 @@ mod tests {
         Scenario {
             width: 80,
             height: 80,
+            depth: 1,
+            max_cells: crate::simulation::DEFAULT_MAX_CELLS,
             temperature: 10.0,
             oxygen_source,
             oxygen_uptake: 0.0003,

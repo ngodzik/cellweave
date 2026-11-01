@@ -1,4 +1,4 @@
-# 26. What the model does not say
+# 27. What the model does not say
 
 The placeholders, the missing units, and why emergence is the whole point.
 
@@ -48,7 +48,7 @@ What is a placeholder today, gathered from the chapters:
 ## What is not there
 
 - **Only oxygen, crowding and VEGF are coupled.** Growth factor is the same hardcoded input for every cell. VEGF is secreted into a field only where vessels can grow (chapter 14), and what it calls for is a vessel: no cell reads it.
-- **Two dimensions.** A tissue here is a monolayer. In three dimensions a sphere starves at a different radius than a disc, and a cell has a dozen neighbours rather than six; the mechanisms are the same, the numbers are not.
+- **Mostly two dimensions.** A tumour in a bath or around a vessel can grow in a volume (chapter 26), but sheets, capillaries lying in the plane, vessels that grow, flow, immune cells and lesions still run only in the plane. A voxel is coarser than a pixel, some 2.5 to 3 µm, and the contact energies and temperature were set for four neighbours, not six.
 - **Tumour and normal tissue meet only in the sheet.** A lesion can be placed in the sheet (chapter 13), as a patch of the basal layer with a network of its own. The tumours of chapters 5 to 10, grown from one cell around a vessel or in a bath, still live in boxes of their own, with no normal tissue around them.
 - **Only the field is parallel.** The Monte Carlo step, which moves the pixels, runs on one core. It draws its proposals from one random sequence, and splitting it would change which run a seed names.
 - **No picture on disk.** Snapshots record every cell's state and the oxygen it reads, not the grid. The viewer draws the grid live, but saves nothing; the two pictures in chapter 5 came from a debugging dump that is not in the code.
