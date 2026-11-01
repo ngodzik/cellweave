@@ -61,7 +61,7 @@ The order is the one biology has; the ratios are compressed. The middle row was 
 
 ## Choices, and why
 
-**A bath held to the surface, not a box with a source at the edge.** Explained above; it is the difference between a simulation of a spheroid and a simulation of a box.
+**A bath held to the surface, not a box with a source at the edge.** Explained above; it is the difference between a simulation of a spheroid and a simulation of a box. A medium nothing stirs is depleted next to a large spheroid, and a spheroid in a volume can be given one (chapter 27); the level it holds is then lower than 1, and still held to the surface.
 
 **Uptake as a sink in the equation, not an amount subtracted once.** Relaxation would diffuse a one off subtraction away; a sink stays.
 

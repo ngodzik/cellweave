@@ -207,6 +207,17 @@ pub struct CpmLattice {
     /// A field immune cells climb, row by row, and how strongly; `None`
     /// until a scenario with immune cells sets it.
     pull: Option<(Vec<f64>, f64)>,
+    /// With a contact order above one, how far a pixel's contacts reach;
+    /// `None` for contact across faces only.
+    reach: Option<Reach>,
+}
+
+/// Every pixel that counts as touching for the contact energy, beyond the
+/// faces, as offsets `(x, y, z)`, and what one contact is divided by.
+#[derive(Debug, Clone)]
+struct Reach {
+    offsets: Vec<(i64, i64, i64)>,
+    across: f64,
 }
 
 impl CpmLattice {
@@ -243,7 +254,50 @@ impl CpmLattice {
             contact: ContactEnergy::default(),
             mcs: 0,
             pull: None,
+            reach: None,
         })
+    }
+
+    /// Count two pixels as touching, for the contact energy, up to the
+    /// `order`-th nearest: 1 across a face, as always; in a volume
+    /// 2 across an edge as well and 3 across a corner too, 26 neighbours, and
+    /// in a plane 2 across a corner, 8 neighbours, and 3 two pixels away
+    /// along a row or column.
+    ///
+    /// Across faces alone a boundary along an axis costs one contact for
+    /// each pixel of its surface and one along a diagonal more, up to 1.7
+    /// times as much in a volume, so that a tissue's cheapest shape is a cube.
+    /// Counted further, the cost depends less on the direction. Each contact
+    /// is divided by the number a pixel makes across a boundary along an
+    /// axis, 9 at the third order in a volume, so that such a boundary costs
+    /// what it cost. Copies are still proposed across faces alone.
+    pub fn set_contact_order(&mut self, order: u8) {
+        if order <= 1 {
+            self.reach = None;
+            return;
+        }
+        let deep = if self.depth > 1 { 2 } else { 0 };
+        let mut offsets = Vec::new();
+        for dz in -deep..=deep {
+            for dy in -2i64..=2 {
+                for dx in -2i64..=2 {
+                    if (dx, dy, dz) != (0, 0, 0) {
+                        offsets.push((dx, dy, dz));
+                    }
+                }
+            }
+        }
+        let far = |&(x, y, z): &(i64, i64, i64)| x * x + y * y + z * z;
+        let mut distances: Vec<i64> = offsets.iter().map(far).collect();
+        distances.sort_unstable();
+        distances.dedup();
+        let limit = distances[usize::from(order - 1).min(distances.len() - 1)];
+        offsets.retain(|o| far(o) <= limit);
+        let across: i64 = offsets.iter().map(|&(x, _, _)| x.max(0)).sum();
+        self.reach = Some(Reach {
+            offsets,
+            across: across as f64,
+        });
     }
 
     /// Add a circular cell of `kind` centred at `centre` with radius `r`, in
@@ -489,6 +543,184 @@ impl CpmLattice {
         Some(CellId(id))
     }
 
+    /// Take the pixel at flat index `i` off the cell that holds it, as debris
+    /// that leaves the tissue, and let the tissue close over the space it
+    /// held: the pixel goes to the neighbour across one of its faces, drawn
+    /// from `rng` among those that are living tissue. The cell that takes it
+    /// holds one pixel more than it tries to, and presses on its own
+    /// neighbours until the pressure reaches the medium.
+    ///
+    /// Never the medium: medium the bath reaches is held at its oxygen, and a
+    /// dead pixel given to medium that came in from the surface, then the
+    /// dead pixel behind it, would bore a channel of bath into the core.
+    ///
+    /// Returns whether the pixel went. A pixel with no living neighbour
+    /// (`can_close_over`), medium, an obstacle, or an index past the end is
+    /// left as it is.
+    pub fn close_over(&mut self, i: usize, rng: &mut impl Rng) -> bool {
+        let open = self.takers(i);
+        if open.is_empty() {
+            return false;
+        }
+        let w = self.width as usize;
+        let (row, col) = (i / w, i % w);
+        let id = self.grid[[row, col]];
+        let (r, c) = open.at(rng.random_range(0..open.len()));
+        let taker = self.grid[[r as usize, c as usize]];
+        self.grid[[row, col]] = taker;
+        self.cells[id as usize].volume.0 -= 1;
+        self.cells[taker as usize].volume.0 += 1;
+        true
+    }
+
+    /// Whether the pixel at flat index `i` belongs to a cell and has a
+    /// neighbour across a face that could close over it: living tissue, never
+    /// the medium, an obstacle, its own cell or a dead one.
+    pub fn can_close_over(&self, i: usize) -> bool {
+        !self.takers(i).is_empty()
+    }
+
+    /// Hand the medium pixel at flat index `i`, fluid shut in the tissue
+    /// ([`CpmLattice::shut_in`]), to a neighbour across one of its faces,
+    /// drawn from `rng` among those that are living tissue, as
+    /// [`CpmLattice::close_over`] hands a dead pixel: the fluid leaves
+    /// through the tissue, and the cell that takes the space presses on its
+    /// neighbours until the pressure reaches the medium outside.
+    ///
+    /// Returns whether the pixel went. A pixel that is not medium, has no
+    /// living neighbour, or lies past the end is left as it is.
+    pub fn close_in(&mut self, i: usize, rng: &mut impl Rng) -> bool {
+        let w = self.width as usize;
+        let (row, col) = (i / w, i % w);
+        if self.grid.get([row, col]) != Some(&0) {
+            return false;
+        }
+        let open = self.living_around(row as u32, col as u32, 0);
+        if open.is_empty() {
+            return false;
+        }
+        let (r, c) = open.at(rng.random_range(0..open.len()));
+        let taker = self.grid[[r as usize, c as usize]];
+        self.grid[[row, col]] = taker;
+        self.cells[taker as usize].volume.0 += 1;
+        true
+    }
+
+    /// Whether the pixel at flat index `i` is medium with living tissue
+    /// across one of its faces, which [`CpmLattice::close_in`] could hand it
+    /// to.
+    pub fn can_close_in(&self, i: usize) -> bool {
+        let w = self.width as usize;
+        let (row, col) = (i / w, i % w);
+        self.grid.get([row, col]) == Some(&0)
+            && !self.living_around(row as u32, col as u32, 0).is_empty()
+    }
+
+    /// Every medium pixel the tissue shuts in: one the medium around it
+    /// cannot reach across faces, as the bath could not, so that it lies in
+    /// a cavity or a pocket closed on every side. In flat indices, in order.
+    pub fn shut_in(&self) -> Vec<usize> {
+        let Some(span) = self.occupied_span() else {
+            return Vec::new();
+        };
+        let [(x0, x1), (y0, y1), (z0, z1)] = span.map(|(lo, hi)| (lo as usize, hi as usize));
+        let (sw, sh, sd) = (x1 - x0 + 1, y1 - y0 + 1, z1 - z0 + 1);
+        let (w, slice) = (
+            self.width as usize,
+            self.width as usize * self.height as usize,
+        );
+        let flat = |x: usize, y: usize, z: usize| (z0 + z) * slice + (y0 + y) * w + x0 + x;
+        let open = |x: usize, y: usize, z: usize| self.occupant_at(flat(x, y, z)) == 0;
+        // Reached from the outer layer of the box around the tissue, which
+        // is medium wherever the lattice leaves room around it.
+        let mut reached = vec![false; sw * sh * sd];
+        let mut frontier = Vec::new();
+        for z in 0..sd {
+            for y in 0..sh {
+                for x in 0..sw {
+                    let outer = x == 0
+                        || y == 0
+                        || x == sw - 1
+                        || y == sh - 1
+                        || (self.depth > 1 && (z == 0 || z == sd - 1));
+                    if outer && open(x, y, z) {
+                        reached[(z * sh + y) * sw + x] = true;
+                        frontier.push((x, y, z));
+                    }
+                }
+            }
+        }
+        while let Some((x, y, z)) = frontier.pop() {
+            let mut next = |a: usize, b: usize, c: usize| {
+                let k = (c * sh + b) * sw + a;
+                if !reached[k] && open(a, b, c) {
+                    reached[k] = true;
+                    frontier.push((a, b, c));
+                }
+            };
+            if x > 0 {
+                next(x - 1, y, z);
+            }
+            if x + 1 < sw {
+                next(x + 1, y, z);
+            }
+            if y > 0 {
+                next(x, y - 1, z);
+            }
+            if y + 1 < sh {
+                next(x, y + 1, z);
+            }
+            if z > 0 {
+                next(x, y, z - 1);
+            }
+            if z + 1 < sd {
+                next(x, y, z + 1);
+            }
+        }
+        let mut shut = Vec::new();
+        for z in 0..sd {
+            for y in 0..sh {
+                for x in 0..sw {
+                    if !reached[(z * sh + y) * sw + x] && open(x, y, z) {
+                        shut.push(flat(x, y, z));
+                    }
+                }
+            }
+        }
+        shut
+    }
+
+    /// The neighbours across the faces of the pixel at flat index `i` that
+    /// could take it over, empty unless it belongs to a cell.
+    fn takers(&self, i: usize) -> Neighbours {
+        let w = self.width as usize;
+        let (row, col) = ((i / w) as u32, (i % w) as u32);
+        let Some(&id) = self.grid.get([row as usize, col as usize]) else {
+            return Neighbours::default();
+        };
+        if id == 0 || id == OBSTACLE {
+            return Neighbours::default();
+        }
+        self.living_around(row, col, id)
+    }
+
+    /// The neighbours across the faces of `(row, col)` that are living
+    /// tissue of a cell other than `id`.
+    fn living_around(&self, row: u32, col: u32, id: u32) -> Neighbours {
+        let mut open = Neighbours::default();
+        for &(r, c) in self.von_neumann(row, col).iter() {
+            let other = self.grid[[r as usize, c as usize]];
+            if other != id
+                && other != 0
+                && other != OBSTACLE
+                && self.kind(other) != CellKind::Necrotic
+            {
+                open.push((r, c));
+            }
+        }
+        open
+    }
+
     /// Give an obstacle pixel back to the medium, where a vessel was taken
     /// back, for cells to move into. Any other pixel is left as it is.
     pub fn clear_obstacle(&mut self, x: u32, y: u32) {
@@ -565,7 +797,9 @@ impl CpmLattice {
     fn try_flip(&mut self, row: u32, col: u32, rng: &mut impl Rng) {
         let src = self.grid[[row as usize, col as usize]];
 
-        // Pick a random von Neumann neighbour.
+        // Pick a random von Neumann neighbour, whatever the contact order:
+        // copies proposed across edges and corners too let a spheroid lean
+        // towards an octahedron, and its core open sooner.
         let neighbours = self.von_neumann(row, col);
         if neighbours.is_empty() {
             return;
@@ -615,6 +849,24 @@ impl CpmLattice {
     /// to be accounted for: a neighbour that already holds `src` contributes zero
     /// before the flip but a real cost afterwards, so it must not be skipped.
     fn contact_delta_h(&self, row: u32, col: u32, src: u32, dst: u32) -> f64 {
+        if let Some(Reach { offsets, across }) = &self.reach {
+            let (w, h, d) = (
+                i64::from(self.width),
+                i64::from(self.height),
+                i64::from(self.depth),
+            );
+            let (x, y, z) = (i64::from(col), i64::from(row) % h, i64::from(row) / h);
+            let mut dh = 0.0;
+            for &(dx, dy, dz) in offsets {
+                let (a, b, c) = (x + dx, y + dy, z + dz);
+                if a < 0 || b < 0 || c < 0 || a >= w || b >= h || c >= d {
+                    continue;
+                }
+                let neighbour = self.grid[[(c * h + b) as usize, a as usize]];
+                dh += self.contact_energy(dst, neighbour) - self.contact_energy(src, neighbour);
+            }
+            return dh / across;
+        }
         let mut dh = 0.0;
         for &(nr, nc) in self.von_neumann(row, col).iter() {
             let neighbour = self.grid[[nr as usize, nc as usize]];
@@ -718,6 +970,11 @@ impl CpmLattice {
     /// Current volume of a cell.
     pub fn volume(&self, id: CellId) -> Option<Volume> {
         self.cells.get(id.0 as usize).map(|r| r.volume)
+    }
+
+    /// The volume a cell tries to hold.
+    pub fn target_volume(&self, id: CellId) -> Option<Volume> {
+        self.cells.get(id.0 as usize).map(|r| r.target_volume)
     }
 
     /// All cell records (excluding medium at index 0).
@@ -1440,5 +1697,248 @@ mod tests {
             lat.grid
         };
         assert_eq!(cut(true), cut(false));
+    }
+
+    #[test]
+    fn a_pixel_closed_over_goes_to_living_tissue_never_to_the_dead_or_the_medium() {
+        let mut rng = StdRng::seed_from_u64(3);
+        let mut lat = CpmLattice::new(30, 30, 10.0).unwrap();
+        let dead = lat.add_block(CellKind::Necrotic, Pos2 { x: 10, y: 10 }, 5, 5);
+        let next = lat.add_block(CellKind::Tumor, Pos2 { x: 15, y: 10 }, 5, 5);
+        lat.add_block(CellKind::Necrotic, Pos2 { x: 10, y: 15 }, 5, 5);
+        // Against dead tissue alone, nothing takes it over.
+        assert!(!lat.can_close_over(14 * 30 + 12));
+        assert!(!lat.close_over(14 * 30 + 12, &mut rng));
+        let (dead_before, next_before) = (lat.volume(dead).unwrap().0, lat.volume(next).unwrap().0);
+        // Inside its own cell, a pixel has nowhere to go.
+        assert!(!lat.close_over(12 * 30 + 12, &mut rng));
+        // Against the living cell and nothing else, the living cell takes it.
+        assert!(lat.close_over(12 * 30 + 14, &mut rng));
+        assert_eq!(lat.occupant(14, 12), next.0);
+        assert_eq!(lat.volume(dead).unwrap().0, dead_before - 1);
+        assert_eq!(lat.volume(next).unwrap().0, next_before + 1);
+        // Against medium alone, it stays: medium there would be bath.
+        assert!(!lat.can_close_over(12 * 30 + 10));
+        assert!(!lat.close_over(12 * 30 + 10, &mut rng));
+        assert_eq!(lat.occupant(10, 12), dead.0);
+        // Medium stays medium, and nothing past the end is touched.
+        assert!(!lat.close_over(0, &mut rng));
+        assert!(!lat.close_over(10_000, &mut rng));
+        assert!(records_match_grid(&lat));
+    }
+
+    #[test]
+    fn what_a_core_closes_over_is_given_up_at_the_surface() {
+        let mut rng = StdRng::seed_from_u64(5);
+        let mut lat = CpmLattice::new(60, 60, 10.0).unwrap();
+        let dead = lat.add_block(CellKind::Necrotic, Pos2 { x: 25, y: 25 }, 10, 10);
+        // Eight living cells around it, and medium around them.
+        for (i, j) in (0..3).flat_map(|i| (0..3).map(move |j| (i, j))) {
+            if (i, j) != (1, 1) {
+                let corner = Pos2 {
+                    x: 15 + 10 * i,
+                    y: 15 + 10 * j,
+                };
+                lat.add_block(CellKind::Tumor, corner, 10, 10);
+            }
+        }
+        let tissue = |lat: &CpmLattice| lat.grid.iter().filter(|&&id| id != 0).count();
+        let before = tissue(&lat);
+        let pixels = lat.pixels_of(&[dead]).pop().unwrap();
+        let given = pixels
+            .into_iter()
+            .filter(|&p| lat.close_over(p, &mut rng))
+            .take(20)
+            .count();
+        assert_eq!(given, 20);
+        let left = lat.volume(dead).unwrap();
+        lat.set_volume_target(dead, left, 50.0);
+        // The neighbours took what the dead cell lost: nothing opened.
+        assert_eq!(tissue(&lat), before);
+        for _ in 0..50 {
+            lat.monte_carlo_step(&mut rng);
+        }
+        // Pressed, they gave it up where the cluster meets the medium.
+        let lost = before - tissue(&lat);
+        assert!(
+            (15..=25).contains(&lost),
+            "the cluster lost {lost} pixels, not about 20"
+        );
+        assert!(records_match_grid(&lat));
+    }
+
+    #[test]
+    fn fluid_shut_in_by_the_tissue_is_found_and_closed_in_by_the_living() {
+        let mut rng = StdRng::seed_from_u64(3);
+        let mut lat = CpmLattice::new(30, 30, 10.0).unwrap();
+        // Four cells around a hole four pixels square, at x and y 13 to 16.
+        lat.add_block(CellKind::Tumor, Pos2 { x: 10, y: 10 }, 10, 3);
+        lat.add_block(CellKind::Tumor, Pos2 { x: 10, y: 17 }, 10, 3);
+        lat.add_block(CellKind::Tumor, Pos2 { x: 10, y: 13 }, 3, 4);
+        let right = lat.add_block(CellKind::Necrotic, Pos2 { x: 17, y: 13 }, 3, 4);
+        let hole: Vec<usize> = (13..17)
+            .flat_map(|y| (13..17).map(move |x| y * 30 + x))
+            .collect();
+        assert_eq!(lat.shut_in(), hole);
+        // Next to living tissue it goes to it; next only to the dead or to
+        // more fluid, it stays.
+        assert!(lat.can_close_in(14 * 30 + 13));
+        assert!(
+            !lat.can_close_in(14 * 30 + 16),
+            "only the dead cell beside it"
+        );
+        assert!(!lat.can_close_in(14 * 30 + 14), "only fluid around it");
+        assert!(
+            !lat.can_close_in(0),
+            "medium the outside reaches has no tissue"
+        );
+        let before: u32 = lat.cell_records().map(|(_, r)| r.volume.0).sum();
+        assert!(lat.close_in(14 * 30 + 13, &mut rng));
+        assert!(!lat.close_in(14 * 30 + 16, &mut rng));
+        assert_ne!(lat.occupant(13, 14), 0);
+        assert_ne!(lat.occupant(13, 14), right.0);
+        let after: u32 = lat.cell_records().map(|(_, r)| r.volume.0).sum();
+        assert_eq!(after, before + 1);
+        assert_eq!(lat.shut_in().len(), 15);
+        assert!(records_match_grid(&lat));
+    }
+
+    #[test]
+    fn whatever_the_contact_order_a_copy_comes_across_a_face() {
+        // A one-voxel cell asking for more, a voxel of medium that touches
+        // it across a face and one that touches it only across a corner.
+        for order in [1, 3] {
+            for (row, col, i, taken) in [
+                (5 + 1, 2, 25 + 5 + 2, true),
+                (2 * 5 + 2, 2, 2 * 25 + 2 * 5 + 2, false),
+            ] {
+                let mut rng = StdRng::seed_from_u64(9);
+                let mut lat = CpmLattice::with_depth(5, 5, 5, 10.0).unwrap();
+                lat.set_contact_order(order);
+                let id = lat.add_ball(CellKind::Tumor, Pos3 { x: 1, y: 1, z: 1 }, 0);
+                lat.set_volume_target(id, Volume(10), 50.0);
+                for _ in 0..500 {
+                    lat.try_flip(row, col, &mut rng);
+                }
+                assert_eq!(
+                    lat.occupant_at(i) == id.0,
+                    taken,
+                    "order {order}, voxel {i}"
+                );
+            }
+        }
+    }
+
+    /// The lattice's whole boundary energy, each pair of touching pixels
+    /// counted once, as far as the contact order reaches.
+    fn boundary_energy(lat: &CpmLattice) -> f64 {
+        let faces = vec![
+            (1, 0, 0),
+            (-1, 0, 0),
+            (0, 1, 0),
+            (0, -1, 0),
+            (0, 0, 1),
+            (0, 0, -1),
+        ];
+        let Reach { offsets, across } = lat.reach.clone().unwrap_or(Reach {
+            offsets: faces,
+            across: 1.0,
+        });
+        let (w, h, d) = (
+            i64::from(lat.width),
+            i64::from(lat.height),
+            i64::from(lat.depth),
+        );
+        let mut sum = 0.0;
+        for i in 0..lat.voxels() {
+            let (x, y, z) = lat.position(i);
+            let a = lat.occupant_at(i);
+            for &(dx, dy, dz) in &offsets {
+                let (u, v, t) = (i64::from(x) + dx, i64::from(y) + dy, i64::from(z) + dz);
+                if u < 0 || v < 0 || t < 0 || u >= w || v >= h || t >= d {
+                    continue;
+                }
+                let b = lat.grid[[(t * h + v) as usize, u as usize]];
+                sum += lat.contact_energy(a, b);
+            }
+        }
+        sum / 2.0 / across
+    }
+
+    #[test]
+    fn a_wider_contact_reaches_edges_and_corners_and_counts_an_axis_boundary_once() {
+        let mut volume = CpmLattice::with_depth(10, 10, 10, 10.0).unwrap();
+        volume.set_contact_order(3);
+        let reach = |lat: &CpmLattice| lat.reach.as_ref().map(|r| (r.offsets.len(), r.across));
+        assert_eq!(reach(&volume), Some((26, 9.0)));
+        volume.set_contact_order(2);
+        assert_eq!(reach(&volume), Some((18, 5.0)));
+        let mut plane = CpmLattice::new(10, 10, 10.0).unwrap();
+        plane.set_contact_order(2);
+        assert_eq!(reach(&plane), Some((8, 3.0)));
+        plane.set_contact_order(3);
+        assert_eq!(reach(&plane), Some((12, 5.0)));
+        plane.set_contact_order(1);
+        assert!(plane.reach.is_none());
+    }
+
+    #[test]
+    fn counted_to_the_corners_a_ball_costs_its_surface_whatever_the_direction() {
+        // A ball of radius 10, its surface at about 10.5: across faces alone
+        // its boundary costs 1.37 times its area (1.5 for a smooth sphere,
+        // the mean of |nx| + |ny| + |nz| over it); to the corners, 0.93.
+        let centre = Pos3 {
+            x: 15,
+            y: 15,
+            z: 15,
+        };
+        let area =
+            4.0 * std::f64::consts::PI * 10.5_f64.powi(2) * ContactEnergy::default().medium_tumor;
+        let mut lat = CpmLattice::with_depth(31, 31, 31, 10.0).unwrap();
+        lat.add_ball(CellKind::Tumor, centre, 10);
+        let faces = boundary_energy(&lat) / area;
+        lat.set_contact_order(3);
+        let corners = boundary_energy(&lat) / area;
+        assert!(
+            (1.3..1.45).contains(&faces),
+            "across faces, {faces:.3} of its area"
+        );
+        assert!(
+            (0.88..1.0).contains(&corners),
+            "to the corners, {corners:.3} of its area"
+        );
+    }
+
+    #[test]
+    fn a_flip_costs_what_it_changes_in_the_boundary_at_every_contact_order() {
+        let mut rng = StdRng::seed_from_u64(11);
+        for order in 1..=3 {
+            let mut lat = CpmLattice::with_depth(14, 14, 14, 10.0).unwrap();
+            lat.set_contact_order(order);
+            lat.add_ball(CellKind::Tumor, Pos3 { x: 6, y: 7, z: 7 }, 3);
+            lat.add_ball(CellKind::Tumor, Pos3 { x: 9, y: 7, z: 7 }, 3);
+            lat.add_ball(CellKind::Necrotic, Pos3 { x: 7, y: 9, z: 6 }, 2);
+            for _ in 0..300 {
+                let i = rng.random_range(0..lat.voxels());
+                let (x, y, z) = lat.position(i);
+                let row = z * lat.height + y;
+                let neighbours = lat.von_neumann(row, x);
+                let (nr, nc) = neighbours.at(rng.random_range(0..neighbours.len()));
+                let (src, dst) = (
+                    lat.grid[[row as usize, x as usize]],
+                    lat.grid[[nr as usize, nc as usize]],
+                );
+                let before = boundary_energy(&lat);
+                let predicted = lat.contact_delta_h(row, x, src, dst);
+                lat.grid[[row as usize, x as usize]] = dst;
+                let after = boundary_energy(&lat);
+                lat.grid[[row as usize, x as usize]] = src;
+                assert!(
+                    (after - before - predicted).abs() < 1e-9,
+                    "order {order}: the flip changed {} and cost {predicted}",
+                    after - before
+                );
+            }
+        }
     }
 }

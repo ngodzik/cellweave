@@ -20,6 +20,8 @@ enum Source {
     Egf,
     Crowding,
     Stress,
+    Waste,
+    NecroticFactor,
     Node(usize),
 }
 
@@ -31,6 +33,8 @@ fn input_source(name: &str) -> Option<Source> {
         "egf" => Some(Source::Egf),
         "crowding" => Some(Source::Crowding),
         "stress" => Some(Source::Stress),
+        "waste" => Some(Source::Waste),
+        "necrotic_factor" => Some(Source::NecroticFactor),
         _ => None,
     }
 }
@@ -58,6 +62,12 @@ enum Compiled {
         threshold: f64,
         rate: f64,
     },
+    /// `- rate * max(0, (source - threshold) / threshold)`.
+    DamagedAbove {
+        source: Source,
+        threshold: f64,
+        rate: f64,
+    },
 }
 
 impl Compiled {
@@ -69,7 +79,8 @@ impl Compiled {
             | Compiled::ProducedBy { rate, .. }
             | Compiled::Decays { rate }
             | Compiled::RelaxesTo { rate, .. }
-            | Compiled::DamagedBelow { rate, .. } => rate,
+            | Compiled::DamagedBelow { rate, .. }
+            | Compiled::DamagedAbove { rate, .. } => rate,
         }
     }
 
@@ -82,6 +93,7 @@ impl Compiled {
             Compiled::Decays { .. } => "decays",
             Compiled::RelaxesTo { .. } => "relaxes_to",
             Compiled::DamagedBelow { .. } => "damaged_below",
+            Compiled::DamagedAbove { .. } => "damaged_above",
         }
     }
 }
@@ -98,6 +110,12 @@ pub const MUTATION_SPREAD: f64 = 2.0;
 /// gets: a weak link, of the order of the network's own terms, that has to be
 /// strengthened by later mutations to matter much.
 pub const GAINED_RATE: f64 = 0.1;
+
+/// How many of the environment's inputs, counted from the first, a gained
+/// term may read: those there were when rewiring was written. The waste and
+/// the necrotic factor came with chapter 27, and only a scenario with one
+/// computes it; leaving them out keeps every run that rewires the run it was.
+const REWIRED_INPUTS: usize = 4;
 
 /// One heritable change to a network.
 #[derive(Debug, Clone, PartialEq)]
@@ -296,6 +314,23 @@ impl Network {
                             rate: *rate,
                         }
                     }
+                    Term::DamagedAbove {
+                        source,
+                        threshold,
+                        rate,
+                    } => {
+                        if *threshold <= 0.0 {
+                            return Err(CellweaveError::Config(format!(
+                                "node `{}` is damaged above {threshold}, which must be positive",
+                                node.name
+                            )));
+                        }
+                        Compiled::DamagedAbove {
+                            source: resolve(source, &node.name)?,
+                            threshold: *threshold,
+                            rate: *rate,
+                        }
+                    }
                 });
             }
             terms.push(compiled);
@@ -426,12 +461,12 @@ impl Network {
         let pick = |n: usize, u: f64| ((u * n as f64) as usize).min(n.saturating_sub(1));
         if mode < 0.5 {
             let node = pick(self.terms.len(), which);
-            let sources = INPUT_NAMES.len() + self.names.len();
+            let sources = REWIRED_INPUTS + self.names.len();
             let s = pick(sources, source);
-            let (source, source_name) = match INPUT_NAMES.get(s) {
+            let (source, source_name) = match INPUT_NAMES[..REWIRED_INPUTS].get(s) {
                 Some(&name) => (input_source(name)?, name.to_owned()),
                 None => {
-                    let n = s - INPUT_NAMES.len();
+                    let n = s - REWIRED_INPUTS;
                     (Source::Node(n), self.names[n].clone())
                 }
             };
@@ -578,6 +613,8 @@ impl Network {
             Source::Egf => inputs.egf.0,
             Source::Crowding => inputs.crowding.0.clamp(0.0, 1.0),
             Source::Stress => inputs.stress.0.max(0.0),
+            Source::Waste => inputs.waste.0.max(0.0),
+            Source::NecroticFactor => inputs.necrotic_factor.0.max(0.0),
             Source::Node(i) => state[i],
         }
     }
@@ -622,6 +659,14 @@ impl Network {
                     } => {
                         let s = Self::read(state, inputs, source);
                         -k * ((threshold - s) / threshold).max(0.0)
+                    }
+                    Compiled::DamagedAbove {
+                        source,
+                        threshold,
+                        rate: k,
+                    } => {
+                        let s = Self::read(state, inputs, source);
+                        -k * ((s - threshold) / threshold).max(0.0)
                     }
                 };
             }
@@ -703,6 +748,8 @@ mod tests {
             vegf: Concentration(0.0),
             crowding: Concentration(0.0),
             stress: Concentration(0.0),
+            waste: Concentration(0.0),
+            necrotic_factor: Concentration(0.0),
         }
     }
 
@@ -926,7 +973,7 @@ mod tests {
         // second order error of the scheme is about the curvature times half the
         // step, and the curvature here is of order one.
         let dt = 1e-6;
-        let cases: [(&str, Term, f64, f64, f64); 6] = [
+        let cases: [(&str, Term, f64, f64, f64); 7] = [
             // rate * source * (1 - self), with source 0.5 and self 0.25
             (
                 "activated_by",
@@ -986,6 +1033,18 @@ mod tests {
                 0.2,
                 -3.0 * (0.3 - 0.2) / 0.3,
             ),
+            // - rate * (source - threshold) / threshold, half again past it
+            (
+                "damaged_above",
+                Term::DamagedAbove {
+                    source: "egf".into(),
+                    threshold: 0.4,
+                    rate: 3.0,
+                },
+                0.5,
+                0.6,
+                -3.0 * (0.6 - 0.4) / 0.4,
+            ),
         ];
 
         for (name, term, initial, input, expected_slope) in cases {
@@ -1007,6 +1066,65 @@ mod tests {
                 "{name}: slope {slope:.9}, documented {expected_slope:.9}"
             );
         }
+    }
+
+    #[test]
+    fn a_node_reads_the_waste_around_its_cell() {
+        let dt = 1e-6;
+        let mut spec = one_node(vec![Term::ActivatedBy {
+            source: "waste".into(),
+            rate: 2.0,
+            hill: None,
+        }]);
+        spec.nodes[0].initial = 0.25;
+        let mut net = Network::from_spec(&spec, 100).unwrap();
+        let inputs = CellInputs {
+            waste: Concentration(0.5),
+            ..at(1.0, 0.0)
+        };
+        net.step(TimeStep(dt), &inputs);
+        let slope = (net.state().values[0].0 - 0.25) / dt;
+        assert!((slope - 2.0 * 0.5 * 0.75).abs() < 1e-5, "slope {slope}");
+    }
+
+    #[test]
+    fn a_node_reads_the_necrotic_factor_around_its_cell_and_is_damaged_only_past_its_threshold() {
+        let dt = 1e-6;
+        let mut spec = one_node(vec![Term::DamagedAbove {
+            source: "necrotic_factor".into(),
+            threshold: 0.5,
+            rate: 2.0,
+        }]);
+        spec.nodes[0].initial = 0.5;
+        let slope = |factor: f64| {
+            let mut net = Network::from_spec(&spec, 100).unwrap();
+            let inputs = CellInputs {
+                necrotic_factor: Concentration(factor),
+                ..at(1.0, 0.0)
+            };
+            net.step(TimeStep(dt), &inputs);
+            (net.state().values[0].0 - 0.5) / dt
+        };
+        assert!(
+            slope(0.4).abs() < 1e-9,
+            "below the threshold: {}",
+            slope(0.4)
+        );
+        assert!(
+            (slope(1.0) + 2.0).abs() < 1e-5,
+            "at twice it: {}",
+            slope(1.0)
+        );
+    }
+
+    #[test]
+    fn a_damage_above_nothing_is_refused() {
+        let spec = one_node(vec![Term::DamagedAbove {
+            source: "necrotic_factor".into(),
+            threshold: 0.0,
+            rate: 1.0,
+        }]);
+        assert!(Network::from_spec(&spec, 100).is_err());
     }
 
     #[test]

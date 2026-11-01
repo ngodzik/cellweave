@@ -213,6 +213,76 @@ pub struct Tracing {
     pub every: u64,
 }
 
+/// A cell cycle that takes time: each cell, when it is born, draws how many
+/// steps its cycle lasts, grows through it from half of what its network
+/// asks it to be to all of it, and divides only once they have passed and it
+/// has grown enough.
+///
+/// Durations are drawn from a log-normal distribution, the shape measured
+/// cycle times have, independently for each cell. Without one, a cell
+/// divides as soon as it is big enough at a check, and every cell of a
+/// tissue grown from one cell is checked at the same steps.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct Cycle {
+    /// The median duration of a cycle, in steps.
+    pub median: f64,
+    /// How much durations vary from cell to cell: the standard deviation of
+    /// their natural logarithm.
+    pub spread: f64,
+}
+
+/// A waste that living cells release and that holds them out of their
+/// cycle, Greenspan's inhibitor: every living cell releases it at the same
+/// rate, it diffuses as oxygen does, and the bath washes it away, so that it
+/// is highest where the tissue is deepest. What a cell does with it is its
+/// network's to say, through the `waste` input.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct Waste {
+    /// What a living cell's pixel releases each step, in the units its
+    /// network reads it in.
+    pub production: f64,
+}
+
+/// A factor that dead cells release and that stops and kills the living
+/// around them. Extracts of spheroids with extensive necrosis stop cells in
+/// culture from growing and kill them, and the activity is found in the
+/// medium the spheroids grew in, so that it diffuses out through the
+/// spheroid (Freyer, Cancer Research, 1988). Every pixel of a necrotic cell
+/// releases it at the same rate, it diffuses as the waste does, and the bath
+/// washes it away: it is highest in the dead core and reaches the living
+/// from there. What a cell does with it is its network's to say, through the
+/// `necrotic_factor` input. Not tumour necrosis factor, which is a cytokine.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct NecroticFactor {
+    /// What a dead cell's pixel releases each step, in the units its
+    /// network reads it in.
+    pub production: f64,
+    /// For how many steps after the one it died at a dead cell releases it:
+    /// Jiang and colleagues (Biophysical Journal, 2005) had a necrotic cell
+    /// release theirs for the 24 hours after it died. `None`, for as long as
+    /// the cell is there.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub release_for: Option<u64>,
+}
+
+/// A bath whose medium is still, so that oxygen reaches the tissue's surface
+/// only by diffusing through it. Around a spheroid in a well, the medium next
+/// to its surface is depleted of oxygen, and the more so the larger the
+/// spheroid: measured with microelectrodes, the oxygen at the surface falls
+/// with the spheroid's diameter even in medium that flows (Mueller-Klieser
+/// and Sutherland, British Journal of Cancer, 1982). Held at the source's
+/// level far away, a still medium around a ball of radius $R$ that consumes
+/// $F$ in all sits at its surface at
+/// $1 - F / (4 \pi D R)$, $D$ the oxygen's diffusion in the medium.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct StillMedium {
+    /// How fast oxygen diffuses in the medium, in the units of the
+    /// tissue's own, 0.2 a step: its molecular diffusion where the medium
+    /// is truly still, more where it moves, a slow convection carrying
+    /// oxygen to the surface as a faster diffusion would.
+    pub diffusion: f64,
+}
+
 /// When a new vessel starts carrying blood, and with it oxygen.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -354,6 +424,12 @@ pub struct CellInputs {
     /// Local level of the lethal stress, as a fraction of what the source
     /// holds while exposure is on. Zero when there is no exposure.
     pub stress: Concentration,
+    /// Local level of the waste living cells release. Zero when the
+    /// scenario has none.
+    pub waste: Concentration,
+    /// Local level of the factor dead cells release. Zero when the scenario
+    /// has none.
+    pub necrotic_factor: Concentration,
 }
 
 // ── CPM parameters derived from ODE state ────────────────────────────────────

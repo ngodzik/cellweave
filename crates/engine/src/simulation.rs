@@ -9,12 +9,14 @@
 //! solves it, hands back a [`Simulation<Running>`] that can be stepped. Stepping
 //! against an unsettled field is a compile error rather than a quiet artefact.
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::marker::PhantomData;
 
 use cellweave_core::{
     Angiogenesis, CellId, CellInputs, CellKind, CellSnapshot, CellweaveError, CloneId,
-    Concentration, DiffusionField, Exposure, Immunity, NetworkSpec, OxygenSource, Perfusion, Pos2,
-    Pos3, Seeding, SignalingNetwork, SimSnapshot, TimeStep, Tracing, Volume,
+    Concentration, Cycle, DiffusionField, Exposure, Immunity, NecroticFactor, NetworkSpec,
+    OxygenSource, Perfusion, Pos2, Pos3, Seeding, SignalingNetwork, SimSnapshot, StillMedium,
+    TimeStep, Tracing, Volume, Waste,
 };
 use rand::rngs::StdRng;
 use rand::{RngExt, SeedableRng};
@@ -133,11 +135,33 @@ const SHEDDING_RATE: u32 = 6;
 /// A cell of two hundred pixels is gone in about twenty-five steps.
 const FRAGMENTATION_RATE: u32 = 8;
 
+/// How many times a step the edge of dead tissue is drawn from while its
+/// debris owes pixels, each time laying bare the dead pixels behind those
+/// taken.
+///
+/// In Greenspan's balance the edge of a core moves in at $\lambda \eta R / 3$
+/// a step: at a loss of 0.16 a step, about three voxels a step for a core of
+/// radius 60. Eight leave room, and a core that owes more carries it.
+const EDGE_PASSES: usize = 8;
+
 /// The lethal stress diffuses like oxygen. How far it reaches into the tissue
 /// is set by how much the cells take up, which the exposure states, so one
 /// diffusion coefficient for both keeps the comparison between the two fields
 /// a comparison of their uptakes alone.
 const STRESS_DIFFUSION: f64 = OXYGEN_DIFFUSION;
+
+/// The waste diffuses like oxygen. In Greenspan's model only its production
+/// against its diffusion, and the level that arrests a cell, decide where
+/// cells arrest, so one coefficient for both leaves the production the one
+/// rate to set.
+const WASTE_DIFFUSION: f64 = OXYGEN_DIFFUSION;
+
+/// The necrotic factor diffuses as the waste does. Jiang and colleagues put
+/// such a factor's diffusion tens of thousands of times below oxygen's, that
+/// of a protein of 80 to 90 kilodaltons; but a field held at equilibrium, as
+/// every field here is, depends on its production over its diffusion alone,
+/// and the production is the rate a scenario sets.
+const NECROTIC_FACTOR_DIFFUSION: f64 = WASTE_DIFFUSION;
 
 /// VEGF diffuses like oxygen; how far it reaches is set by how fast it
 /// decays, which the scenario's reach states: $\lambda = D / L^2$.
@@ -231,6 +255,48 @@ pub struct Scenario {
     /// Every cell marked at one step and the clones the marks make
     /// followed. Left out, nothing is marked.
     pub tracing: Option<Tracing>,
+    /// The share of a dead cell's volume its debris loses per step, broken
+    /// down into fluid that leaves the tissue, as the necrotic core of a
+    /// spheroid loses mass (Greenspan 1972). The living tissue closes in
+    /// over what goes, at the edge of the dead tissue, so that what is lost
+    /// in the core is given up at the surface. Which pixels go, and to which
+    /// neighbour, is drawn from the run's generator. Left out, a dead cell
+    /// loses a pixel only when a neighbour takes it, which in a core of dead
+    /// cells none does, and the run is the one it always was.
+    pub debris_loss: Option<f64>,
+    /// Monte Carlo sweeps of the lattice each step: how many times every
+    /// pixel that can change is tried before the networks, the fields and
+    /// the fates move on. One in every configuration calibrated so far; more
+    /// lets a packed tissue's mechanics keep pace with what its growth and
+    /// its debris loss ask of it (chapter 27).
+    pub sweeps_per_step: u32,
+    /// A cell cycle that takes time, each cell drawing its own duration at
+    /// birth from the run's generator and growing through it; a tissue grown
+    /// from one cell is then checked for division every step, each cell
+    /// against its own clock. Left out, a cell asks at birth for all it will
+    /// be and divides once it is big enough at a check, and the run is the
+    /// one it always was.
+    pub cycle: Option<Cycle>,
+    /// How far two pixels count as touching, for the contact energy: 1
+    /// across a face, as in every configuration before chapter 27; in a
+    /// volume 3 across a face, an edge or a corner, so that what a boundary
+    /// costs depends less on its direction ([`CpmLattice::set_contact_order`]).
+    /// Copies are proposed across faces whatever it is.
+    pub contact_order: u8,
+    /// A waste the living release and the bath washes away, which each
+    /// cell's network reads as its `waste` input. `None` leaves the field
+    /// unsolved and every cell reading zero, and the run is the one it was.
+    pub waste: Option<Waste>,
+    /// A factor the dead release and the bath washes away, which each cell's
+    /// network reads as its `necrotic_factor` input. `None` leaves the field
+    /// unsolved and every cell reading zero, and the run is the one it was.
+    pub necrotic_factor: Option<NecroticFactor>,
+    /// A bath whose medium is still, so that what reaches the tissue's
+    /// surface is what diffuses through it: the more the tissue consumes, the
+    /// less. Only around a spheroid in a volume. `None` holds the medium at
+    /// the source's level up to the tissue, as if stirred, and the run is the
+    /// one it was.
+    pub still_medium: Option<StillMedium>,
 }
 
 /// One immune cell in the tissue.
@@ -375,6 +441,10 @@ pub struct Simulation<S: SimState> {
     stress_level: f64,
     /// What the living secrete as a call for vessels, when vessels can grow.
     vegf: Option<ScalarField>,
+    /// The waste the living release, when the scenario has one.
+    waste: Option<ScalarField>,
+    /// The factor the dead release, when the scenario has one.
+    necrotic_factor: Option<ScalarField>,
     /// The sprouts growing, and where every one started.
     vessels: Vessels,
     rng: StdRng,
@@ -394,6 +464,25 @@ pub struct Simulation<S: SimState> {
     /// The mark each slot's cell carries, if tracing has marked it or an
     /// ancestor: the slot of the cell marked at the tracing step.
     marks: Vec<Option<u32>>,
+    /// With debris loss, the slots of dead cells holding to what they had
+    /// when they died.
+    kept_dead: BTreeSet<usize>,
+    /// The step each dead cell's slot died at, while the cell is there; for
+    /// a cell made necrotic outside the fate step, the first step it was
+    /// seen dead.
+    died_at: BTreeMap<usize, u64>,
+    /// With debris loss, the pixels the dead tissue owes the fluid and has
+    /// not yet given up.
+    debris_owed: f64,
+    /// The level the bath holds the medium at, next to the tissue: the
+    /// source's, 1, unless the medium is still.
+    bath_level: f64,
+    /// With a cycle, the step from which each slot's cell may divide; zero
+    /// for the cells the tissue starts with, whose cycle is behind them.
+    due: Vec<u64>,
+    /// With a cycle, the step each slot's cell was born at, its cycle
+    /// began; zero for the cells the tissue starts with.
+    began: Vec<u64>,
     _state: PhantomData<S>,
 }
 
@@ -408,8 +497,31 @@ impl Simulation<Configured> {
     /// [`CellweaveError::Config`] when the grid dimensions are invalid, the
     /// network does not compile, the mutation rate is not a probability, a
     /// sheet is asked for with oxygen consumed or cells too small to divide,
-    /// or tracing writes clones down every zero steps.
+    /// or tracing writes clones down every zero steps, or a cycle lasts less
+    /// than a step or spreads by less than nothing, or the contact order is
+    /// not 1, 2 or 3, or a waste or a necrotic factor is released at no rate
+    /// or with no bath to wash it away.
     pub fn new(scenario: Scenario, spec: &NetworkSpec) -> Result<Self, CellweaveError> {
+        if scenario.sweeps_per_step == 0 {
+            return Err(CellweaveError::Config(
+                "sweeps_per_step is 0; a step sweeps the lattice at least once".into(),
+            ));
+        }
+        if !(1..=3).contains(&scenario.contact_order) {
+            return Err(CellweaveError::Config(format!(
+                "the contact order is {}; it is 1, 2 or 3",
+                scenario.contact_order
+            )));
+        }
+        if let Some(c) = scenario.cycle
+            && !(c.median.is_finite() && c.median >= 1.0 && c.spread.is_finite() && c.spread >= 0.0)
+        {
+            return Err(CellweaveError::Config(format!(
+                "the cycle's median is {} steps and its spread {}; a cycle lasts a step at \
+                 least, and its spread is not below zero",
+                c.median, c.spread
+            )));
+        }
         if !(0.0..=1.0).contains(&scenario.mutation_rate) {
             return Err(CellweaveError::Config(format!(
                 "the mutation rate is {}; it is a probability per division, between 0 and 1",
@@ -421,6 +533,77 @@ impl Simulation<Configured> {
                 "rewiring is {}; it is the probability that a mutation rewires, between 0 and 1",
                 scenario.rewiring
             )));
+        }
+        if let Some(loss) = scenario.debris_loss
+            && !(loss.is_finite() && loss > 0.0 && loss <= 1.0)
+        {
+            return Err(CellweaveError::Config(format!(
+                "debris loss is {loss}; it is the share of a dead cell lost per step, above \
+                 zero and at most one"
+            )));
+        }
+        if let Some(w) = scenario.waste {
+            if !(w.production.is_finite() && w.production > 0.0) {
+                return Err(CellweaveError::Config(format!(
+                    "the waste's production is {}; the living release some, above zero",
+                    w.production
+                )));
+            }
+            if scenario.oxygen_source != OxygenSource::Bath {
+                return Err(CellweaveError::Config(
+                    "a waste is washed away by the bath, and this scenario has none".into(),
+                ));
+            }
+        }
+        if let Some(f) = scenario.necrotic_factor {
+            if !(f.production.is_finite() && f.production > 0.0) {
+                return Err(CellweaveError::Config(format!(
+                    "the necrotic factor's production is {}; the dead release some, above zero",
+                    f.production
+                )));
+            }
+            if f.release_for == Some(0) {
+                return Err(CellweaveError::Config(
+                    "a necrotic factor released for 0 steps is never released; leave release_for \
+                     out to release it for as long as a dead cell is there"
+                        .into(),
+                ));
+            }
+            if scenario.oxygen_source != OxygenSource::Bath {
+                return Err(CellweaveError::Config(
+                    "a necrotic factor is washed away by the bath, and this scenario has none"
+                        .into(),
+                ));
+            }
+        }
+        if let Some(m) = scenario.still_medium {
+            if !(m.diffusion.is_finite() && m.diffusion > 0.0) {
+                return Err(CellweaveError::Config(format!(
+                    "the still medium's diffusion is {}; oxygen diffuses through it, above zero",
+                    m.diffusion
+                )));
+            }
+            if scenario.oxygen_source != OxygenSource::Bath {
+                return Err(CellweaveError::Config(
+                    "a still medium is the bath's, and this scenario has none".into(),
+                ));
+            }
+            if scenario.depth == 1 {
+                return Err(CellweaveError::Config(
+                    "a still medium is solved around a ball, and a plane has none; give the \
+                     scenario a depth"
+                        .into(),
+                ));
+            }
+            // What the tissue releases would gather in a still medium as
+            // oxygen is depleted in it, and only oxygen's level is solved.
+            if scenario.waste.is_some() || scenario.necrotic_factor.is_some() {
+                return Err(CellweaveError::Config(
+                    "a still medium holds back what the tissue releases as well, and only \
+                     oxygen is solved in it; leave out the waste and the necrotic factor"
+                        .into(),
+                ));
+            }
         }
         if scenario.tracing.is_some_and(|t| t.every == 0) {
             return Err(CellweaveError::Config(
@@ -448,6 +631,7 @@ impl Simulation<Configured> {
             scenario.temperature,
         )
         .map_err(|e| CellweaveError::Config(e.to_string()))?;
+        lattice.set_contact_order(scenario.contact_order);
         let cx = scenario.width / 2;
         let cy = scenario.height / 2;
         let cz = scenario.depth / 2;
@@ -650,6 +834,28 @@ impl Simulation<Configured> {
             }
         };
 
+        let waste = match scenario.waste {
+            None => None,
+            Some(_) => Some(ScalarField::with_depth(
+                scenario.width,
+                scenario.height,
+                scenario.depth,
+                WASTE_DIFFUSION,
+                0.0,
+                0.0,
+            )?),
+        };
+        let necrotic_factor = match scenario.necrotic_factor {
+            None => None,
+            Some(_) => Some(ScalarField::with_depth(
+                scenario.width,
+                scenario.height,
+                scenario.depth,
+                NECROTIC_FACTOR_DIFFUSION,
+                0.0,
+                0.0,
+            )?),
+        };
         let vegf = match scenario.angiogenesis {
             None => None,
             Some(a) => {
@@ -824,6 +1030,8 @@ impl Simulation<Configured> {
             stress,
             stress_level: 0.0,
             vegf,
+            waste,
+            necrotic_factor,
             vessels,
             first,
             next_mcs: 0,
@@ -834,6 +1042,12 @@ impl Simulation<Configured> {
             immune: Vec::new(),
             killed: 0,
             marks: vec![None; cells],
+            kept_dead: BTreeSet::new(),
+            died_at: BTreeMap::new(),
+            debris_owed: 0.0,
+            bath_level: 1.0,
+            due: vec![0; cells],
+            began: vec![0; cells],
             _state: PhantomData,
         })
     }
@@ -860,6 +1074,7 @@ impl Simulation<Configured> {
                     CellweaveError::Simulation(format!("settling the initial field: {e}"))
                 })?
         };
+        self.settle_bath_level();
         let running = Simulation {
             scenario: self.scenario,
             lattice: self.lattice,
@@ -873,6 +1088,8 @@ impl Simulation<Configured> {
             stress: self.stress,
             stress_level: self.stress_level,
             vegf: self.vegf,
+            waste: self.waste,
+            necrotic_factor: self.necrotic_factor,
             vessels: self.vessels,
             rng: self.rng,
             first: self.first,
@@ -884,6 +1101,12 @@ impl Simulation<Configured> {
             immune: self.immune,
             killed: self.killed,
             marks: self.marks,
+            kept_dead: self.kept_dead,
+            died_at: self.died_at,
+            debris_owed: self.debris_owed,
+            bath_level: self.bath_level,
+            due: self.due,
+            began: self.began,
             _state: PhantomData,
         };
         Ok((running, sweeps))
@@ -924,10 +1147,21 @@ impl Simulation<Running> {
                 )
                 .map_err(|e| CellweaveError::Simulation(format!("at MCS {mcs}: {e}")))?
         };
+        self.settle_bath_level();
         let local_o2 = mean_per_cell(&self.oxygen, &self.lattice);
         let exposure = self.settle_stress(mcs)?;
         let local_stress = self
             .stress
+            .as_ref()
+            .map(|field| mean_per_cell(field, &self.lattice));
+        self.settle_waste(mcs)?;
+        let local_waste = self
+            .waste
+            .as_ref()
+            .map(|field| mean_per_cell(field, &self.lattice));
+        self.settle_necrotic_factor(mcs)?;
+        let local_factor = self
+            .necrotic_factor
             .as_ref()
             .map(|field| mean_per_cell(field, &self.lattice));
 
@@ -950,6 +1184,8 @@ impl Simulation<Running> {
                 vegf: Concentration(0.0),
                 crowding: Concentration(crowding(&self.lattice, id, net)),
                 stress: Concentration(local_stress.as_ref().map_or(0.0, |s| s[i + 1])),
+                waste: Concentration(local_waste.as_ref().map_or(0.0, |w| w[i + 1])),
+                necrotic_factor: Concentration(local_factor.as_ref().map_or(0.0, |f| f[i + 1])),
             };
             for _ in 0..NETWORK_TIME_PER_MCS {
                 net.step(TimeStep(1.0), &inputs);
@@ -978,9 +1214,30 @@ impl Simulation<Running> {
                     leaving @ (CellKind::Necrotic | CellKind::Differentiated | CellKind::Apoptotic),
                 ) => {
                     let volume = self.lattice.volume(id).map_or(0, |v| v.0);
+                    if volume > 0 && leaving == CellKind::Necrotic {
+                        self.died_at.entry(i).or_insert(mcs);
+                    }
                     if volume == 0 {
                         *slot = None;
                         self.gone += 1;
+                        self.kept_dead.remove(&i);
+                        self.died_at.remove(&i);
+                    } else if let (CellKind::Necrotic, Some(loss)) =
+                        (leaving, self.scenario.debris_loss)
+                    {
+                        // Its debris breaks down where it lies: the cell
+                        // keeps to what it held when it died (below, or here
+                        // if it was made necrotic outside this loop), and the
+                        // dead tissue owes the fluid a share of that each
+                        // step.
+                        if self.kept_dead.insert(i) {
+                            self.lattice.set_volume_target(
+                                id,
+                                Volume(volume),
+                                net.mechanics().lambda_volume,
+                            );
+                        }
+                        self.debris_owed += loss * f64::from(volume);
                     } else {
                         let rate = match leaving {
                             CellKind::Necrotic => RESORPTION_RATE,
@@ -995,6 +1252,24 @@ impl Simulation<Running> {
                 Some(_) if net.survival() < DEATH_THRESHOLD => {
                     self.lattice.set_kind(id, CellKind::Necrotic);
                     self.lives.left(i);
+                    self.died_at.insert(i, mcs);
+                    // With a debris loss its debris is the dead tissue's,
+                    // and owes its share, from this step. Kept from the
+                    // next step only, the cells dead one step were neither
+                    // living nor kept, a shell between the kept core and
+                    // the living, and nothing closed over the core one step
+                    // in two.
+                    if let Some(loss) = self.scenario.debris_loss
+                        && self.kept_dead.insert(i)
+                    {
+                        let volume = self.lattice.volume(id).map_or(0, |v| v.0);
+                        self.lattice.set_volume_target(
+                            id,
+                            Volume(volume),
+                            net.mechanics().lambda_volume,
+                        );
+                        self.debris_owed += loss * f64::from(volume);
+                    }
                 }
                 // Each drawn only for a network that has the role, so a
                 // network without it takes exactly the draws it took before
@@ -1017,19 +1292,32 @@ impl Simulation<Running> {
                 }
                 Some(_) => {
                     let m = net.mechanics();
-                    self.lattice
-                        .set_volume_target(id, m.target_volume, m.lambda_volume);
+                    // With a cycle a cell grows through it, rather than
+                    // asking at birth for all it will be.
+                    let target = match self.scenario.cycle {
+                        Some(_) => grown(m.target_volume, self.began[i], self.due[i], mcs),
+                        None => m.target_volume,
+                    };
+                    self.lattice.set_volume_target(id, target, m.lambda_volume);
                 }
                 None => {}
             }
         }
+
+        // 3a. With debris loss, the dead tissue gives up at its edge every
+        //     whole pixel it owes the fluid, and fluid shut in the tissue
+        //     drains where it touches the living.
+        self.break_down_debris();
+        self.drain_shut_in();
 
         // 3b. Immune cells arrive, kill what they touch, and die; then the
         //     chemokine settles and they are set to climb it.
         self.immune_respond(mcs)?;
 
         // 4. Advance CPM.
-        self.lattice.monte_carlo_step(&mut self.rng);
+        for _ in 0..self.scenario.sweeps_per_step {
+            self.lattice.monte_carlo_step(&mut self.rng);
+        }
 
         let report = StepReport {
             mcs,
@@ -1046,9 +1334,9 @@ impl Simulation<Running> {
 
         // 5. Cells that have grown enough, and are not too short of oxygen to
         //    cycle, split in two.
-        let every = match self.scenario.seeding {
-            Seeding::Single => DIVISION_CHECK_EVERY,
-            Seeding::Sheet { .. } => 1,
+        let every = match (self.scenario.seeding, self.scenario.cycle) {
+            (Seeding::Single, None) => DIVISION_CHECK_EVERY,
+            _ => 1,
         };
         if mcs.is_multiple_of(every) && self.living() < self.scenario.max_cells {
             self.born += self.divide_ready_cells(mcs);
@@ -1183,6 +1471,8 @@ impl Simulation<Running> {
         self.networks.push(None);
         self.lineage.push(CloneId(0));
         self.marks.push(None);
+        self.due.push(0);
+        self.began.push(0);
         self.immune.push(ImmuneCell {
             slot: self.networks.len() - 1,
             arrived: mcs,
@@ -1319,10 +1609,13 @@ impl Simulation<Running> {
                     .lattice
                     .volume(id)
                     .is_some_and(|v| f64::from(v.0) >= threshold);
-                big_enough && self.fate(id) == Some(Fate::Cycling)
+                big_enough && self.due[*i] <= mcs && self.fate(id) == Some(Fate::Cycling)
             })
             .map(|(i, _)| i)
             .collect();
+        if ready.is_empty() {
+            return 0;
+        }
 
         let mut born = 0;
         let living = self.living();
@@ -1399,9 +1692,21 @@ impl Simulation<Running> {
                         clone = founded;
                     }
                 }
+                // Drawn last, and only with a cycle, so that a run without
+                // one takes exactly the draws it always took.
+                let (began, due) = match self.scenario.cycle {
+                    Some(cycle) => {
+                        self.due[i] = mcs + self.cycle_length(cycle);
+                        self.began[i] = mcs;
+                        (mcs, mcs + self.cycle_length(cycle))
+                    }
+                    None => (0, 0),
+                };
                 self.networks.push(daughter);
                 self.lineage.push(clone);
                 self.marks.push(self.marks[i]);
+                self.due.push(due);
+                self.began.push(began);
                 self.lives.divided(i, self.networks.len() - 1);
                 born += 1;
             }
@@ -1421,6 +1726,102 @@ impl Simulation<Running> {
             "one clone per cell: the network list and the lineage have diverged"
         );
         born
+    }
+
+    /// How many steps a cycle just begun lasts, drawn from the run's
+    /// generator: the median times $e^{\sigma z}$, with $z$ a standard normal
+    /// draw (Box and Muller, two uniform draws) and $\sigma$ the spread. One
+    /// step at least.
+    fn cycle_length(&mut self, cycle: Cycle) -> u64 {
+        let (u, v) = (1.0 - self.rng.random::<f64>(), self.rng.random::<f64>());
+        let z = (-2.0 * u.ln()).sqrt() * (std::f64::consts::TAU * v).cos();
+        (cycle.median * (cycle.spread * z).exp()).round().max(1.0) as u64
+    }
+
+    /// Take every whole pixel the dead tissue's debris owes off it at its
+    /// edge, and close the tissue over each (`CpmLattice::close_over`): the
+    /// pixels are drawn among dead ones that touch living tissue, and once
+    /// those are taken, the dead pixels they laid bare, up to
+    /// `EDGE_PASSES` times. A dead cell inside the core has only dead cells
+    /// around it, and a pixel it gave one of them would only move the debris
+    /// about; at the edge the living tissue closes in, which is what the
+    /// core's loss comes to wherever in it the debris breaks down. What is
+    /// still owed is carried to the next step, never more than the dead
+    /// tissue holds. Draws nothing without debris loss.
+    fn break_down_debris(&mut self) {
+        if self.scenario.debris_loss.is_none() {
+            return;
+        }
+        let owed = self.debris_owed.floor() as usize;
+        if owed == 0 {
+            return;
+        }
+        let slots: Vec<usize> = self.kept_dead.iter().copied().collect();
+        let ids: Vec<CellId> = slots.iter().map(|&i| cell_of(i)).collect();
+        let mut pool: Vec<(usize, usize)> = self
+            .lattice
+            .pixels_of(&ids)
+            .into_iter()
+            .enumerate()
+            .flat_map(|(k, pixels)| pixels.into_iter().map(move |p| (k, p)))
+            .collect();
+        let held = pool.len();
+        let mut given = vec![0u32; slots.len()];
+        let mut paid = 0;
+        for _ in 0..EDGE_PASSES {
+            let (mut edge, inside): (Vec<_>, Vec<_>) = pool
+                .into_iter()
+                .partition(|&(_, p)| self.lattice.can_close_over(p));
+            pool = inside;
+            if edge.is_empty() {
+                break;
+            }
+            while paid < owed && !edge.is_empty() {
+                let (k, p) = edge.swap_remove(self.rng.random_range(0..edge.len()));
+                if self.lattice.close_over(p, &mut self.rng) {
+                    given[k] += 1;
+                    paid += 1;
+                }
+            }
+            if paid == owed {
+                break;
+            }
+            pool.extend(edge);
+        }
+        self.debris_owed = (self.debris_owed - paid as f64).min((held - paid) as f64);
+        // What is lost is lost: each dead cell tries to hold that much less,
+        // and does not grow back into the space it gave up.
+        for (&i, lost) in slots.iter().zip(given) {
+            let id = cell_of(i);
+            if let (true, Some(target), Some(net)) =
+                (lost > 0, self.lattice.target_volume(id), &self.networks[i])
+            {
+                let target = Volume(target.0.saturating_sub(lost));
+                self.lattice
+                    .set_volume_target(id, target, net.mechanics().lambda_volume);
+            }
+        }
+    }
+
+    /// With a debris loss, close in every medium pixel the tissue shuts in
+    /// that touches living tissue, one layer a step: fluid in a cavity of
+    /// the tissue leaves through it as the debris does, and the living cells
+    /// around it take the space (`CpmLattice::close_in`). Which neighbour
+    /// takes each is drawn from the run's generator, in the order of the
+    /// pixels. Without a debris loss nothing is looked at or drawn.
+    fn drain_shut_in(&mut self) {
+        if self.scenario.debris_loss.is_none() {
+            return;
+        }
+        let edge: Vec<usize> = self
+            .lattice
+            .shut_in()
+            .into_iter()
+            .filter(|&i| self.lattice.can_close_in(i))
+            .collect();
+        for i in edge {
+            self.lattice.close_in(i, &mut self.rng);
+        }
     }
 
     /// Undo the founding mutation of every clone the reversion names, in every
@@ -1649,6 +2050,76 @@ impl<S: SimState> Simulation<S> {
         Ok(level)
     }
 
+    /// Solve the waste field for step `mcs`: every pixel of a living cell
+    /// releases the scenario's production, the dead and the medium release
+    /// nothing, and the medium the bath reaches is held at zero. Without a
+    /// waste there is no field and nothing is solved.
+    fn settle_waste(&mut self, mcs: u64) -> Result<(), CellweaveError> {
+        let (Some(waste), Some(field)) = (self.scenario.waste, self.waste.as_mut()) else {
+            return Ok(());
+        };
+        settle_released(
+            field,
+            &self.lattice,
+            self.networks.len(),
+            waste.production,
+            |_, kind| matches!(kind, CellKind::Tumor | CellKind::Normal),
+        )
+        .map_err(|e| CellweaveError::Simulation(format!("waste at MCS {mcs}: {e}")))
+    }
+
+    /// Solve the necrotic factor's field for step `mcs`: every pixel of a
+    /// dead cell releases the scenario's production, for as many steps after
+    /// the one it died at as the scenario says or for as long as it is there,
+    /// the living and the medium release nothing, and the medium the bath
+    /// reaches is held at zero. Without a necrotic factor there is no field
+    /// and nothing is solved.
+    fn settle_necrotic_factor(&mut self, mcs: u64) -> Result<(), CellweaveError> {
+        let (Some(factor), Some(field)) =
+            (self.scenario.necrotic_factor, self.necrotic_factor.as_mut())
+        else {
+            return Ok(());
+        };
+        let died_at = &self.died_at;
+        let releasing = |id: CellId| match (factor.release_for, died_at.get(&(id.0 as usize - 1))) {
+            (Some(steps), Some(&died)) => mcs <= died + steps,
+            _ => true,
+        };
+        settle_released(
+            field,
+            &self.lattice,
+            self.networks.len(),
+            factor.production,
+            |id, kind| kind == CellKind::Necrotic && releasing(id),
+        )
+        .map_err(|e| CellweaveError::Simulation(format!("necrotic factor at MCS {mcs}: {e}")))
+    }
+
+    /// With a still medium, the level the bath holds next to the tissue at
+    /// the next step, from what the tissue took up at this one.
+    ///
+    /// A still medium held at the source's level far away and taking up
+    /// nothing itself sits, around a ball of radius $R$ that takes up $F$ in
+    /// all, at $1 - F / (4 \pi D R)$ at its surface. $F$ is what the held
+    /// medium handed the tissue, read from the settled field; the ball is the
+    /// one holding everything the bath does not reach, the tissue and the
+    /// fluid shut in it. The level lags the field by a step: what a tissue
+    /// takes up is set by its living cells, which a step changes by a few
+    /// in a hundred, and a cell starved by a lower level takes many steps to
+    /// die.
+    fn settle_bath_level(&mut self) {
+        let Some(medium) = self.scenario.still_medium else {
+            return;
+        };
+        let taken = self.oxygen.inflow();
+        let radius = (3.0 * self.oxygen.free_count() as f64 / (4.0 * std::f64::consts::PI)).cbrt();
+        self.bath_level = if radius > 0.0 {
+            (1.0 - taken / (4.0 * std::f64::consts::PI * medium.diffusion * radius)).max(0.0)
+        } else {
+            1.0
+        };
+    }
+
     /// Whether the field is left unsolved: nothing consumes, so everywhere
     /// sits at the level it started at.
     fn field_is_off(&self) -> bool {
@@ -1665,7 +2136,9 @@ impl<S: SimState> Simulation<S> {
         apply_uptake(&mut self.oxygen, &self.lattice, uptake);
         self.oxygen.release_all();
         match self.scenario.oxygen_source {
-            OxygenSource::Bath => hold_medium_bath(&mut self.oxygen, &self.lattice, 1.0),
+            OxygenSource::Bath => {
+                hold_medium_bath(&mut self.oxygen, &self.lattice, self.bath_level);
+            }
             OxygenSource::Vessel { .. } | OxygenSource::Capillary { .. } => {
                 apply_background_uptake(&mut self.oxygen, &self.lattice, uptake);
                 match self
@@ -1733,6 +2206,25 @@ impl<S: SimState> Simulation<S> {
     /// scenario exposes the tissue to nothing.
     pub fn stress(&self) -> Option<&ScalarField> {
         self.stress.as_ref()
+    }
+
+    /// The waste field, as it was last settled, or `None` when the scenario
+    /// has no waste.
+    pub fn waste(&self) -> Option<&ScalarField> {
+        self.waste.as_ref()
+    }
+
+    /// The necrotic factor's field, as it was last settled, or `None` when
+    /// the scenario has none.
+    pub fn necrotic_factor(&self) -> Option<&ScalarField> {
+        self.necrotic_factor.as_ref()
+    }
+
+    /// The level the bath holds the medium at next to the tissue, this step:
+    /// 1, the source's, unless the medium is still.
+    #[must_use]
+    pub fn bath_level(&self) -> f64 {
+        self.bath_level
     }
 
     /// What the living secrete as a call for vessels, when vessels can grow.
@@ -1995,6 +2487,49 @@ fn crowding(lattice: &CpmLattice, id: CellId, net: &Network) -> f64 {
     (1.0 - f64::from(volume) / reference).clamp(0.0, 1.0)
 }
 
+/// What a cell asks to be at step `mcs` of a cycle that began at `began`
+/// and ends at `due`: half of `full` at birth, rising in proportion to the
+/// time passed, all of it from `due` on. A daughter is born at about half
+/// her mother's volume, and grows through her cycle to divide again. A
+/// cycle that is behind the cell, `due` not after `began`, gives all of it.
+fn grown(full: Volume, began: u64, due: u64, mcs: u64) -> Volume {
+    if due <= began {
+        return full;
+    }
+    let passed = (mcs.saturating_sub(began) as f64 / (due - began) as f64).min(1.0);
+    Volume((f64::from(full.0) * (0.5 + 0.5 * passed)).round() as u32)
+}
+
+/// Settle a field that every pixel of a cell of the kinds `releases` names
+/// releases `production` into, a step's worth, and that the medium the bath
+/// reaches holds at zero: the waste, from the living, and the necrotic
+/// factor, from the dead. `cells` is how many cells the tissue has had.
+fn settle_released(
+    field: &mut ScalarField,
+    lattice: &CpmLattice,
+    cells: usize,
+    production: f64,
+    releases: impl Fn(CellId, CellKind) -> bool,
+) -> Result<(), CellweaveError> {
+    let mut per_cell = vec![0.0; cells + 1];
+    for (id, record) in lattice.cell_records() {
+        if releases(id, record.kind)
+            && let Some(rate) = per_cell.get_mut(id.0 as usize)
+        {
+            *rate = production;
+        }
+    }
+    apply_production(field, lattice, &per_cell);
+    field.release_all();
+    hold_medium_bath(field, lattice, 0.0);
+    field.relax(
+        TimeStep(1.0),
+        OXYGEN_TOLERANCE * production,
+        OXYGEN_MAX_STEPS,
+    )?;
+    Ok(())
+}
+
 /// The cell whose slot is `i`. Identifier 0 is the medium.
 fn cell_of(i: usize) -> CellId {
     CellId(i as u32 + 1)
@@ -2031,6 +2566,13 @@ mod tests {
             angiogenesis: None,
             immunity: None,
             tracing: None,
+            debris_loss: None,
+            sweeps_per_step: 1,
+            cycle: None,
+            contact_order: 1,
+            waste: None,
+            necrotic_factor: None,
+            still_medium: None,
         }
     }
 
@@ -2073,6 +2615,80 @@ mod tests {
     }
 
     #[test]
+    fn a_still_medium_sits_below_the_source_by_what_the_tissue_takes_up() {
+        let with = |still_medium| Scenario {
+            oxygen_uptake: 0.01,
+            still_medium,
+            ..in_a_volume(OxygenSource::Bath)
+        };
+        let start = |scenario| {
+            Simulation::new(scenario, &spec())
+                .unwrap()
+                .start()
+                .unwrap()
+                .0
+        };
+        assert_eq!(start(with(None)).bath_level(), 1.0);
+
+        // The first cell, a ball of 123 voxels each taking up 0.01, in a
+        // medium through which oxygen diffuses as through the tissue.
+        let mut sim = start(with(Some(StillMedium { diffusion: 0.2 })));
+        let radius = (3.0 * 123.0 / (4.0 * std::f64::consts::PI)).cbrt();
+        let expected = 1.0 - 0.01 * 123.0 / (4.0 * std::f64::consts::PI * 0.2 * radius);
+        let level = sim.bath_level();
+        assert!(
+            (level - expected).abs() < 1e-6,
+            "{level} against {expected}"
+        );
+        // The step holds the medium at it: the box's corner is medium.
+        sim.step().unwrap();
+        assert_eq!(sim.oxygen().value_at(0), level);
+
+        // A medium oxygen goes through faster is depleted less.
+        let faster = start(with(Some(StillMedium { diffusion: 2.0 }))).bath_level();
+        assert!(faster > level && faster < 1.0, "{faster} against {level}");
+    }
+
+    #[test]
+    fn a_still_medium_is_a_bath_around_a_ball_that_lets_oxygen_through() {
+        let still = Some(StillMedium { diffusion: 0.3 });
+        let refused = |scenario, what: &str| match Simulation::new(scenario, &spec()) {
+            Err(CellweaveError::Config(m)) => assert!(m.contains(what), "{m}"),
+            Err(e) => panic!("{e}"),
+            Ok(_) => panic!("accepted, where it should say {what}"),
+        };
+        refused(
+            Scenario {
+                still_medium: still,
+                ..scenario(OxygenSource::Bath)
+            },
+            "a plane has none",
+        );
+        refused(
+            Scenario {
+                still_medium: still,
+                ..in_a_volume(OxygenSource::Vessel { radius: 4 })
+            },
+            "the bath's",
+        );
+        refused(
+            Scenario {
+                still_medium: Some(StillMedium { diffusion: 0.0 }),
+                ..in_a_volume(OxygenSource::Bath)
+            },
+            "above zero",
+        );
+        refused(
+            Scenario {
+                still_medium: still,
+                waste: Some(Waste { production: 0.001 }),
+                ..in_a_volume(OxygenSource::Bath)
+            },
+            "only oxygen",
+        );
+    }
+
+    #[test]
     fn around_a_vessel_in_a_volume_the_vessel_runs_through_the_box() {
         let sim =
             Simulation::new(in_a_volume(OxygenSource::Vessel { radius: 4 }), &spec()).unwrap();
@@ -2108,6 +2724,343 @@ mod tests {
             immunity: immune(0, 0.5, 0.5).immunity,
             ..in_a_volume(OxygenSource::Vessel { radius: 4 })
         }));
+    }
+
+    #[test]
+    fn a_dead_cell_loses_the_share_of_its_volume_debris_loss_says() {
+        let loss = 0.05;
+        let (mut sim, _) = Simulation::new(
+            Scenario {
+                debris_loss: Some(loss),
+                ..scenario(OxygenSource::Bath)
+            },
+            &spec(),
+        )
+        .unwrap()
+        .start()
+        .unwrap();
+        // Grown first, so that the cell at the centre has living cells all
+        // around it to close over what it loses.
+        for _ in 0..100 {
+            sim.step().unwrap();
+        }
+        let id = CellId(sim.lattice().occupant(40, 40));
+        assert!(id.0 != 0);
+        sim.lattice.set_kind(id, CellKind::Necrotic);
+        let before = f64::from(sim.lattice().volume(id).unwrap().0);
+        for _ in 0..10 {
+            sim.step().unwrap();
+        }
+        let after = f64::from(sim.lattice().volume(id).unwrap().0);
+        let expected = before * (1.0 - loss).powi(10);
+        assert!(
+            (after - expected).abs() < 0.15 * expected,
+            "{before} pixels became {after}, against {expected:.0}"
+        );
+    }
+
+    #[test]
+    fn with_a_debris_loss_a_cell_is_kept_from_the_step_it_dies() {
+        // Ten times the uptake, so that the middle of the disc dies.
+        let (mut sim, _) = Simulation::new(
+            Scenario {
+                debris_loss: Some(0.05),
+                oxygen_uptake: 0.003,
+                ..scenario(OxygenSource::Bath)
+            },
+            &spec(),
+        )
+        .unwrap()
+        .start()
+        .unwrap();
+        let mut dead = 0;
+        for _ in 0..300 {
+            let mcs = sim.step().unwrap().mcs;
+            for (i, slot) in sim.networks.iter().enumerate() {
+                let id = cell_of(i);
+                if slot.is_some()
+                    && sim.lattice.cell_kind(id) == Some(CellKind::Necrotic)
+                    && sim.lattice.volume(id).is_some_and(|v| v.0 > 0)
+                {
+                    dead += 1;
+                    assert!(
+                        sim.kept_dead.contains(&i),
+                        "cell {i} dead at MCS {mcs}, not kept"
+                    );
+                }
+            }
+            if dead > 0 {
+                break;
+            }
+        }
+        assert!(dead > 0, "no cell died");
+    }
+
+    #[test]
+    fn a_cell_grows_through_its_cycle_from_half_its_target_to_all_of_it() {
+        let full = Volume(180);
+        assert_eq!(grown(full, 100, 120, 100), Volume(90));
+        assert_eq!(grown(full, 100, 120, 110), Volume(135));
+        assert_eq!(grown(full, 100, 120, 120), full);
+        assert_eq!(grown(full, 100, 120, 150), full, "arrested past its cycle");
+        // A cell the tissue starts with has its cycle behind it.
+        assert_eq!(grown(full, 0, 0, 7), full);
+    }
+
+    #[test]
+    fn a_cycle_lasts_a_step_at_least_and_spreads_by_something() {
+        for (median, spread) in [
+            (0.5, 0.2),
+            (20.0, -0.1),
+            (f64::NAN, 0.2),
+            (20.0, f64::INFINITY),
+        ] {
+            let scenario = Scenario {
+                cycle: Some(Cycle { median, spread }),
+                ..scenario(OxygenSource::Bath)
+            };
+            assert!(
+                Simulation::new(scenario, &spec()).is_err(),
+                "{median} {spread}"
+            );
+        }
+    }
+
+    #[test]
+    fn cycle_lengths_have_the_median_and_spread_asked_for() {
+        let cycle = Cycle {
+            median: 40.0,
+            spread: 0.3,
+        };
+        let (mut sim, _) = Simulation::new(scenario(OxygenSource::Bath), &spec())
+            .unwrap()
+            .start()
+            .unwrap();
+        let mut logs: Vec<f64> = (0..4000)
+            .map(|_| (sim.cycle_length(cycle) as f64).ln())
+            .collect();
+        logs.sort_by(f64::total_cmp);
+        let median = logs[logs.len() / 2].exp();
+        let mean = logs.iter().sum::<f64>() / logs.len() as f64;
+        let sd = (logs.iter().map(|l| (l - mean).powi(2)).sum::<f64>() / logs.len() as f64).sqrt();
+        assert!((median - 40.0).abs() < 2.0, "median {median}");
+        assert!((sd - 0.3).abs() < 0.03, "spread {sd}");
+    }
+
+    #[test]
+    fn with_a_cycle_of_their_own_cells_stop_dividing_together() {
+        // Without a cycle, cells in a volume regrow within a few steps and
+        // all divide at the same checks, every 20 steps; with one, each
+        // divides on its own clock.
+        let steps_with_births = |cycle: Option<Cycle>| {
+            let (mut sim, _) = Simulation::new(
+                Scenario {
+                    cycle,
+                    ..in_a_volume(OxygenSource::Bath)
+                },
+                &spec(),
+            )
+            .unwrap()
+            .start()
+            .unwrap();
+            let mut at = BTreeSet::new();
+            let mut before = sim.born();
+            for _ in 0..160 {
+                let mcs = sim.step().unwrap().mcs;
+                if sim.born() > before {
+                    at.insert(mcs % DIVISION_CHECK_EVERY);
+                }
+                before = sim.born();
+            }
+            at.len()
+        };
+        assert_eq!(steps_with_births(None), 1);
+        let cycle = Cycle {
+            median: 20.0,
+            spread: 0.3,
+        };
+        assert!(steps_with_births(Some(cycle)) >= 10);
+    }
+
+    #[test]
+    fn the_contact_order_is_one_two_or_three() {
+        for order in [0, 4] {
+            let scenario = Scenario {
+                contact_order: order,
+                ..scenario(OxygenSource::Bath)
+            };
+            assert!(Simulation::new(scenario, &spec()).is_err(), "{order}");
+        }
+    }
+
+    #[test]
+    fn a_waste_is_released_at_some_rate_and_washed_away_by_a_bath() {
+        for production in [0.0, -1.0, f64::NAN] {
+            let scenario = Scenario {
+                waste: Some(Waste { production }),
+                ..scenario(OxygenSource::Bath)
+            };
+            assert!(Simulation::new(scenario, &spec()).is_err(), "{production}");
+        }
+        let scenario = Scenario {
+            waste: Some(Waste { production: 0.001 }),
+            ..scenario(OxygenSource::Vessel { radius: 3 })
+        };
+        assert!(Simulation::new(scenario, &spec()).is_err());
+    }
+
+    #[test]
+    fn the_waste_is_deepest_where_the_tissue_is_and_nothing_in_the_bath() {
+        let (mut sim, _) = Simulation::new(
+            Scenario {
+                waste: Some(Waste { production: 0.001 }),
+                ..scenario(OxygenSource::Bath)
+            },
+            &spec(),
+        )
+        .unwrap()
+        .start()
+        .unwrap();
+        for _ in 0..50 {
+            sim.step().unwrap();
+        }
+        let field = sim.waste().unwrap();
+        let at = |x: usize, y: usize| field.value_at(y * 80 + x);
+        assert_eq!(sim.lattice().occupant(0, 0), 0);
+        assert_eq!(at(0, 0), 0.0, "the bath washes it away");
+        // Out from the middle of the tissue along a row, to the medium.
+        let edge = (40..80)
+            .find(|&x| sim.lattice().occupant(x as u32, 40) == 0)
+            .unwrap();
+        assert!(edge > 44, "the tissue reaches {edge}");
+        let (middle, halfway) = (at(40, 40), at((40 + edge) / 2, 40));
+        assert!(
+            middle > halfway && halfway > 0.0 && at(79, 40) == 0.0,
+            "{middle} at the middle, {halfway} halfway, {} at the box's edge",
+            at(79, 40)
+        );
+    }
+
+    #[test]
+    fn a_necrotic_factor_is_released_at_some_rate_and_washed_away_by_a_bath() {
+        for production in [0.0, -1.0, f64::NAN] {
+            let scenario = Scenario {
+                necrotic_factor: Some(NecroticFactor {
+                    production,
+                    release_for: None,
+                }),
+                ..scenario(OxygenSource::Bath)
+            };
+            assert!(Simulation::new(scenario, &spec()).is_err(), "{production}");
+        }
+        let scenario = Scenario {
+            necrotic_factor: Some(NecroticFactor {
+                production: 0.001,
+                release_for: None,
+            }),
+            ..scenario(OxygenSource::Vessel { radius: 3 })
+        };
+        assert!(Simulation::new(scenario, &spec()).is_err());
+    }
+
+    #[test]
+    fn a_dead_cell_releases_the_necrotic_factor_for_as_many_steps_as_it_is_told() {
+        let scenario = |release_for| Scenario {
+            necrotic_factor: Some(NecroticFactor {
+                production: 0.001,
+                release_for,
+            }),
+            ..scenario(OxygenSource::Bath)
+        };
+        assert!(Simulation::new(scenario(Some(0)), &spec()).is_err());
+        // The same tissue either way, since nothing reads the factor; the
+        // centre's level at each of six steps from the one a cell is seen dead.
+        let centre = |release_for| {
+            let (mut sim, _) = Simulation::new(scenario(release_for), &spec())
+                .unwrap()
+                .start()
+                .unwrap();
+            for _ in 0..50 {
+                sim.step().unwrap();
+            }
+            let id = CellId(sim.lattice().occupant(40, 40));
+            sim.lattice.set_kind(id, CellKind::Necrotic);
+            (0..6)
+                .map(|_| {
+                    sim.step().unwrap();
+                    sim.necrotic_factor().unwrap().value_at(40 * 80 + 40)
+                })
+                .collect::<Vec<_>>()
+        };
+        let (limited, always) = (centre(Some(2)), centre(None));
+        assert_eq!(
+            limited[..3],
+            always[..3],
+            "released at the step it is seen dead and two more"
+        );
+        assert!(
+            limited[5] < 0.5 * always[5],
+            "then no longer: {limited:?} against {always:?}"
+        );
+    }
+
+    #[test]
+    fn the_necrotic_factor_comes_from_the_dead_alone() {
+        let (mut sim, _) = Simulation::new(
+            Scenario {
+                necrotic_factor: Some(NecroticFactor {
+                    production: 0.001,
+                    release_for: None,
+                }),
+                ..scenario(OxygenSource::Bath)
+            },
+            &spec(),
+        )
+        .unwrap()
+        .start()
+        .unwrap();
+        for _ in 0..50 {
+            sim.step().unwrap();
+        }
+        let field = sim.necrotic_factor().unwrap();
+        assert!(
+            (0..field.len()).all(|i| field.value_at(i) == 0.0),
+            "nothing is dead yet, and nothing is released"
+        );
+        let id = CellId(sim.lattice().occupant(40, 40));
+        sim.lattice.set_kind(id, CellKind::Necrotic);
+        sim.step().unwrap();
+        let field = sim.necrotic_factor().unwrap();
+        let at = |x: usize, y: usize| field.value_at(y * 80 + x);
+        let edge = (40..80)
+            .find(|&x| sim.lattice().occupant(x as u32, 40) == 0)
+            .unwrap();
+        let (dead, halfway) = (at(40, 40), at((40 + edge) / 2, 40));
+        assert!(
+            dead > halfway && halfway > 0.0 && at(0, 0) == 0.0,
+            "{dead} in the dead cell, {halfway} halfway out, {} in the bath",
+            at(0, 0)
+        );
+    }
+
+    #[test]
+    fn a_step_sweeps_the_lattice_at_least_once() {
+        let scenario = Scenario {
+            sweeps_per_step: 0,
+            ..scenario(OxygenSource::Bath)
+        };
+        assert!(Simulation::new(scenario, &spec()).is_err());
+    }
+
+    #[test]
+    fn a_debris_loss_is_a_share_per_step() {
+        for loss in [0.0, -0.1, 1.5, f64::NAN] {
+            let scenario = Scenario {
+                debris_loss: Some(loss),
+                ..scenario(OxygenSource::Bath)
+            };
+            assert!(Simulation::new(scenario, &spec()).is_err(), "{loss}");
+        }
     }
 
     #[test]

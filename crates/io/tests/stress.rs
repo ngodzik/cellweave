@@ -41,6 +41,13 @@ fn exposed(exposure: Option<Exposure>) -> Scenario {
         angiogenesis: None,
         immunity: None,
         tracing: None,
+        debris_loss: None,
+        sweeps_per_step: 1,
+        cycle: None,
+        contact_order: 1,
+        waste: None,
+        necrotic_factor: None,
+        still_medium: None,
     }
 }
 
@@ -179,6 +186,8 @@ fn a_response_is_read_on_a_copy_and_needs_the_role() {
         vegf: cellweave_core::Concentration(0.0),
         crowding: cellweave_core::Concentration(0.0),
         stress: cellweave_core::Concentration(0.5),
+        waste: cellweave_core::Concentration(0.0),
+        necrotic_factor: cellweave_core::Concentration(0.0),
     };
     let before = net.state().values.clone();
     let chance = net.apoptosis_under(&inputs, 60).unwrap();
@@ -207,6 +216,8 @@ fn turning_p53_down_makes_a_cell_resistant() {
         vegf: cellweave_core::Concentration(0.0),
         crowding: cellweave_core::Concentration(0.0),
         stress: cellweave_core::Concentration(0.5),
+        waste: cellweave_core::Concentration(0.0),
+        necrotic_factor: cellweave_core::Concentration(0.0),
     };
     // Sixteen terms, the twelve of the RAS/ERK network and then p53's two and
     // caspase's two: a draw of 12.5 / 16 lands on p53's activation, and a draw

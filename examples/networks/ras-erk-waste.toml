@@ -1,0 +1,31 @@
+# The softer RAS/ERK network of ras-erk-soft.toml, its cells held out of
+# their cycle by the waste the living release as well as by hypoxia
+# (chapter 27).
+#
+# p27 (p27Kip1) is a cyclin-dependent kinase inhibitor: it holds a cell in
+# the first gap of its cycle. In melanoma spheroids it rises in the quiescent
+# cells of the inner regions (LaRue and colleagues, Cancer Research, 2004).
+# Here it takes the role HIF-1a held, the node whose height stops a cell's
+# cycle. Raised by HIF-1a as fast as it decays, it copies HIF-1a where there
+# is no waste, so that hypoxia arrests a cell where it did; the waste raises
+# it too, steeply around a level of 1, past the threshold of 0.45 once the
+# waste reaches about 1 near the surface. What the waste is, the scenario's
+# [waste] says; in Greenspan's model, an inhibitor in the metabolic waste of
+# living cells.
+
+extends = "ras-erk-soft.toml"
+
+[[nodes]]
+name = "p27"
+initial = 0.05
+terms = [
+  { kind = "produced_by", source = "hif1", rate = 0.5 },
+  { kind = "activated_by", source = "waste", rate = 0.64, hill = { n = 8.0, k = 1.0 } },
+  { kind = "decays", rate = 0.5 },
+]
+
+[roles]
+growth = "erk"
+survival = "bcl2"
+hypoxia_response = "p27"
+angiogenic = "vegf"

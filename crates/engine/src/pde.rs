@@ -404,6 +404,63 @@ impl ScalarField {
         moved
     }
 
+    /// What the held pixels hand the free ones per unit time, at the field as
+    /// it stands: the diffusive flux across every face between a held pixel
+    /// and a free one. At a settled field it is what the free pixels take up
+    /// in all, less what they secrete.
+    ///
+    /// Summed in a fixed order, so that it is the same to the last bit on any
+    /// number of threads.
+    #[must_use]
+    pub fn inflow(&self) -> f64 {
+        let Some(span) = self.free_span() else {
+            return 0.0;
+        };
+        let (w, h) = (self.width as usize, self.height as usize);
+        let slice = w * h;
+        let mut flux = 0.0;
+        for z in span.z.0..=span.z.1 {
+            for y in span.y.0..=span.y.1 {
+                for x in span.x.0..=span.x.1 {
+                    let i = z as usize * slice + y as usize * w + x as usize;
+                    if self.held[i] {
+                        continue;
+                    }
+                    let mut across = |j: usize| {
+                        if self.held[j] {
+                            flux += self.d * (self.values[j] - self.values[i]);
+                        }
+                    };
+                    if x > 0 {
+                        across(i - 1);
+                    }
+                    if x + 1 < self.width {
+                        across(i + 1);
+                    }
+                    if y > 0 {
+                        across(i - w);
+                    }
+                    if y + 1 < self.height {
+                        across(i + w);
+                    }
+                    if z > 0 {
+                        across(i - slice);
+                    }
+                    if z + 1 < self.depth {
+                        across(i + slice);
+                    }
+                }
+            }
+        }
+        flux
+    }
+
+    /// How many pixels are not held.
+    #[must_use]
+    pub fn free_count(&self) -> usize {
+        self.held.iter().filter(|held| !**held).count()
+    }
+
     /// Let go of every held pixel, before the sources are declared again.
     ///
     /// Holds accumulate, so that a bath and a vessel can coexist; the caller
@@ -940,6 +997,18 @@ mod tests {
         let alone = solve(1);
         assert_eq!(alone, solve(3));
         assert_eq!(alone, solve(16));
+    }
+
+    #[test]
+    fn what_the_bath_hands_a_settled_tissue_is_what_it_takes_up() {
+        let field = bathed_disc(30, 6, 0.004);
+        let taken = 0.004 * field.free_count() as f64;
+        assert!(field.free_count() > 100);
+        assert!(
+            (field.inflow() - taken).abs() < 1e-6 * taken,
+            "handed {} against {taken} taken up",
+            field.inflow()
+        );
     }
 
     #[test]

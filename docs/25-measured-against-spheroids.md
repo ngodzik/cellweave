@@ -56,7 +56,7 @@ Each run alone gave a core from 196, 201 and 198 pixels, arrest from 168, 168 an
 
 So oxygen, consumed at one rate and read through the network's two thresholds, gives the core and the onset of arrest at the right sizes: one number fitted, two matched. Late, the spheroids' arrested region reaches much further out than oxygen alone puts it, which is what Murphy and colleagues concluded from changing the oxygen itself.
 
-**A spheroid that never stops.** By step 625, with 802, 827 and 803 dead cells in the three runs, 0, 0 and 3 had been resorbed to nothing. A dead cell's target shrinks by two pixels a step (chapter 4), but it loses a pixel only when a neighbour takes it, and a core of dead cells, each shrinking, has almost no neighbour that will. The core hardly loses volume, and the spheroid grows until the box stops it, where the measured ones stop at 340 to 356 µm. A real core loses mass as its debris breaks down, and Browning and colleagues' model has a rate for it.
+**A spheroid that never stops.** By step 625, with 802, 827 and 803 dead cells in the three runs, 0, 0 and 3 had been resorbed to nothing. A dead cell's target shrinks by two pixels a step (chapter 4), but it loses a pixel only when a neighbour takes it, and a core of dead cells, each shrinking, has almost no neighbour that will. The core hardly loses volume, and the spheroid grows until the box stops it, where the measured ones stop at 340 to 356 µm. A real core loses mass as its debris breaks down, and Browning and colleagues' model has a rate for it; chapter 27 gives the model one, in a volume.
 
 ### A cord, with the spheroids' oxygen
 
@@ -128,7 +128,7 @@ Chapter 22 found immune cells holding a cord without clearing it. At killing rat
 
 ## Still a placeholder
 
-The time unit, from a range of doubling times measured on other melanoma lines. The pixel, between 1 and about 1.3 µm. Three runs of the spheroid, 16 of their snapshots past 1.34 $R_c$. A core that never loses volume. Arrest by oxygen alone, where the spheroids' arrested region grows further than oxygen puts it. Immune cells' arrival, lifetime and pull, unmeasured.
+The time unit, from a range of doubling times measured on other melanoma lines. The pixel, between 1 and about 1.3 µm. Three runs of the spheroid, 16 of their snapshots past 1.34 $R_c$. A core that never loses volume in the plane (chapter 27 gives it a way to, in a volume). Arrest by oxygen alone, where the spheroids' arrested region grows further than oxygen puts it. Immune cells' arrival, lifetime and pull, unmeasured.
 
 ## References
 

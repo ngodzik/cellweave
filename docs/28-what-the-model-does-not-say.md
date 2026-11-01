@@ -1,4 +1,4 @@
-# 27. What the model does not say
+# 28. What the model does not say
 
 The placeholders, the missing units, and why emergence is the whole point.
 
@@ -27,6 +27,9 @@ What is a placeholder today, gathered from the chapters:
 | network | growth coefficient 1.5 | a stimulated cell can reach the division threshold at all |
 | field | D = 0.2; uptake 0.00002 for every tumour | calibrated on measured melanoma spheroids (chapter 25): a disc forms its core where a sphere with their oxygen would; it was 0.0003, 0.00003 and 0.0001 by geometry before |
 | field | stroma consumes at the tumour's rate | the medium beyond a cord does not fill up from the vessel |
+| a volume | a voxel 2.975 µm; uptake 0.00017 with the medium stirred, divided by $1 + 2k$ with it still; a dead cell's debris losing 0.024 of its volume a step, paid at the edge of the dead tissue; four Monte Carlo sweeps a step; λ = 20; contact counted to the corners, each contact divided by 9, copies across faces; a cycle of 20 steps median, spread 0.3, a cell growing through it in a straight line | a ball forms its core where the measured spheroids do (chapter 27), fitted by Greenspan's relation; the loss Greenspan's model asks of the measured end against how fast the cells grow, $\gamma = 0.70$; sweeps enough for the tissue to carry what the core loses out to its surface; a surface that holds round; a tissue that does not divide all at once |
+| a volume, opt-in | a waste every living pixel releases at 0.00025, arresting through p27 past a level of 1; a factor every dead pixel releases, killing through BCL2 past a level of 1, as fast as anoxia | the waste's level at the centre of a ball where oxygen arrests; the factor's threshold and rate those of anoxia, neither measured, and the factor not in the example since it runs away (chapter 27) |
+| a volume, still medium | oxygen diffuses in the medium at 0.606, 3.03 times the tissue's, $k$ 0.33; the level next to the tissue that of a still medium around a ball | between 1.54 times, oxygen's two diffusions measured at 37 °C in tumour tissue and in culture medium, and about 6.7, a flowing medium's from measured surface levels; set against the measured end, where the cores' growth with size asks for 0.455; a well's depth left out (chapter 27) |
 | fates | 0.25, 0.45, 1.4; division checked every 20 steps; resorption 2 pixels per step | the three fates are reachable, in the right order, at the right depths |
 | clocks | 8 units of network time per lattice step | the network answers in 2 steps and a cell divides in 20 |
 | evolution | mutation rate 1 in 20; factor between 1/2 and 2; every term equally likely | selection acts within a few thousand steps on changes large enough to alter a fate |

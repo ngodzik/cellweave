@@ -90,6 +90,8 @@ impl<S: SimState> Simulation<S> {
             vegf: Concentration(0.0),
             crowding: Concentration(0.0),
             stress: Concentration(level),
+            waste: Concentration(0.0),
+            necrotic_factor: Concentration(0.0),
         };
         let yardstick = self.pristine().apoptosis_under(&inputs, RESPONSE_TIME)?;
         let mut responses = Vec::new();
