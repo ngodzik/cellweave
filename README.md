@@ -5,7 +5,7 @@
 **A tissue that grows, starves, mutates, calls for blood and is hunted by immune cells, simulated cell by cell from a hypothesis written in a file, and set against real measurements.**
 
 <p align="center">
-  <img src="docs/media/spheroid.webp" width="760" alt="A spheroid growing from one cell, turning in relief: a rim of dividing cells around arrested ones, and a dead core forming where oxygen runs out">
+  <img src="docs/media/volume.webp" width="760" alt="A spheroid growing in a volume from a ball of cells, cut open through the middle: a thin rim of dividing cells, arrested cells beneath it, and a dead core that breaks down, until it stops">
 </p>
 
 > **Status: experimental, version 0.x.** cellweave is a research and teaching tool in early development, and anything in it may change from one version to the next. What it produces are hypotheses worth testing, not facts about real tumours. It gets better through feedback from people who know the biology or the modelling: a mechanism that is wrong or too simple, public data it should be set against, a value that should be different. If that is you, please [open a scientific feedback issue](https://github.com/ngodzik/cellweave/issues/new?template=scientific-feedback.md). Every comment is read.
@@ -35,15 +35,20 @@ Every cell is a set of pixels with a shape, pressing on its neighbours. Inside e
 
 The animations are sped up: a few seconds stand for days to months of a tissue's life. Each says in its corner what its colours mean.
 
-Also in it: a spheroid that starves from the inside at the size measured spheroids do ([chapter 25](docs/25-measured-against-spheroids.md)), a lethal stress and the resistance it selects, rewinding a history to see what one mutation changed, and campaigns that run many histories side by side.
+Also in it: the spheroid at the top, grown in a volume, which stops near the size measured spheroids stop at once the medium of its well is still ([chapter 27](docs/27-spheroids-in-a-volume.md)), the same spheroid in the plane ([chapter 25](docs/25-measured-against-spheroids.md)), a lethal stress and the resistance it selects, rewinding a history to see what one mutation changed, and campaigns that run many histories side by side.
 
 ## Set against real data
 
 The values below are fixed by public measurements, and every comparison is in the course with the prediction written before it ran, the ones that failed included; what no public data fixes yet is listed in its last chapter. The data are never copied here: each dataset is a [recipe](datasets/) saying where its authors published it, and `scripts/fetch-dataset.py` downloads it to your machine.
 
+<p align="center">
+  <img src="docs/media/spheroid.webp" width="560" alt="A spheroid growing from one cell, turning in relief: a rim of dividing cells around arrested ones, and a dead core forming where oxygen runs out">
+</p>
+
 | what | public data | how close |
 |---|---|---|
 | a tumour's oxygen | 994 melanoma spheroids ([Browning 2021](https://doi.org/10.7554/eLife.73020)) | one number fitted; arrest then starts where the spheroids' does; their late cycling rim is thinner |
+| a spheroid's end, in a volume | the same spheroids; oxygen's diffusion in tissue ([Grote 1977](https://doi.org/10.1007/BF00582204)) and in culture medium ([Place 2017](https://doi.org/10.1016/j.freeradbiomed.2017.10.003)) | stops at 368 µm against 348, one number set inside the bracket the two diffusions leave; its core grows with size half as much as theirs |
 | cords of tissue around a vessel | [Tannock 1968](https://doi.org/10.1038/bjc.1968.34) | 69 µm against 60 to 120, nothing fitted |
 | immune killing | [Weigelin 2021](https://doi.org/10.1038/s41467-021-25282-3), [Halle 2016](https://doi.org/10.1016/j.immuni.2016.01.010) | set on the measured rates |
 | clones in a normal tissue | 1,222 clones of the mouse oesophagus ([Piedrafita 2020](https://doi.org/10.1038/s41467-020-15258-0)) | a third too large at a month, five times at six: a mechanism is missing |
