@@ -43,6 +43,7 @@ mod panel;
 mod record;
 mod relief;
 mod runner;
+mod volume;
 
 use anyhow::{Result, anyhow};
 use bevy::camera::visibility::NoFrustumCulling;
@@ -225,10 +226,12 @@ fn main() -> Result<()> {
             paint::repaint,
             glow::retarget,
             relief::retarget,
+            volume::rebuild,
             runner::dispatch,
             orbit::steer,
             orbit::spin,
             relief::toggle,
+            volume::toggle,
             relief::animate,
             glow::animate,
             record::capture,
@@ -255,6 +258,10 @@ struct Sides(Vec<Side>);
 
 /// Pixels of dark between two runs side by side.
 const GAP: f32 = 24.0;
+
+/// How bright the lamp on a tissue in a volume is, in lux: ten times the
+/// plane's, since nothing in a volume glows.
+const VOLUME_LAMP: f32 = 4500.0;
 
 /// How bright the lamp is, in lux. Bright enough for the relief to read,
 /// dim enough that the glow of a living cell still shows against it.
@@ -313,12 +320,47 @@ fn setup(
         brightness: 40.0,
         ..default()
     });
+    // A tissue in a volume gives off no light of its own, as the plane's
+    // glow does, and its cut faces the camera: a second lamp, from in front
+    // and above, lights the cut without flattening the surface.
+    if sides.0.iter().any(|s| s.experiment.scenario.depth > 1) {
+        commands.spawn((
+            DirectionalLight {
+                illuminance: VOLUME_LAMP,
+                shadow_maps_enabled: false,
+                color: Color::srgb(1.0, 0.97, 0.92),
+                ..default()
+            },
+            Transform::from_xyz(size * 0.35, size * 0.8, size).looking_at(Vec3::ZERO, Vec3::Y),
+        ));
+    }
 
     // Side by side along X, centred on the origin as a whole.
     let n = sides.0.len() as f32;
     let span = w as f32 + GAP;
     for (index, side) in sides.0.iter().enumerate() {
         let x = (index as f32 - (n - 1.0) / 2.0) * span;
+        // A tissue in a volume is drawn as its voxels, cut open, rather
+        // than painted onto a surface in relief.
+        if side.experiment.scenario.depth > 1 {
+            let mesh = meshes.add(volume::empty());
+            commands.spawn((
+                Mesh3d(mesh.clone()),
+                MeshMaterial3d(materials.add(StandardMaterial {
+                    base_color: Color::WHITE,
+                    perceptual_roughness: 0.7,
+                    reflectance: 0.2,
+                    ..default()
+                })),
+                Transform::from_xyz(x, 0.0, 0.0),
+                // Rebuilt as the tissue grows, past the bounds it was spawned
+                // with.
+                NoFrustumCulling,
+                runner::Runner::new(side.experiment.clone(), side.name.clone(), index),
+                volume::Volume::new(mesh),
+            ));
+            continue;
+        }
         let canvas = images.add(paint::canvas(w, h));
         let glow = images.add(glow::image(w, h));
         let material = materials.add(StandardMaterial {

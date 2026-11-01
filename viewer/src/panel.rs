@@ -71,7 +71,7 @@ pub fn draw(
             }
             ui.separator();
             ui.weak(
-                "Space pause · N step · R restart · H relief · A spin · drag to turn · scroll to zoom",
+                "Space pause · N step · R restart · H relief · C cut, in a volume · A spin · drag to turn · scroll to zoom",
             );
         });
     if restart {
