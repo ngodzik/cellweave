@@ -1648,7 +1648,7 @@ dependencies = [
 
 [[package]]
 name = "cellweave-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "serde",
  "thiserror 2.0.21",
@@ -1656,7 +1656,7 @@ dependencies = [
 
 [[package]]
 name = "cellweave-engine"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cellweave-core",
  "ndarray",
@@ -1668,7 +1668,7 @@ dependencies = [
 
 [[package]]
 name = "cellweave-io"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "cellweave-core",
@@ -1682,7 +1682,7 @@ dependencies = [
 
 [[package]]
 name = "cellweave-viewer"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "bevy",

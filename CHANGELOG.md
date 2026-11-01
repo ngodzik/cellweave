@@ -2,7 +2,11 @@
 
 Versions follow [semantic versioning](https://semver.org). While the version is 0.x the project is in early development: anything may change from one version to the next, configurations and results included. Each version says what changed in what a run does, so that a result can be tied to the version that produced it.
 
-## Unreleased
+## 0.2.0 (2026-11-01)
+
+A tissue that grows in a volume, and a spheroid in it that stops near the size measured spheroids reach, once its dead core breaks down and the medium of its well is still. Experimental.
+
+One change is incompatible: a network file that still sets `j_medium`, `j_self_base` or `j_self_from_growth` is refused, since nothing ever read them (first item below).
 
 - **Contact energies are not a network's.** A network file's `[mechanics]` carried `j_medium`, `j_self_base` and `j_self_from_growth`, read into every cell and handed to nothing: the lattice has always priced a boundary by the kinds of the cells across it (chapter 1). They are removed from the example networks, and a network that sets them, or any other unknown key under `[mechanics]`, is now refused with the key named. No run changes.
 - **A tissue in a volume.** A configuration's `depth` stacks slices: a tumour in a bath or around a vessel grows in three dimensions, cells dividing across planes, a vessel running through the box as a cylinder, the bath coming in from six faces, radii those of balls (chapter 26). A plane, one slice deep, runs exactly as it did: every example gives the same output, byte for byte. `max_cells` replaces the fixed ceiling of 2000 living cells.
@@ -14,6 +18,9 @@ Versions follow [semantic versioning](https://semver.org). While the version is 
 - **A waste that arrests.** A configuration's `[waste]` has every living cell release a waste, Greenspan's inhibitor, that diffuses as oxygen does and that the bath washes away; each cell's network reads it as the input `waste`. `examples/networks/ras-erk-waste.toml` gives the arrest to a node p27 raised by HIF-1α and by the waste (chapter 27). Left out, every run is the run it was; a gained link still reads only the four earlier inputs.
 - **A factor the dead release.** A configuration's `[necrotic_factor]` has every dead pixel release a factor that diffuses and that the bath washes away, as Freyer found the necrosis of spheroids does, and each cell's network reads it as `necrotic_factor`. A new term, `damaged_above`, damages a node past a level of its source; `examples/networks/ras-erk-necrotic.toml` has the factor kill through BCL2. Left out, every run is the run it was.
 - **A still medium.** A configuration's `[still_medium]` has the bath's medium still, oxygen diffusing through it at its `diffusion`: the level next to a spheroid in a volume is then that of a still medium around a ball, lower the more the spheroid takes up, as measured at the surface of spheroids in culture (chapter 27). The spheroid in a volume runs in one, its diffusion set against the measured spheroids' end, and stops at 368 µm against their 348, its cores growing with size as theirs do, by half as much. Left out, the medium is held at the source's level up to the tissue, and every run is the run it was.
+- **A volume in the viewer.** A tissue grown in a volume is drawn as its voxels, cut open through the middle so that its core shows; C opens and closes the cut (chapter 26).
+- **Legends on the animations.** Every animation in the README says in its corner what its colours mean, and the README says they are sped up.
+- **The spheroid in a volume, in the README.** `examples/spheroid-3d.toml`, recorded in the viewer and cut open, from one ball of cells to its end.
 
 ## 0.1.0 (2026-10-30)
 

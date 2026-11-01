@@ -1,6 +1,6 @@
 [package]
 name         = "cellweave-viewer"
-version      = "0.1.0"
+version      = "0.2.0"
 edition      = "2024"
 # Bevy 0.20's own minimum, which the simulator's workspace matches so that the
 # repository has one toolchain to install.
