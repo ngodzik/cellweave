@@ -2,6 +2,7 @@
 
 use bevy::input::mouse::{AccumulatedMouseMotion, AccumulatedMouseScroll, MouseScrollUnit};
 use bevy::prelude::*;
+use bevy::window::PrimaryWindow;
 use bevy_egui::EguiContexts;
 use cellweave_engine::Scenario;
 
@@ -66,15 +67,28 @@ impl Orbit {
     }
 }
 
-/// Turn and zoom from the mouse, unless the pointer is over the panel.
+/// Turn and zoom from the mouse, unless the pointer is over the panel or
+/// away from the window.
+///
+/// The mouse's motion is the device's, reported wherever the pointer is,
+/// and a button pressed in the window and let go outside it is never seen
+/// to be let go: without the window's focus and the pointer on it, the
+/// camera would turn with every move of the mouse across the screen.
 pub fn steer(
     mut orbit: ResMut<Orbit>,
     buttons: Res<ButtonInput<MouseButton>>,
     motion: Res<AccumulatedMouseMotion>,
     scroll: Res<AccumulatedMouseScroll>,
+    windows: Query<&Window, With<PrimaryWindow>>,
     mut contexts: EguiContexts,
     mut camera: Query<&mut Transform, With<Camera3d>>,
 ) -> Result {
+    let held = windows
+        .single()
+        .is_ok_and(|window| window.focused && window.cursor_position().is_some());
+    if !held {
+        return Ok(());
+    }
     let ctx = contexts.ctx_mut()?;
     if ctx.is_pointer_over_egui() || ctx.egui_wants_pointer_input() {
         return Ok(());
