@@ -23,7 +23,7 @@ use rand::{RngExt, SeedableRng};
 
 use crate::coupling::{
     apply_background_uptake, apply_production, apply_uptake, hold_medium_bath, hold_vessels_at,
-    hold_vessels_by, mean_per_cell,
+    hold_vessels_by, mean_in, mean_per_cell,
 };
 use crate::cpm::{CpmLattice, OBSTACLE};
 use crate::evolution::CloneRecord;
@@ -39,8 +39,10 @@ use crate::vessels::{Capillary, Tip, Vessels};
 /// attributed to what was changed.
 pub const DEFAULT_SEED: u64 = 42;
 
-/// A cell divides once it reaches this multiple of its lineage's reference volume.
-const DIVISION_RATIO: f64 = 1.4;
+/// A cell divides once it reaches this multiple of its lineage's reference
+/// volume. Public, as the two thresholds below, so that a picture of a cell
+/// can say how far it is from each.
+pub const DIVISION_RATIO: f64 = 1.4;
 
 /// Monte Carlo steps between two checks for cells ready to divide, in a tissue
 /// grown from one cell.
@@ -109,10 +111,14 @@ const OXYGEN_WARMUP_MAX_STEPS: usize = 2_000_000;
 const NETWORK_TIME_PER_MCS: u32 = 8;
 
 /// Survival signal below which a cell is necrotic.
-const DEATH_THRESHOLD: f64 = 0.25;
+pub const DEATH_THRESHOLD: f64 = 0.25;
 
 /// Hypoxia response above which a cell stops dividing while staying alive.
-const QUIESCENCE_THRESHOLD: f64 = 0.45;
+pub const QUIESCENCE_THRESHOLD: f64 = 0.45;
+
+/// The growth factor every cell reads, wherever it sits: no field carries
+/// it, so it is the same for all of them.
+const EGF: f64 = 0.2;
 
 /// Pixels a necrotic cell gives up per lattice step until nothing is left.
 ///
@@ -1178,15 +1184,13 @@ impl Simulation<Running> {
             ) {
                 continue;
             }
-            let inputs = CellInputs {
-                o2: Concentration(local_o2[i + 1]),
-                egf: Concentration(0.2),
-                vegf: Concentration(0.0),
-                crowding: Concentration(crowding(&self.lattice, id, net)),
-                stress: Concentration(local_stress.as_ref().map_or(0.0, |s| s[i + 1])),
-                waste: Concentration(local_waste.as_ref().map_or(0.0, |w| w[i + 1])),
-                necrotic_factor: Concentration(local_factor.as_ref().map_or(0.0, |f| f[i + 1])),
-            };
+            let inputs = cell_inputs(
+                local_o2[i + 1],
+                crowding(&self.lattice, id, net),
+                local_stress.as_ref().map_or(0.0, |s| s[i + 1]),
+                local_waste.as_ref().map_or(0.0, |w| w[i + 1]),
+                local_factor.as_ref().map_or(0.0, |f| f[i + 1]),
+            );
             for _ in 0..NETWORK_TIME_PER_MCS {
                 net.step(TimeStep(1.0), &inputs);
             }
@@ -2281,6 +2285,27 @@ impl<S: SimState> Simulation<S> {
         self.networks.get(slot)?.as_ref()
     }
 
+    /// What cell `id` reads from where it sits: the oxygen, the stress, the
+    /// waste and the necrotic factor averaged over the pixels it holds now,
+    /// in the fields as the last step left them, how squeezed it is, and the
+    /// growth factor. `None` for the medium, an obstacle, or a cell that is
+    /// gone.
+    ///
+    /// What its network last read, give or take the pixels it has gained or
+    /// lost since.
+    pub fn inputs(&self, id: CellId) -> Option<CellInputs> {
+        let net = self.network(id)?;
+        let mean =
+            |field: Option<&ScalarField>| field.map_or(0.0, |f| mean_in(f, &self.lattice, id));
+        Some(cell_inputs(
+            mean(Some(&self.oxygen)),
+            crowding(&self.lattice, id, net),
+            mean(self.stress.as_ref()),
+            mean(self.waste.as_ref()),
+            mean(self.necrotic_factor.as_ref()),
+        ))
+    }
+
     /// The clone a cell belongs to, or `None` for the medium or an obstacle. A
     /// cell that is gone keeps the clone it had.
     pub fn clone_of(&self, id: CellId) -> Option<CloneId> {
@@ -2481,6 +2506,20 @@ fn vegf_decay(angiogenesis: &Angiogenesis) -> f64 {
 /// What a cell can sense of its neighbours' pressure is its own spread: a cell
 /// pressed small by the tissue around it has less room than it was born to,
 /// and that is the signal contact inhibition in an epithelium runs on.
+/// What a network reads, from the local levels of the fields and how
+/// squeezed its cell is.
+fn cell_inputs(o2: f64, crowding: f64, stress: f64, waste: f64, factor: f64) -> CellInputs {
+    CellInputs {
+        o2: Concentration(o2),
+        egf: Concentration(EGF),
+        vegf: Concentration(0.0),
+        crowding: Concentration(crowding),
+        stress: Concentration(stress),
+        waste: Concentration(waste),
+        necrotic_factor: Concentration(factor),
+    }
+}
+
 fn crowding(lattice: &CpmLattice, id: CellId, net: &Network) -> f64 {
     let volume = lattice.volume(id).map_or(0, |v| v.0);
     let reference = f64::from(net.reference_volume().max(1));

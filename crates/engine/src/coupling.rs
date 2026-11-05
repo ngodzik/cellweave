@@ -8,7 +8,7 @@
 
 use crate::cpm::{CpmLattice, OBSTACLE};
 use crate::pde::ScalarField;
-use cellweave_core::{CellKind, DiffusionField};
+use cellweave_core::{CellId, CellKind, DiffusionField};
 
 /// Whether a cell of this kind draws on the field at all. A dead cell does
 /// not, and neither does one breaking up in apoptosis.
@@ -179,6 +179,25 @@ pub fn mean_per_cell(field: &ScalarField, lattice: &CpmLattice) -> Vec<f64> {
         .zip(&count)
         .map(|(s, c)| if *c == 0 { 0.0 } else { s / f64::from(*c) })
         .collect()
+}
+
+/// The mean of `field` over the pixels of one cell, or zero for a cell that
+/// holds none: [`mean_per_cell`] for a single cell, as a picture of one cell
+/// asks for it.
+pub fn mean_in(field: &ScalarField, lattice: &CpmLattice, id: CellId) -> f64 {
+    let (sum, count) = lattice
+        .grid
+        .iter()
+        .enumerate()
+        .filter(|&(_, &occupant)| occupant == id.0)
+        .fold((0.0, 0u32), |(sum, count), (i, _)| {
+            (sum + field.value_at(i), count + 1)
+        });
+    if count == 0 {
+        0.0
+    } else {
+        sum / f64::from(count)
+    }
 }
 
 #[cfg(test)]
