@@ -1,4 +1,4 @@
-# 28. What the model does not say
+# 29. What the model does not say
 
 The placeholders, the missing units, and why emergence is the whole point.
 
@@ -25,6 +25,7 @@ What is a placeholder today, gathered from the chapters:
 | lattice | contact energies 16, 2, 11, 6; λ = 50; T = 10 | cells stay compact and fluctuate visibly |
 | network | every rate constant | ERK saturates near 0.55; the network settles in 15 units; survival collapses near 5% oxygen |
 | network | growth coefficient 1.5 | a stimulated cell can reach the division threshold at all |
+| a fuller cell | every rate of its eighteen proteins; a Hill response of order two on MEK and on ERK; p27 half way at HIF-1α of 0.549; p21 just short of stopping the cycle alone at full stress | ERK, the arrest, the death by anoxia and the apoptosis under a stress fall where the simpler networks put them (chapter 28) |
 | field | D = 0.2; uptake 0.00002 for every tumour | calibrated on measured melanoma spheroids (chapter 25): a disc forms its core where a sphere with their oxygen would; it was 0.0003, 0.00003 and 0.0001 by geometry before |
 | field | stroma consumes at the tumour's rate | the medium beyond a cord does not fill up from the vessel |
 | a volume | a voxel 2.975 µm; uptake 0.00017 with the medium stirred, divided by $1 + 2k$ with it still; a dead cell's debris losing 0.024 of its volume a step, paid at the edge of the dead tissue; four Monte Carlo sweeps a step; λ = 20; contact counted to the corners, each contact divided by 9, copies across faces; a cycle of 20 steps median, spread 0.3, a cell growing through it in a straight line | a ball forms its core where the measured spheroids do (chapter 27), fitted by Greenspan's relation; the loss Greenspan's model asks of the measured end against how fast the cells grow, $\gamma = 0.70$; sweeps enough for the tissue to carry what the core loses out to its surface; a surface that holds round; a tissue that does not divide all at once |

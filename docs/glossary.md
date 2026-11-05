@@ -20,11 +20,15 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Bath** (3). A large stirred volume of liquid around a tissue whose oxygen never drops. Modelled by holding every medium pixel the bath can reach at 1.0.
 
+**BAX** (28). BCL2-associated X protein. Made when p53 rises, it opens the mitochondria and starts the caspases; BCL2 binds it and holds it back. In the fuller cell, what caspase answers.
+
 **BCL2** (2). B-cell lymphoma 2, a survival protein. When it falls below 0.25 the cell is necrotic.
 
 **Capillary** (3, 18). The finest blood vessel, where oxygen leaves the blood. No cell in the body is further than 100 to 200 micrometres from one. Here also a vessel lying across the box, which blood enters on one side and leaves on the other.
 
-**Caspase** (8). The enzymes that carry out apoptosis, cutting the cell's own proteins apart. Here one node, switched on sharply by p53.
+**Caspase** (8). The enzymes that carry out apoptosis, cutting the cell's own proteins apart. Here one node, switched on sharply by p53, or in the fuller cell of chapter 28 by BAX.
+
+**CDK, cyclin-dependent kinase** (28). A kinase that works only bound to a cyclin. CDKs phosphorylate RB and so let a cell leave G1.
 
 **Cell cycle** (27). What a cell goes through from its birth to its division: a first gap (G1), copying its DNA (S), a second gap (G2) and mitosis (M). With `[cycle]`, each cell draws at its birth how many steps its cycle lasts, log-normal around a median, and does not divide before they have passed.
 
@@ -60,6 +64,8 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Crowding** (7). How squeezed a cell is: how far below its reference size it sits, as a fraction of it. An input every network can read, like oxygen.
 
+**Cyclin** (28). A protein whose level rises and falls through the cell cycle and switches on a CDK. Cyclin D is made on ERK's signal, cyclin E on E2F's.
+
 **Debris loss** (27). The share of a dead cell's volume its debris loses each step, broken down into fluid that leaves the tissue; the tissue closes over what goes, and gives it up at its surface. What stops a spheroid growing, in Greenspan's model and here.
 
 **Depth** (26). The number of slices of the lattice. One is a plane, run exactly as it always was; more is a volume.
@@ -76,9 +82,13 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Driver** (9). A mutation that gave the cells carrying it an advantage the tumour grew from. Here, one whose suppression changes the history.
 
+**E2F** (28). The transcription factor that reads the genes a cell needs to copy its DNA, held by RB until RB is phosphorylated.
+
 **Early tumour, lesion** (13, 15). A microscopic patch of abnormal cells that has only just formed. Here a patch placed at one step, carrying a network of its own: in the sheet, where whether it survives depends on its fitness relative to the clones around it, within a window (13); or in a tumour, as a subclone placed by hand (16).
 
 **EGF** (2). Epidermal growth factor, the growth signal. A hardcoded input for every cell today.
+
+**EGFR** (28). The EGF receptor: it crosses the membrane, binds EGF outside, and switches RAS on inside.
 
 **Emergence** (6, 7, 12, 14, 20, 28). Behaviour that follows from the model without any rule naming it. The necrotic core, the compact cell, the cord's thickness.
 
@@ -132,7 +142,13 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Loss of function** (11). A mutation that stops a gene's product from working, rather than turning it up or down. Here a lost term, through rewiring.
 
+**MAPK cascade** (28). RAF, MEK and ERK, three kinases each switching on the next: the mitogen-activated protein kinase cascade.
+
+**MDM2** (28). Mouse double minute 2, the protein that marks p53 for destruction. p53 has the cell make it, so a rise of p53 brings on what lowers it.
+
 **Medium** (1, 3). Empty pixels, identity 0. Liquid in a bath; stroma around a vessel.
+
+**MEK** (28). MAPK/ERK kinase: switched on by RAF, it switches ERK on by attaching two phosphates.
 
 **Monte Carlo step, MCS** (1). One attempt per pixel to change hands, 40,000 on the default grid. The lattice's unit of time.
 
@@ -156,9 +172,11 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **ODE** (2). Ordinary differential equation: rates of change in time only. The network is five of them.
 
-**p27** (27). p27Kip1, a cyclin-dependent kinase inhibitor: a protein that holds a cell in the first gap of its cycle (G1). Higher in the arrested inner cells of melanoma spheroids. Here the node that arrests a cell in `ras-erk-waste.toml`, raised by HIF-1α and by the waste.
+**p21** (28). p21Cip1, or WAF1: a cyclin-dependent kinase inhibitor made when p53 rises, the way p53 pauses a cell. In the fuller cell, a second brake on cyclin E beside p27.
 
-**p53** (8). The protein that rises when a cell is damaged and decides between repair and apoptosis. Here switched on by the stress.
+**p27** (27). p27Kip1, a cyclin-dependent kinase inhibitor: a protein that holds a cell in the first gap of its cycle (G1). Higher in the arrested inner cells of melanoma spheroids. Here the node that arrests a cell in `ras-erk-waste.toml`, raised by HIF-1α and by the waste; in the fuller cell of chapter 28, the brake HIF-1α puts on cyclin E.
+
+**p53** (8). The protein that rises when a cell is damaged and decides between repair and apoptosis. Here switched on by the stress; in the fuller cell of chapter 28 it also raises MDM2, p21 and BAX.
 
 **Passenger** (9). A mutation carried along by a lineage that won for other reasons. Here, one whose suppression leaves the history identical to the last bit.
 
@@ -167,6 +185,8 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 **PDE** (3). Partial differential equation: rates of change in time and space. Oxygen is one.
 
 **Perfusion** (14, 16, 19). Blood flowing through a vessel. Here a sprout carries blood, and oxygen, from its first pixel, or only once its tip has joined another vessel and closed a loop.
+
+**Phosphorylation** (28). Attaching a phosphate group to a protein, which is how a kinase switches its target on or off.
 
 **Pixel** (1). One square of the lattice, about a micrometre, carrying one identity and one oxygen value.
 
@@ -182,7 +202,11 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 
 **Quiescent** (4). Alive, not dividing. Hypoxia response above 0.45.
 
+**RAF** (28). Rapidly accelerated fibrosarcoma, the kinase RAS switches on, and which switches MEK on.
+
 **RAS** (2). The switch at the start of the growth pathway. Stuck on in one cancer in three.
+
+**RB** (28). The retinoblastoma protein, which holds E2F and so the cell in G1 until cyclin-dependent kinases phosphorylate it. In the fuller cell, the node whose height stops the cycle.
 
 **Red-black** (3). An order for an SOR sweep: the grid coloured like a chessboard, every red pixel updated from its black neighbours, then every black one from the new reds. Each colour can be updated in parallel.
 
@@ -195,6 +219,8 @@ Every word the course uses, in one place. Chapter numbers point to where each is
 **Resistance** (10). A cell whose network, asked out of the tissue, responds to the stress at under half the unmutated network's chance of apoptosis.
 
 **Resorption** (4). Dead tissue being cleared. Two pixels per step here.
+
+**Restriction point** (28). The point in G1 past which a cell divides whatever its growth signal does next, set by the loop between RB, E2F and cyclin E.
 
 **Reversion** (13). Undoing a clone's mutation at one step, in every cell carrying it, as switching a gene back does in an experiment. The run is the real one until that step.
 

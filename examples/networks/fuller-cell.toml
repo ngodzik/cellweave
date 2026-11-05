@@ -1,0 +1,174 @@
+# A fuller cell: the RAS/ERK network with the stress response, and the
+# proteins in between that the two leave out (chapter 28).
+#
+# What the simpler network shortcuts is filled in: EGFR, RAF and MEK between
+# EGF and ERK; the cell cycle between hypoxia and the arrest, cyclin D, RB,
+# E2F, cyclin E and the inhibitor p27; and between stress and death, MDM2,
+# p21 and BAX around p53. HIF-1a, VEGF and BCL2 are inherited unchanged.
+#
+# Every link is one the literature describes; chapter 28 gives the source
+# of each. The rates are not measured. They are chosen so that the decisions
+# fall where the simpler network puts them, which tests pin: ERK settles at
+# the same level, so cells ask for the same size; RB reaches the arrest
+# threshold at the oxygen where HIF-1a does in the simpler network, so cells
+# stop dividing at the same depth; and caspase answers a stress within a
+# hundredth of what it did.
+
+extends = "stress-response.toml"
+
+# The growth relay. EGF binds its receptor; the receptor switches RAS on;
+# RAS switches RAF on, RAF MEK, MEK ERK.
+[[nodes]]
+name = "egfr"
+initial = 0.5
+terms = [
+  { kind = "activated_by", source = "egf", rate = 2.0 },
+  { kind = "decays", rate = 0.4 },
+]
+
+[[nodes]]
+name = "ras"
+initial = 0.25
+terms = [
+  { kind = "activated_by", source = "egfr", rate = 0.2 },
+  { kind = "decays", rate = 0.3 },
+]
+
+[[nodes]]
+name = "raf"
+initial = 0.24
+terms = [
+  { kind = "activated_by", source = "ras", rate = 0.5 },
+  { kind = "decays", rate = 0.4 },
+]
+
+# MEK and ERK each need two phosphates to be active, which makes each
+# respond more than in proportion to the kinase above it: a Hill response
+# of order two. Without it a chain of saturating relays damps a signal at
+# every step, and RAS stuck on would barely move ERK.
+[[nodes]]
+name = "mek"
+initial = 0.28
+terms = [
+  { kind = "activated_by", source = "raf", rate = 1.0, hill = { n = 2.0, k = 0.55 } },
+  { kind = "decays", rate = 0.4 },
+]
+
+[[nodes]]
+name = "erk"
+initial = 0.33
+terms = [
+  { kind = "activated_by", source = "mek", rate = 1.8, hill = { n = 2.0, k = 0.8 } },
+  { kind = "decays", rate = 0.4 },
+]
+
+# The cell cycle. RB holds E2F, the factor that starts DNA replication; the
+# cycle runs once RB is switched off by the kinases its cyclins drive.
+# Cyclin D, made on ERK's signal, does a little of it; cyclin E, made on
+# E2F's, does most, which closes a loop: the less RB, the more E2F, the more
+# cyclin E, the less RB. p27 and p21 block cyclin E's kinase, and RB comes
+# back on.
+[[nodes]]
+name = "cyclin_d"
+initial = 0.5
+terms = [
+  { kind = "activated_by", source = "erk", rate = 1.5 },
+  { kind = "decays", rate = 0.5 },
+]
+
+[[nodes]]
+name = "rb"
+initial = 0.23
+terms = [
+  { kind = "relaxes_to", value = 1.0, rate = 0.2 },
+  { kind = "inhibited_by", source = "cyclin_d", rate = 0.1 },
+  { kind = "inhibited_by", source = "cyclin_e", rate = 1.2 },
+]
+
+[[nodes]]
+name = "e2f"
+initial = 0.43
+terms = [
+  { kind = "relaxes_to", value = 1.0, rate = 0.2 },
+  { kind = "inhibited_by", source = "rb", rate = 1.5, hill = { n = 2.0, k = 0.5 } },
+]
+
+[[nodes]]
+name = "cyclin_e"
+initial = 0.51
+terms = [
+  { kind = "activated_by", source = "e2f", rate = 1.2 },
+  { kind = "inhibited_by", source = "p27", rate = 1.5 },
+  { kind = "inhibited_by", source = "p21", rate = 1.5 },
+  { kind = "decays", rate = 0.5 },
+]
+
+# Hypoxia reaches the cycle through p27, which HIF-1a induces. Its half way
+# point is what places the arrest: at 0.549, RB crosses 0.45 at the oxygen
+# where HIF-1a does in the simpler network.
+[[nodes]]
+name = "p27"
+initial = 0.0
+terms = [
+  { kind = "activated_by", source = "hif1", rate = 2.0, hill = { n = 2.0, k = 0.549 } },
+  { kind = "decays", rate = 0.5 },
+]
+
+# Stress reaches the cycle through p21, which p53 induces. On its own it
+# pushes RB up without stopping the cycle at the stresses the model knows;
+# with hypoxia, the two brakes on cyclin E add up.
+[[nodes]]
+name = "p21"
+initial = 0.0
+terms = [
+  { kind = "activated_by", source = "p53", rate = 2.0 },
+  { kind = "decays", rate = 0.5 },
+]
+
+# p53, raised by stress as before, now also induces MDM2, which marks it for
+# destruction: the loop that brings p53 back down once the stress is gone.
+[[nodes]]
+name = "p53"
+initial = 0.0
+terms = [
+  { kind = "activated_by", source = "stress", rate = 0.5 },
+  { kind = "inhibited_by", source = "mdm2", rate = 1.0 },
+  { kind = "decays", rate = 0.5 },
+]
+
+[[nodes]]
+name = "mdm2"
+initial = 0.0
+terms = [
+  { kind = "activated_by", source = "p53", rate = 0.5 },
+  { kind = "decays", rate = 0.5 },
+]
+
+# BAX, which p53 induces, opens the mitochondria and starts the caspases;
+# BCL2 binds it and holds it back, which is where survival and apoptosis
+# meet. Caspase now answers BAX rather than p53 directly.
+[[nodes]]
+name = "bax"
+initial = 0.0
+terms = [
+  { kind = "activated_by", source = "p53", rate = 0.5 },
+  { kind = "inhibited_by", source = "bcl2", rate = 0.5 },
+  { kind = "decays", rate = 0.5 },
+]
+
+[[nodes]]
+name = "caspase"
+initial = 0.0
+terms = [
+  { kind = "activated_by", source = "bax", rate = 0.3, hill = { n = 4.0, k = 0.14 } },
+  { kind = "decays", rate = 0.5 },
+]
+
+# The cell stops dividing when RB is on, whatever turned it on. The role
+# keeps the name it was given when only hypoxia could stop the cycle.
+[roles]
+growth = "erk"
+survival = "bcl2"
+hypoxia_response = "rb"
+apoptosis = "caspase"
+angiogenic = "vegf"

@@ -62,6 +62,7 @@ Each line of the table above is a **term**, and terms come from a closed catalog
 | term | what it computes | what it means |
 |---|---|---|
 | `activated_by` | `rate * source * (1 - self)` | one relay switching on the next, saturating because a protein cannot be more than fully active |
+| `inhibited_by` | `- rate * source * self` | one protein switching another off, the mirror of `activated_by` (chapter 28) |
 | `activated_by_absence_of` | `rate * (1 - source) * (1 - self)` | accumulating when something is scarce, which is HIF-1α as oxygen falls |
 | `produced_by` | `rate * source` | made in proportion, without saturating, for something secreted |
 | `decays` | `- rate * self` | first order turnover, which is what gives a node a steady state at all |
@@ -69,7 +70,7 @@ Each line of the table above is a **term**, and terms come from a closed catalog
 | `damaged_below` | `- rate * max(0, (threshold - source) / threshold)` | energy failure, the one term nothing above cancels |
 | `damaged_above` | `- rate * max(0, (source - threshold) / threshold)` | what is toxic past some level, offset by nothing (chapter 27) |
 
-`activated_by` also takes a **Hill** response, `source^n / (k^n + source^n)` in place of `source`, where `n` is how sharply it switches and `k` the level at which it is half way. With a large `n` a graded signal becomes a decision.
+`activated_by` and `inhibited_by` also take a **Hill** response, `source^n / (k^n + source^n)` in place of `source`, where `n` is how sharply it switches and `k` the level at which it is half way. With a large `n` a graded signal becomes a decision.
 
 A closed catalogue rather than free-form expressions is a deliberate limit. An expression language would be more expressive and would let anyone write something that parses and means nothing; a catalogue says exactly which mechanisms the model knows about, and every one of them is documented above and pinned by a test. A paper whose network does not fit adds an entry, which is a change on the record rather than an open hole.
 
@@ -109,7 +110,7 @@ The network settles in about fifteen units of its time. The binary gives it eigh
 
 **Concentrations, not molecules.** Each protein is one number, a fraction between 0 and 1, as if the cell were a well-stirred bag. A real cell has thousands of copies of each protein in specific places. Averaging is the standard first model and it keeps five equations rather than five million.
 
-**A reduced chain.** RAF and MEK are skipped: RAS activates ERK directly. They relay without deciding, and two more equations would add constants without adding behaviour. If a question ever turns on one of them, they come back.
+**A reduced chain.** RAF and MEK are skipped: RAS activates ERK directly. They relay without deciding, and two more equations would add constants without adding behaviour. If a question ever turns on one of them, they come back. Chapter 28 brings them back, with the receptor before them and the cell cycle and the way to apoptosis after, in a fuller network whose rates are set so that it decides what this one does.
 
 **ERK sets the target volume**, with the coefficient 1.5: `target = base (1 + 1.5 erk)`. It was 0.5 at first, and since ERK saturates near 0.55, no cell could ever reach the division threshold. The coefficient is chosen so a well stimulated cell aims at about twice its reference size. A model constant that silently makes a behaviour impossible is the kind of thing to state in a comment, not tune quietly.
 
