@@ -76,6 +76,20 @@ impl Relief {
     }
 }
 
+impl Relief {
+    /// The lattice's width and height, in pixels.
+    pub fn size(&self) -> (usize, usize) {
+        (self.width, self.height)
+    }
+
+    /// How high pixel `(x, y)` stands on screen now, in pixels.
+    pub fn height(&self, x: usize, y: usize) -> f32 {
+        self.current
+            .get(y * self.width + x)
+            .map_or(0.0, |h| h * self.lift)
+    }
+}
+
 /// A flat grid with one vertex at the centre of every pixel, the texture
 /// spread across it so that each pixel's texels sit around its vertex.
 ///

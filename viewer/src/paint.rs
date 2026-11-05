@@ -12,6 +12,7 @@ use cellweave_engine::cpm::OBSTACLE;
 use cellweave_engine::simulation::Running;
 use cellweave_engine::{CpmLattice, Fate, Simulation};
 
+use crate::inspect::Inspected;
 use crate::runner::Runner;
 
 /// Texels per lattice pixel along each side.
@@ -90,6 +91,10 @@ const MEDIUM_FULL: LinearRgba = LinearRgba::rgb(0.002, 0.012, 0.032);
 /// How much darker a membrane is than the cell it bounds.
 const MEMBRANE: f32 = 0.12;
 
+/// The membrane of the cell open in the window, so it can be found in the
+/// tissue.
+const OPEN_MEMBRANE: [u8; 4] = [255, 255, 255, 255];
+
 /// What the cells are coloured by.
 #[derive(Resource, Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum View {
@@ -121,8 +126,9 @@ pub struct Canvas {
     pub image: Handle<Image>,
     /// Shows the image as the surface's colour.
     pub material: Handle<StandardMaterial>,
-    /// The generation last painted, and the view it was painted in.
-    pub seen: Option<(u64, View)>,
+    /// The generation last painted, the view it was painted in, and the
+    /// cell open in the window then.
+    pub seen: Option<(u64, View, Option<CellId>)>,
 }
 
 /// A blank canvas for a lattice of this size, kept on the CPU so it can be
@@ -148,12 +154,14 @@ pub fn canvas(width: u32, height: u32) -> Image {
 pub fn repaint(
     mut sides: Query<(&Runner, &mut Canvas)>,
     view: Res<View>,
+    inspected: Res<Inspected>,
     mut images: ResMut<Assets<Image>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     for (runner, mut canvas) in &mut sides {
         let Some(sim) = runner.idle() else { continue };
-        let now = (runner.generation(), *view);
+        let open = inspected.in_run(runner.index);
+        let now = (runner.generation(), *view, open);
         if canvas.seen == Some(now) {
             continue;
         }
@@ -163,7 +171,7 @@ pub fn repaint(
         let Some(data) = image.data.as_mut() else {
             continue;
         };
-        paint(sim, *view, data);
+        paint(sim, *view, open, data);
         // An image changed under a material does not always reach the
         // material's bind group; touching the material makes it pick the new
         // texture up.
@@ -173,8 +181,9 @@ pub fn repaint(
 }
 
 /// Paint the whole lattice into `out`, an sRGB RGBA buffer [`SCALE`] times
-/// the lattice on each side.
-fn paint(sim: &Simulation<Running>, view: View, out: &mut [u8]) {
+/// the lattice on each side, the cell `open` in the window outlined in
+/// white.
+fn paint(sim: &Simulation<Running>, view: View, open: Option<CellId>, out: &mut [u8]) {
     let lattice = sim.lattice();
     let oxygen = sim.oxygen();
     let stress = |x: u32, y: u32| sim.stress().map_or(0.0, |f| f.concentration_at(x, y)) as f32;
@@ -199,7 +208,13 @@ fn paint(sim: &Simulation<Running>, view: View, out: &mut [u8]) {
                 _ if view == View::Oxygen => bytes(ramp(oxygen.concentration_at(x, y) as f32)),
                 _ => cells.get(id as usize).copied().unwrap_or(vessel),
             };
-            block(out, w, (x, y), fill, darken(fill), membrane(lattice, x, y));
+            let edges = membrane(lattice, x, y);
+            if open.is_some_and(|c| c.0 == id) {
+                // Twice as thick as any other membrane, to be found at any zoom.
+                block_rimmed(out, w, (x, y), fill, OPEN_MEMBRANE, edges, 2);
+            } else {
+                block(out, w, (x, y), fill, darken(fill), edges);
+            }
         }
     }
 }
@@ -240,15 +255,28 @@ pub fn block(
     rim: [u8; 4],
     edges: [bool; 4],
 ) {
+    block_rimmed(out, width, at, fill, rim, edges, 1);
+}
+
+/// [`block`], with a rim `thick` texels wide.
+fn block_rimmed(
+    out: &mut [u8],
+    width: u32,
+    at: (u32, u32),
+    fill: [u8; 4],
+    rim: [u8; 4],
+    edges: [bool; 4],
+    thick: u32,
+) {
     let row = (width * SCALE * 4) as usize;
     let (x, y) = at;
     for sy in 0..SCALE {
         let start = (y * SCALE + sy) as usize * row + (x * SCALE * 4) as usize;
         for sx in 0..SCALE {
-            let on_edge = (sx == 0 && edges[0])
-                || (sx == SCALE - 1 && edges[1])
-                || (sy == 0 && edges[2])
-                || (sy == SCALE - 1 && edges[3]);
+            let on_edge = (sx < thick && edges[0])
+                || (sx >= SCALE - thick && edges[1])
+                || (sy < thick && edges[2])
+                || (sy >= SCALE - thick && edges[3]);
             let at = start + (sx * 4) as usize;
             out[at..at + 4].copy_from_slice(if on_edge { &rim } else { &fill });
         }

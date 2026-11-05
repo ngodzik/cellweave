@@ -30,6 +30,9 @@ pub struct Orbit {
     farthest: f32,
     /// Turning on its own.
     pub spinning: bool,
+    /// The point it circles and looks at: the centre of the tissue, or a
+    /// cell it follows.
+    focus: Vec3,
 }
 
 impl Orbit {
@@ -45,7 +48,34 @@ impl Orbit {
             nearest: size * 0.1,
             farthest: size * 4.0,
             spinning: false,
+            focus: Vec3::ZERO,
         }
+    }
+
+    /// The same position, but no farther than `share` of the box's size.
+    pub fn closer_than(self, share: f32) -> Self {
+        // The nearest it may come is a tenth of the size.
+        let distance = self
+            .distance
+            .min(self.nearest * 10.0 * share)
+            .max(self.nearest);
+        Self { distance, ..self }
+    }
+
+    /// How far the camera is from the point it circles.
+    pub fn distance(&self) -> f32 {
+        self.distance
+    }
+
+    /// Move the point circled a fraction `k` of the way to `goal`, and say
+    /// whether it moved enough to be seen.
+    pub fn ease_focus(&mut self, goal: Vec3, k: f32) -> bool {
+        let gap = goal - self.focus;
+        if gap.length() < 1e-3 {
+            return false;
+        }
+        self.focus += gap * k;
+        true
     }
 
     /// The same position, `factor` times closer, within the bounds the mouse
@@ -63,7 +93,8 @@ impl Orbit {
             self.pitch.sin(),
             self.yaw.cos() * self.pitch.cos(),
         );
-        Transform::from_translation(around * self.distance).looking_at(Vec3::ZERO, Vec3::Y)
+        Transform::from_translation(self.focus + around * self.distance)
+            .looking_at(self.focus, Vec3::Y)
     }
 }
 

@@ -6,12 +6,18 @@
 //! cellweave-viewer [--config <path>] [--seed <n>] [--view fate|oxygen|clone|stress|vegf|flow]
 //!                  [--beside <path> | --undo <clone>,<clone>... [--undo-at <step>]]
 //!                  [--batch <steps>] [--zoom <factor>] [--spin] [--no-panel]
+//!                  [--protein <name>] [--open <x>,<y> [--open-at <step>] [--follow]]
+//!                  [--window <w>x<h>]
 //!                  [--record <dir> [--until <step>]]
 //! ```
 //!
 //! `--batch` sets how many steps are taken between two pictures, `--zoom`
 //! starts the camera that many times closer, `--spin` starts it turning and
-//! `--no-panel` hides the panel. With
+//! `--no-panel` hides the panel. `--protein` colours the cells by one
+//! protein of their network, by its name in the file. `--open` opens the cell under a pixel of
+//! the first run, at the first step or at `--open-at`, as a click on it
+//! would, and `--follow` keeps the camera on it; `--window` sets the size
+//! of the window, and so of every frame recorded. With
 //! `--record`, every step the run newly shows is saved to the directory as
 //! `frame_<step>.png`, taken from what the renderer draws rather than from
 //! the screen, and with `--until` the viewer quits after that step, or when
@@ -32,11 +38,15 @@
 //! or a cord around its vessel, is visible at a glance and so is its motion.
 //!
 //! Space pauses, R restarts, H flattens the relief, A turns the camera on
-//! its own, and the mouse turns and zooms it.
+//! its own, and the mouse turns and zooms it. A click on a cell opens it: a
+//! window draws its network as it stands, what it reads, and what it does
+//! with it.
 
 #![deny(unsafe_code)]
 
+mod diagram;
 mod glow;
+mod inspect;
 mod orbit;
 mod paint;
 mod panel;
@@ -68,6 +78,11 @@ pub struct Experiment {
     pub scenario: Scenario,
     /// The network every cell carries.
     pub spec: NetworkSpec,
+}
+
+/// The word after `name` on the command line, if `name` is there.
+fn value_of(args: &[String], name: &str) -> Option<String> {
+    args.windows(2).find(|w| w[0] == name).map(|w| w[1].clone())
 }
 
 fn main() -> Result<()> {
@@ -105,6 +120,17 @@ fn main() -> Result<()> {
         },
     };
     let spec = config.load_network(config_path)?;
+    // --protein colours the tissue by one protein from the start, as a click
+    // on it in the panel or in an open cell would.
+    let view = match value_of(&args, "--protein") {
+        None => view,
+        Some(name) => spec
+            .nodes
+            .iter()
+            .position(|n| n.name == name)
+            .map(paint::View::Protein)
+            .ok_or_else(|| anyhow!("--protein {name}: the network has no such node"))?,
+    };
     let experiment = Experiment {
         label: config_path.unwrap_or("the default spheroid").to_owned(),
         scenario: config.scenario(config_path)?,
@@ -167,7 +193,7 @@ fn main() -> Result<()> {
     }
 
     let flag = |name: &str| args.iter().any(|a| a == name);
-    let value = |name: &str| args.windows(2).find(|w| w[0] == name).map(|w| w[1].clone());
+    let value = |name: &str| value_of(&args, name);
     let mut pace = runner::Pace::default();
     if let Some(n) = value("--batch") {
         pace.steps_per_batch = n
@@ -182,6 +208,26 @@ fn main() -> Result<()> {
         orbit = orbit.zoomed(factor);
     }
     orbit.spinning = flag("--spin");
+    let mut inspected = inspect::Inspected::default();
+    if let Some(at) = value("--open") {
+        let (x, y) = at
+            .split_once(',')
+            .and_then(|(x, y)| Some((x.trim().parse().ok()?, y.trim().parse().ok()?)))
+            .ok_or_else(|| anyhow!("--open takes a pixel, x,y"))?;
+        let step = value("--open-at")
+            .map(|n| n.parse::<u64>())
+            .transpose()
+            .map_err(|e| anyhow!("--open-at must be a step: {e}"))?
+            .unwrap_or(0);
+        inspected = inspected.opening(x, y, step, flag("--follow"));
+    }
+    let resolution = value("--window")
+        .map(|size| {
+            size.split_once('x')
+                .and_then(|(w, h)| Some((w.parse::<u32>().ok()?, h.parse::<u32>().ok()?)))
+                .ok_or_else(|| anyhow!("--window takes a size, WIDTHxHEIGHT"))
+        })
+        .transpose()?;
     let recording = match value("--record") {
         None => None,
         Some(dir) => {
@@ -201,6 +247,7 @@ fn main() -> Result<()> {
     app.add_plugins(DefaultPlugins.set(WindowPlugin {
         primary_window: Some(Window {
             title: format!("cellweave · {}", experiment.label),
+            resolution: resolution.map_or_else(default, |(w, h)| (w, h).into()),
             ..default()
         }),
         ..default()
@@ -211,16 +258,18 @@ fn main() -> Result<()> {
     .insert_resource(runner::Divergence::default())
     .insert_resource(orbit)
     .insert_resource(panel::Shown(!flag("--no-panel")))
+    .insert_resource(inspected)
     .insert_resource(Sides(sides))
     .insert_resource(view)
     .insert_resource(experiment)
-    .add_systems(Startup, setup)
+    .add_systems(Startup, (setup, inspect::spawn_halo))
     .add_systems(
         Update,
         (
             runner::keys,
             runner::collect,
             runner::compare,
+            inspect::read,
             // Between the two: the simulation is back from the pool and
             // not yet sent off again, the one moment it can be read.
             paint::repaint,
@@ -230,6 +279,9 @@ fn main() -> Result<()> {
             runner::dispatch,
             orbit::steer,
             orbit::spin,
+            inspect::pick,
+            inspect::follow,
+            inspect::halo,
             relief::toggle,
             volume::toggle,
             relief::animate,
@@ -238,7 +290,10 @@ fn main() -> Result<()> {
         )
             .chain(),
     )
-    .add_systems(EguiPrimaryContextPass, panel::draw)
+    .add_systems(
+        EguiPrimaryContextPass,
+        (panel::draw, inspect::window).chain(),
+    )
     .run();
     Ok(())
 }
