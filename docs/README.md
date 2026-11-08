@@ -42,7 +42,8 @@ Chapters build on each other and are meant to be read in order the first time.
 | 25 | [Measured against spheroids](25-measured-against-spheroids.md) | Set against hundreds of measured spheroids, where does the model put the core and the arrest, what does that make of a cord, and how long is a step? |
 | 26 | [A tissue with depth](26-a-tissue-with-depth.md) | What changes when the lattice has a third dimension, and how a plane is kept exactly as it was? |
 | 27 | [Spheroids in a volume](27-spheroids-in-a-volume.md) | Grown as balls, do the model's spheroids form their core and their arrest where measured ones do, and does a core that breaks down stop them where those stop? |
-| 28 | [What the model does not say](28-what-the-model-does-not-say.md) | The placeholders, the missing units, and why emergence is the whole point. |
+| 28 | [Inside one cell](28-inside-one-cell.md) | What lies between what a cell reads and what it decides, and how is one cell opened to watch it? |
+| 29 | [What the model does not say](29-what-the-model-does-not-say.md) | The placeholders, the missing units, and why emergence is the whole point. |
 | | [Glossary](glossary.md) | Every word, in one place. |
 
 ## Where the code is

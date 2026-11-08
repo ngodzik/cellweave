@@ -83,6 +83,12 @@ cargo run --release -- --config ../examples/epithelium-mutating.toml --view clon
 
 Space pauses, N takes one step, R restarts, H flattens the relief, A turns the camera, the mouse turns and zooms it. The panel colours the cells by fate, protein, oxygen, stress, the call for vessels, clone or blood flow, and plots the population as it goes.
 
+A click on a cell opens it. A window draws the cell's network as it stands, every protein at its level and every link as thick as it is pushing, says in words what the cell does with them and why, and colours the tissue by any protein clicked. `spheroid-fuller.toml` is the calibrated spheroid with a fuller cell: eighteen proteins, from the growth factor's receptor through RAF and MEK to the cell cycle, and from damage through p53, MDM2, p21 and BAX to apoptosis, tuned to decide where the simpler network does ([chapter 28](docs/28-inside-one-cell.md)). This opens the cell at its centre at step 300 and follows it as it is arrested and starved:
+
+```bash
+cargo run --release -- --config ../examples/spheroid-fuller.toml --open 400,400 --open-at 300 --follow --zoom 3
+```
+
 `--record <dir>` saves every step as an image, taken from what the viewer draws rather than from the screen, and `--until <step>` stops there; with `--no-panel`, `--spin` and `--batch <steps>`, that is how the animations above were made:
 
 ```bash
@@ -92,11 +98,11 @@ ffmpeg -framerate 30 -pattern_type glob -i 'frames/*.png' run.mp4
 
 ## Learn how it works
 
-[The course](docs/README.md) explains the program from the biology up, in 28 chapters, each answering one question: what a thing is in the body, what cellweave makes of it, which choices were made and why, where in the code it lives, and what is still a placeholder. It is kept in step with the code, and its last chapter lists what the model does not say.
+[The course](docs/README.md) explains the program from the biology up, in 29 chapters, each answering one question: what a thing is in the body, what cellweave makes of it, which choices were made and why, where in the code it lives, and what is still a placeholder. It is kept in step with the code, and its last chapter lists what the model does not say.
 
 ## Under the hood
 
-Rust, in four crates whose dependency graph enforces the layering: `cellweave-core` (types, no I/O, no computation), `cellweave-engine` (the lattice, the networks, the fields, the loop), `cellweave-io` (configuration and output) and the command line; the viewer sits on top in a workspace of its own. The same seed gives the same run, byte for byte, on any machine and any number of threads, and the CI checks it on every push, with fmt, clippy, docs, 209 tests green on Linux, macOS and Windows, the oldest supported Rust, and `cargo-deny`.
+Rust, in four crates whose dependency graph enforces the layering: `cellweave-core` (types, no I/O, no computation), `cellweave-engine` (the lattice, the networks, the fields, the loop), `cellweave-io` (configuration and output) and the command line; the viewer sits on top in a workspace of its own. The same seed gives the same run, byte for byte, on any machine and any number of threads, and the CI checks it on every push, with fmt, clippy, docs, 223 tests green on Linux, macOS and Windows, the oldest supported Rust, and `cargo-deny`.
 
 ```bash
 cargo fmt --all -- --check

@@ -61,6 +61,20 @@ pub enum Term {
         #[serde(default)]
         hill: Option<Hill>,
     },
+    /// `- rate * source * self`, Hill in place of `source` when `hill` is set.
+    /// The source switches this node off, in proportion to how much there is
+    /// of each: MDM2 marking p53 for destruction, a cyclin-dependent kinase
+    /// phosphorylating RB. The mirror of `ActivatedBy`, and like it the usual
+    /// shape of one protein acting on another, here to undo it.
+    InhibitedBy {
+        /// Node or input that switches it off.
+        source: String,
+        /// How fast, per unit time.
+        rate: f64,
+        /// Cooperative response instead of a proportional one.
+        #[serde(default)]
+        hill: Option<Hill>,
+    },
     /// `rate * (1 - source) * (1 - self)`. The node accumulates when the source
     /// is scarce: HIF-1α as oxygen falls, whose destruction slows rather than
     /// whose production rises.
@@ -125,6 +139,7 @@ impl Term {
     pub fn source(&self) -> Option<&str> {
         match self {
             Self::ActivatedBy { source, .. }
+            | Self::InhibitedBy { source, .. }
             | Self::ActivatedByAbsenceOf { source, .. }
             | Self::ProducedBy { source, .. }
             | Self::DamagedBelow { source, .. }

@@ -1,0 +1,21 @@
+# The spheroid of spheroid.toml, its cells carrying the fuller network of
+# chapter 28: the same box, the same oxygen, the same decisions, with the
+# proteins in between drawn when a cell is opened in the viewer.
+#
+# The network is tuned so that its cells ask for the size, stop dividing at
+# the oxygen and die of anoxia where those of the simpler network do; the run
+# is not the same to the last bit, since RB answers a falling oxygen a step
+# or two behind HIF-1a, and every living cell now draws its chance of
+# apoptosis. Like spheroid.toml, expect tens of minutes.
+
+width = 800
+height = 800
+mcs = 626
+temperature = 10.0
+snapshot_interval = 25
+output_dir = "output-spheroid-fuller"
+oxygen_uptake = 0.00002
+network = "networks/fuller-cell.toml"
+
+[oxygen_source]
+kind = "bath"

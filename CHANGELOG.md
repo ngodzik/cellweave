@@ -2,6 +2,14 @@
 
 Versions follow [semantic versioning](https://semver.org). While the version is 0.x the project is in early development: anything may change from one version to the next, configurations and results included. Each version says what changed in what a run does, so that a result can be tied to the version that produced it.
 
+## Unreleased
+
+- **A fuller cell.** `examples/networks/fuller-cell.toml` fills in what the RAS/ERK network and the stress response leave out: EGFR, RAF and MEK before ERK; cyclin D, RB, E2F, cyclin E and the brake p27 between hypoxia and the arrest; MDM2, p21 and BAX around p53. Its rates are set so that a cell asks for the same size, stops dividing at the same oxygen, dies of anoxia at the same oxygen and of a stress at the same rate as in the simpler networks, which tests hold (chapter 28). `spheroid-fuller.toml` and `cord-stress-fuller.toml` run it. Under a stress the cord dies out where the simpler one holds, through p21. No other run changes.
+- **A term that switches off.** `inhibited_by` joins the catalogue of terms, the mirror of `activated_by`: `- rate * source * self`. No run changes.
+- **One cell opened.** In the viewer, a click on a cell opens a window that draws its network as it stands, what it reads, and what it decides; `--open`, `--open-at`, `--follow`, `--protein` and `--window` do the same from the command line, for recordings. The camera turns only while the window has the pointer and the focus.
+- **Networks by name.** `cellweave_io::shipped_network` reads a network shipped under `examples/networks`, such as `fuller-cell`, with everything it extends, from copies compiled into the program, so that a program built on cellweave carries it without the repository beside it. No run changes.
+- **The course.** Chapter 28 is the fuller cell and the window; what the model does not say is now chapter 29.
+
 ## 0.2.0 (2026-11-01)
 
 A tissue that grows in a volume, and a spheroid in it that stops near the size measured spheroids reach, once its dead core breaks down and the medium of its well is still. Experimental.

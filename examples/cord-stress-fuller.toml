@@ -1,0 +1,26 @@
+# The cord of cord-stress.toml under its lethal stress, its cells carrying
+# the fuller network of chapter 28, so that opening a cell in the viewer shows
+# p53, MDM2, p21 and BAX answering the stress, and RB the oxygen.
+#
+# Tuned to die of a stress as the stress response did, within a hundredth of
+# the chance per step; the new thing is p21, which stops the cycle where the
+# stress meets hypoxia.
+
+width = 300
+height = 300
+mcs = 3000
+temperature = 10.0
+snapshot_interval = 50
+output_dir = "output-cord-stress-fuller"
+oxygen_uptake = 0.00002  # calibrated on measured melanoma spheroids (chapter 25)
+network = "networks/fuller-cell.toml"
+
+[oxygen_source]
+kind = "vessel"
+radius = 6
+
+[exposure]
+intensity = 1.0
+uptake = 0.0001
+start = 800
+schedule = { kind = "continuous" }

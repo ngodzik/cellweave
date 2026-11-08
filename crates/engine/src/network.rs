@@ -7,7 +7,7 @@
 
 use std::sync::Arc;
 
-use cellweave_core::network::{INPUT_NAMES, Term};
+use cellweave_core::network::{Hill, INPUT_NAMES, Term};
 use cellweave_core::{
     CellInputs, CellMechanics, CellweaveError, Concentration, MechanicsSpec, NetworkSpec,
     ProteinState, SignalingNetwork, TimeStep, Volume,
@@ -39,11 +39,41 @@ fn input_source(name: &str) -> Option<Source> {
     }
 }
 
+/// A Hill response as the loop needs it, refused unless both its exponent
+/// and its half-maximal level are positive.
+fn hill_of(hill: Option<&Hill>, node: &str) -> Result<Option<(f64, f64)>, CellweaveError> {
+    match hill {
+        Some(h) if h.n <= 0.0 || h.k <= 0.0 => Err(CellweaveError::Config(format!(
+            "node `{node}` has a Hill term with n = {} and k = {}; both must be positive",
+            h.n, h.k
+        ))),
+        Some(h) => Ok(Some((h.n, h.k))),
+        None => Ok(None),
+    }
+}
+
+/// What a term reading `s` responds to: `s` itself, or its Hill response.
+fn driver(s: f64, hill: Option<(f64, f64)>) -> f64 {
+    match hill {
+        None => s,
+        Some((n, half)) => {
+            let sn = s.max(0.0).powf(n);
+            sn / (half.powf(n) + sn)
+        }
+    }
+}
+
 /// A term with its source resolved and its shape reduced to what the loop needs.
 #[derive(Debug, Clone, Copy)]
 enum Compiled {
     /// `rate * f(source) * (1 - self)`, `f` being Hill when `hill` is set.
     ActivatedBy {
+        source: Source,
+        rate: f64,
+        hill: Option<(f64, f64)>,
+    },
+    /// `- rate * f(source) * self`, `f` being Hill when `hill` is set.
+    InhibitedBy {
         source: Source,
         rate: f64,
         hill: Option<(f64, f64)>,
@@ -75,6 +105,7 @@ impl Compiled {
     fn rate_mut(&mut self) -> &mut f64 {
         match self {
             Compiled::ActivatedBy { rate, .. }
+            | Compiled::InhibitedBy { rate, .. }
             | Compiled::ActivatedByAbsenceOf { rate, .. }
             | Compiled::ProducedBy { rate, .. }
             | Compiled::Decays { rate }
@@ -84,10 +115,30 @@ impl Compiled {
         }
     }
 
+    /// The rate this term moves its node at.
+    fn rate(self) -> f64 {
+        let mut term = self;
+        *term.rate_mut()
+    }
+
+    /// The source this term reads, if it reads one.
+    fn source(&self) -> Option<Source> {
+        match *self {
+            Compiled::ActivatedBy { source, .. }
+            | Compiled::InhibitedBy { source, .. }
+            | Compiled::ActivatedByAbsenceOf { source, .. }
+            | Compiled::ProducedBy { source, .. }
+            | Compiled::DamagedBelow { source, .. }
+            | Compiled::DamagedAbove { source, .. } => Some(source),
+            Compiled::Decays { .. } | Compiled::RelaxesTo { .. } => None,
+        }
+    }
+
     /// The kind of term, as a network file names it.
     fn kind(&self) -> &'static str {
         match self {
             Compiled::ActivatedBy { .. } => "activated_by",
+            Compiled::InhibitedBy { .. } => "inhibited_by",
             Compiled::ActivatedByAbsenceOf { .. } => "activated_by_absence_of",
             Compiled::ProducedBy { .. } => "produced_by",
             Compiled::Decays { .. } => "decays",
@@ -168,6 +219,24 @@ impl std::fmt::Display for Mutation {
             Change::Lost => write!(f, "{} loses {} #{}", self.node, self.kind, self.term),
         }
     }
+}
+
+/// One term of one node as it stands: an arrow in a picture of the network,
+/// and how hard it is pushing.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Influence<'a> {
+    /// The node the term moves, by its index in [`Network::node_names`].
+    pub node: usize,
+    /// The kind of term, as a network file names it.
+    pub kind: &'static str,
+    /// The node or input it reads, by the name a file gives it; `None` for a
+    /// term that reads nothing, turnover or a set point.
+    pub source: Option<&'a str>,
+    /// Its rate, as the file gave it or as mutations left it.
+    pub rate: f64,
+    /// What it adds to the node's rate of change now: positive when it
+    /// raises the node, negative when it lowers it.
+    pub now: f64,
 }
 
 /// A protein network, ready to run.
@@ -265,29 +334,20 @@ impl Network {
             let mut compiled = Vec::with_capacity(node.terms.len());
             for term in &node.terms {
                 compiled.push(match term {
-                    Term::ActivatedBy { source, rate, hill } => {
-                        let hill = match hill {
-                            Some(h) if h.n <= 0.0 || h.k <= 0.0 => {
-                                return Err(CellweaveError::Config(format!(
-                                    "node `{}` has a Hill term with n = {} and k = {}; both must be positive",
-                                    node.name, h.n, h.k
-                                )));
-                            }
-                            Some(h) => Some((h.n, h.k)),
-                            None => None,
-                        };
-                        Compiled::ActivatedBy {
-                            source: resolve(source, &node.name)?,
-                            rate: *rate,
-                            hill,
-                        }
-                    }
-                    Term::ActivatedByAbsenceOf { source, rate } => {
-                        Compiled::ActivatedByAbsenceOf {
-                            source: resolve(source, &node.name)?,
-                            rate: *rate,
-                        }
-                    }
+                    Term::ActivatedBy { source, rate, hill } => Compiled::ActivatedBy {
+                        source: resolve(source, &node.name)?,
+                        rate: *rate,
+                        hill: hill_of(hill.as_ref(), &node.name)?,
+                    },
+                    Term::InhibitedBy { source, rate, hill } => Compiled::InhibitedBy {
+                        source: resolve(source, &node.name)?,
+                        rate: *rate,
+                        hill: hill_of(hill.as_ref(), &node.name)?,
+                    },
+                    Term::ActivatedByAbsenceOf { source, rate } => Compiled::ActivatedByAbsenceOf {
+                        source: resolve(source, &node.name)?,
+                        rate: *rate,
+                    },
                     Term::ProducedBy { source, rate } => Compiled::ProducedBy {
                         source: resolve(source, &node.name)?,
                         rate: *rate,
@@ -628,49 +688,84 @@ impl Network {
             let own = state[i];
             let mut rate = 0.0;
             for term in node_terms {
-                rate += match *term {
-                    Compiled::ActivatedBy {
-                        source,
-                        rate: k,
-                        hill,
-                    } => {
-                        let s = Self::read(state, inputs, source);
-                        let driver = match hill {
-                            None => s,
-                            Some((n, half)) => {
-                                let sn = s.max(0.0).powf(n);
-                                sn / (half.powf(n) + sn)
-                            }
-                        };
-                        k * driver * (1.0 - own)
-                    }
-                    Compiled::ActivatedByAbsenceOf { source, rate: k } => {
-                        k * (1.0 - Self::read(state, inputs, source)) * (1.0 - own)
-                    }
-                    Compiled::ProducedBy { source, rate: k } => {
-                        k * Self::read(state, inputs, source)
-                    }
-                    Compiled::Decays { rate: k } => -k * own,
-                    Compiled::RelaxesTo { value, rate: k } => -k * (own - value),
-                    Compiled::DamagedBelow {
-                        source,
-                        threshold,
-                        rate: k,
-                    } => {
-                        let s = Self::read(state, inputs, source);
-                        -k * ((threshold - s) / threshold).max(0.0)
-                    }
-                    Compiled::DamagedAbove {
-                        source,
-                        threshold,
-                        rate: k,
-                    } => {
-                        let s = Self::read(state, inputs, source);
-                        -k * ((s - threshold) / threshold).max(0.0)
-                    }
-                };
+                rate += Self::term_rate(*term, own, state, inputs);
             }
             out[i] = rate;
+        }
+    }
+
+    /// What one term adds to the rate of change of its node, `own` being the
+    /// node's value.
+    fn term_rate(term: Compiled, own: f64, state: &[f64], inputs: &CellInputs) -> f64 {
+        match term {
+            Compiled::ActivatedBy {
+                source,
+                rate: k,
+                hill,
+            } => k * driver(Self::read(state, inputs, source), hill) * (1.0 - own),
+            Compiled::InhibitedBy {
+                source,
+                rate: k,
+                hill,
+            } => -k * driver(Self::read(state, inputs, source), hill) * own,
+            Compiled::ActivatedByAbsenceOf { source, rate: k } => {
+                k * (1.0 - Self::read(state, inputs, source)) * (1.0 - own)
+            }
+            Compiled::ProducedBy { source, rate: k } => k * Self::read(state, inputs, source),
+            Compiled::Decays { rate: k } => -k * own,
+            Compiled::RelaxesTo { value, rate: k } => -k * (own - value),
+            Compiled::DamagedBelow {
+                source,
+                threshold,
+                rate: k,
+            } => {
+                let s = Self::read(state, inputs, source);
+                -k * ((threshold - s) / threshold).max(0.0)
+            }
+            Compiled::DamagedAbove {
+                source,
+                threshold,
+                rate: k,
+            } => {
+                let s = Self::read(state, inputs, source);
+                -k * ((s - threshold) / threshold).max(0.0)
+            }
+        }
+    }
+
+    /// Every term of every node as it stands, under `inputs`: what a picture
+    /// of the network draws as its arrows, and how hard each is pushing.
+    ///
+    /// The terms are this network's own, as mutations left them, so a cell
+    /// that lost a link or gained one shows it.
+    pub fn influences(&self, inputs: &CellInputs) -> Vec<Influence<'_>> {
+        let state: Vec<f64> = self.state.values.iter().map(|c| c.0).collect();
+        self.terms
+            .iter()
+            .enumerate()
+            .flat_map(|(node, terms)| {
+                let state = &state;
+                terms.iter().map(move |term| Influence {
+                    node,
+                    kind: term.kind(),
+                    source: term.source().map(|s| self.source_name(s)),
+                    rate: term.rate(),
+                    now: Self::term_rate(*term, state[node], state, inputs),
+                })
+            })
+            .collect()
+    }
+
+    /// The name a file gives a source.
+    fn source_name(&self, source: Source) -> &str {
+        match source {
+            Source::Oxygen => "oxygen",
+            Source::Egf => "egf",
+            Source::Crowding => "crowding",
+            Source::Stress => "stress",
+            Source::Waste => "waste",
+            Source::NecroticFactor => "necrotic_factor",
+            Source::Node(i) => &self.names[i],
         }
     }
 
@@ -973,7 +1068,7 @@ mod tests {
         // second order error of the scheme is about the curvature times half the
         // step, and the curvature here is of order one.
         let dt = 1e-6;
-        let cases: [(&str, Term, f64, f64, f64); 7] = [
+        let cases: [(&str, Term, f64, f64, f64); 8] = [
             // rate * source * (1 - self), with source 0.5 and self 0.25
             (
                 "activated_by",
@@ -985,6 +1080,18 @@ mod tests {
                 0.25,
                 0.5,
                 2.0 * 0.5 * 0.75,
+            ),
+            // - rate * source * self, with source 0.5 and self 0.6
+            (
+                "inhibited_by",
+                Term::InhibitedBy {
+                    source: "egf".into(),
+                    rate: 2.0,
+                    hill: None,
+                },
+                0.6,
+                0.5,
+                -2.0 * 0.5 * 0.6,
             ),
             // rate * (1 - source) * (1 - self)
             (
@@ -1064,6 +1171,96 @@ mod tests {
             assert!(
                 (slope - expected_slope).abs() < 1e-5,
                 "{name}: slope {slope:.9}, documented {expected_slope:.9}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_inhibition_switches_sharply_with_a_hill_response_and_never_below_zero() {
+        // Half way at a source of 0.4, steeply: well below it the node is
+        // barely touched, well above it switched off at nearly the full rate.
+        let hill = Some(Hill { n: 4.0, k: 0.4 });
+        let slope = |egf: f64| {
+            let dt = 1e-6;
+            let mut spec = one_node(vec![Term::InhibitedBy {
+                source: "egf".into(),
+                rate: 1.0,
+                hill,
+            }]);
+            spec.nodes[0].initial = 0.5;
+            let mut net = Network::from_spec(&spec, 100).unwrap();
+            net.step(TimeStep(dt), &at(0.0, egf));
+            (net.state().values[0].0 - 0.5) / dt
+        };
+        assert!(slope(0.1).abs() < 0.01, "below k: {}", slope(0.1));
+        assert!(
+            (slope(0.4) + 0.25).abs() < 1e-5,
+            "at k, half: {}",
+            slope(0.4)
+        );
+        assert!(slope(1.6) < -0.49, "above k: {}", slope(1.6));
+
+        // Proportional to the node itself, so it empties the node without
+        // ever taking it past zero.
+        let mut spec = one_node(vec![Term::InhibitedBy {
+            source: "egf".into(),
+            rate: 2.0,
+            hill: None,
+        }]);
+        spec.nodes[0].initial = 0.5;
+        let mut net = Network::from_spec(&spec, 100).unwrap();
+        for _ in 0..50 {
+            net.step(TimeStep(1.0), &at(0.0, 1.0));
+            let level = net.state().values[0].0;
+            assert!(level >= 0.0, "below zero: {level}");
+        }
+        assert!(net.state().values[0].0 < 1e-12, "switched off");
+    }
+
+    #[test]
+    fn a_picture_of_the_network_reads_every_term_as_it_pushes_now() {
+        let net = ras_erk();
+        let inputs = at(0.2, 0.2);
+        let influences = net.influences(&inputs);
+        let terms: usize = RAS_ERK.matches("kind =").count();
+        assert_eq!(influences.len(), terms, "one per term of the file");
+
+        // ERK, switched on by RAS: 0.8 * ras * (1 - erk), at the start.
+        let erk = net.node_names().iter().position(|n| n == "erk").unwrap();
+        let from_ras = influences
+            .iter()
+            .find(|i| i.node == erk && i.source == Some("ras"))
+            .unwrap();
+        assert_eq!(from_ras.kind, "activated_by");
+        assert_eq!(from_ras.rate, 0.8);
+        assert!((from_ras.now - 0.8 * 0.05 * 0.95).abs() < 1e-12);
+
+        // HIF-1a reads an input by its name, and its turnover reads nothing.
+        let hif = net.node_names().iter().position(|n| n == "hif1").unwrap();
+        assert!(
+            influences
+                .iter()
+                .any(|i| i.node == hif && i.source == Some("oxygen"))
+        );
+        assert!(
+            influences
+                .iter()
+                .any(|i| i.node == hif && i.kind == "decays" && i.source.is_none() && i.now < 0.0)
+        );
+
+        // The terms, summed, are the network's rate of change.
+        let mut slopes = vec![0.0; net.node_names().len()];
+        let state: Vec<f64> = net.state().values.iter().map(|c| c.0).collect();
+        Network::derivatives(&net.terms, &state, &inputs, &mut slopes);
+        for (node, slope) in slopes.iter().enumerate() {
+            let sum: f64 = influences
+                .iter()
+                .filter(|i| i.node == node)
+                .map(|i| i.now)
+                .sum();
+            assert!(
+                (sum - slope).abs() < 1e-12,
+                "node {node}: {sum} against {slope}"
             );
         }
     }

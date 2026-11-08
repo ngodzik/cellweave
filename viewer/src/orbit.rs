@@ -2,6 +2,7 @@
 
 use bevy::input::mouse::{AccumulatedMouseMotion, AccumulatedMouseScroll, MouseScrollUnit};
 use bevy::prelude::*;
+use bevy::window::PrimaryWindow;
 use bevy_egui::EguiContexts;
 use cellweave_engine::Scenario;
 
@@ -29,6 +30,9 @@ pub struct Orbit {
     farthest: f32,
     /// Turning on its own.
     pub spinning: bool,
+    /// The point it circles and looks at: the centre of the tissue, or a
+    /// cell it follows.
+    focus: Vec3,
 }
 
 impl Orbit {
@@ -44,7 +48,34 @@ impl Orbit {
             nearest: size * 0.1,
             farthest: size * 4.0,
             spinning: false,
+            focus: Vec3::ZERO,
         }
+    }
+
+    /// The same position, but no farther than `share` of the box's size.
+    pub fn closer_than(self, share: f32) -> Self {
+        // The nearest it may come is a tenth of the size.
+        let distance = self
+            .distance
+            .min(self.nearest * 10.0 * share)
+            .max(self.nearest);
+        Self { distance, ..self }
+    }
+
+    /// How far the camera is from the point it circles.
+    pub fn distance(&self) -> f32 {
+        self.distance
+    }
+
+    /// Move the point circled a fraction `k` of the way to `goal`, and say
+    /// whether it moved enough to be seen.
+    pub fn ease_focus(&mut self, goal: Vec3, k: f32) -> bool {
+        let gap = goal - self.focus;
+        if gap.length() < 1e-3 {
+            return false;
+        }
+        self.focus += gap * k;
+        true
     }
 
     /// The same position, `factor` times closer, within the bounds the mouse
@@ -62,19 +93,33 @@ impl Orbit {
             self.pitch.sin(),
             self.yaw.cos() * self.pitch.cos(),
         );
-        Transform::from_translation(around * self.distance).looking_at(Vec3::ZERO, Vec3::Y)
+        Transform::from_translation(self.focus + around * self.distance)
+            .looking_at(self.focus, Vec3::Y)
     }
 }
 
-/// Turn and zoom from the mouse, unless the pointer is over the panel.
+/// Turn and zoom from the mouse, unless the pointer is over the panel or
+/// away from the window.
+///
+/// The mouse's motion is the device's, reported wherever the pointer is,
+/// and a button pressed in the window and let go outside it is never seen
+/// to be let go: without the window's focus and the pointer on it, the
+/// camera would turn with every move of the mouse across the screen.
 pub fn steer(
     mut orbit: ResMut<Orbit>,
     buttons: Res<ButtonInput<MouseButton>>,
     motion: Res<AccumulatedMouseMotion>,
     scroll: Res<AccumulatedMouseScroll>,
+    windows: Query<&Window, With<PrimaryWindow>>,
     mut contexts: EguiContexts,
     mut camera: Query<&mut Transform, With<Camera3d>>,
 ) -> Result {
+    let held = windows
+        .single()
+        .is_ok_and(|window| window.focused && window.cursor_position().is_some());
+    if !held {
+        return Ok(());
+    }
     let ctx = contexts.ctx_mut()?;
     if ctx.is_pointer_over_egui() || ctx.egui_wants_pointer_input() {
         return Ok(());

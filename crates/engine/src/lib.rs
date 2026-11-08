@@ -20,7 +20,7 @@ pub mod vessels;
 pub use cpm::CpmLattice;
 pub use evolution::CloneRecord;
 pub use measure::{DEPTH_SHARE, Measurements};
-pub use network::{Mutation, Network};
+pub use network::{Influence, Mutation, Network};
 pub use pde::ScalarField;
 pub use simulation::{Fate, Scenario, Simulation};
 pub use sisters::SisterFates;
