@@ -102,7 +102,7 @@ ffmpeg -framerate 30 -pattern_type glob -i 'frames/*.png' run.mp4
 
 ## Under the hood
 
-Rust, in four crates whose dependency graph enforces the layering: `cellweave-core` (types, no I/O, no computation), `cellweave-engine` (the lattice, the networks, the fields, the loop), `cellweave-io` (configuration and output) and the command line; the viewer sits on top in a workspace of its own. The same seed gives the same run, byte for byte, on any machine and any number of threads, and the CI checks it on every push, with fmt, clippy, docs, 219 tests green on Linux, macOS and Windows, the oldest supported Rust, and `cargo-deny`.
+Rust, in four crates whose dependency graph enforces the layering: `cellweave-core` (types, no I/O, no computation), `cellweave-engine` (the lattice, the networks, the fields, the loop), `cellweave-io` (configuration and output) and the command line; the viewer sits on top in a workspace of its own. The same seed gives the same run, byte for byte, on any machine and any number of threads, and the CI checks it on every push, with fmt, clippy, docs, 223 tests green on Linux, macOS and Windows, the oldest supported Rust, and `cargo-deny`.
 
 ```bash
 cargo fmt --all -- --check

@@ -181,6 +181,112 @@ fn default_contact_order() -> u8 {
 /// write go through exactly the same path.
 pub const BUILT_IN_NETWORK: &str = include_str!("../../../examples/networks/ras-erk.toml");
 
+/// The networks shipped under `examples/networks`, compiled in by file name,
+/// so that a program built on cellweave carries them without the repository
+/// beside it.
+const SHIPPED_NETWORKS: [(&str, &str); 13] = [
+    (
+        "epithelium-no-pressing.toml",
+        include_str!("../../../examples/networks/epithelium-no-pressing.toml"),
+    ),
+    (
+        "epithelium.toml",
+        include_str!("../../../examples/networks/epithelium.toml"),
+    ),
+    (
+        "fuller-cell.toml",
+        include_str!("../../../examples/networks/fuller-cell.toml"),
+    ),
+    (
+        "lesion-strong.toml",
+        include_str!("../../../examples/networks/lesion-strong.toml"),
+    ),
+    (
+        "lesion.toml",
+        include_str!("../../../examples/networks/lesion.toml"),
+    ),
+    (
+        "ras-erk-mutant.toml",
+        include_str!("../../../examples/networks/ras-erk-mutant.toml"),
+    ),
+    (
+        "ras-erk-necrotic.toml",
+        include_str!("../../../examples/networks/ras-erk-necrotic.toml"),
+    ),
+    (
+        "ras-erk-pdl1.toml",
+        include_str!("../../../examples/networks/ras-erk-pdl1.toml"),
+    ),
+    (
+        "ras-erk-silent.toml",
+        include_str!("../../../examples/networks/ras-erk-silent.toml"),
+    ),
+    (
+        "ras-erk-soft.toml",
+        include_str!("../../../examples/networks/ras-erk-soft.toml"),
+    ),
+    (
+        "ras-erk-waste.toml",
+        include_str!("../../../examples/networks/ras-erk-waste.toml"),
+    ),
+    (
+        "ras-erk.toml",
+        include_str!("../../../examples/networks/ras-erk.toml"),
+    ),
+    (
+        "stress-response.toml",
+        include_str!("../../../examples/networks/stress-response.toml"),
+    ),
+];
+
+/// A network shipped with cellweave, named by its file under
+/// `examples/networks` without the extension, such as `fuller-cell`, read
+/// with everything it extends from the copies compiled into the program.
+///
+/// # Errors
+///
+/// [`CellweaveError::Config`] when cellweave ships no network of that name,
+/// or when one in its chain does not parse or extends itself round a loop.
+///
+/// # Examples
+///
+/// ```
+/// # fn main() -> Result<(), cellweave_core::CellweaveError> {
+/// let fuller = cellweave_io::shipped_network("fuller-cell")?;
+/// assert!(fuller.nodes.iter().any(|n| n.name == "rb"));
+/// # Ok(())
+/// # }
+/// ```
+pub fn shipped_network(name: &str) -> Result<NetworkSpec, CellweaveError> {
+    shipped_chain(&format!("{name}.toml"), &mut Vec::new())
+}
+
+/// A shipped network and everything it extends, youngest laid over oldest,
+/// as [`load_network_chain`] reads files.
+fn shipped_chain(file: &str, seen: &mut Vec<String>) -> Result<NetworkSpec, CellweaveError> {
+    let looped = seen.iter().any(|f| f == file);
+    seen.push(file.to_owned());
+    if looped {
+        return Err(CellweaveError::Config(format!(
+            "a network extends itself round a loop: {}",
+            seen.join(" -> ")
+        )));
+    }
+    let text = SHIPPED_NETWORKS
+        .iter()
+        .find(|(f, _)| *f == file)
+        .map(|(_, text)| *text)
+        .ok_or_else(|| CellweaveError::Config(format!("cellweave ships no network {file}")))?;
+    let spec = parse_network(text, file)?;
+    match &spec.extends {
+        None => Ok(spec),
+        Some(parent) => {
+            let base = shipped_chain(parent, seen)?;
+            Ok(spec.merge_onto(base))
+        }
+    }
+}
+
 /// The uptake fixed on measured melanoma spheroids (chapter 25).
 fn default_oxygen_uptake() -> f64 {
     0.00002
@@ -380,6 +486,38 @@ impl Default for SimConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn networks_dir() -> std::path::PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/networks")
+    }
+
+    #[test]
+    fn every_network_in_the_examples_is_shipped() {
+        let mut on_disk: Vec<String> = std::fs::read_dir(networks_dir())
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .filter(|f| f.ends_with(".toml"))
+            .collect();
+        on_disk.sort();
+        let shipped: Vec<&str> = SHIPPED_NETWORKS.iter().map(|(f, _)| *f).collect();
+        assert_eq!(on_disk, shipped);
+    }
+
+    #[test]
+    fn a_shipped_network_is_the_one_read_from_its_file() {
+        for (file, _) in SHIPPED_NETWORKS {
+            let name = file.trim_end_matches(".toml");
+            let from_file =
+                load_network_chain(&networks_dir().join(file), &mut Vec::new()).unwrap();
+            assert_eq!(shipped_network(name).unwrap(), from_file, "{name}");
+        }
+    }
+
+    #[test]
+    fn a_network_cellweave_does_not_ship_is_named_in_the_error() {
+        let e = shipped_network("no-such-cell").unwrap_err().to_string();
+        assert!(e.contains("no-such-cell"), "{e}");
+    }
 
     #[test]
     fn a_calibrated_step_converts_to_days_and_an_uncalibrated_one_does_not() {
