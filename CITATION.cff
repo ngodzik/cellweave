@@ -8,8 +8,8 @@ authors:
     given-names: Nicolas
 license: MIT
 repository-code: "https://github.com/ngodzik/cellweave"
-version: 0.2.0
-date-released: 2026-11-01
+version: 0.3.0
+date-released: 2026-11-08
 keywords:
   - cellular Potts model
   - multiscale modelling
