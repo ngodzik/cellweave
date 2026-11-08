@@ -2,8 +2,9 @@ name: Release
 
 # A tag such as v0.1.0 makes a release: its notes are that version's section
 # of CHANGELOG.md, and it carries the command line built for Linux, macOS and
-# Windows, with the examples it runs. While the version is 0.x the release is
-# marked as a pre-release, which is what it is.
+# Windows, with the examples it runs. It is a full release, not a pre-release,
+# so that GitHub shows it as the latest on the repository's page; the 0.x
+# version and the tag's message already say the project is young.
 
 on:
   push:
@@ -26,9 +27,7 @@ jobs:
           version="${GITHUB_REF_NAME#v}"
           awk -v v="$version" '/^## /{p = ($2 == v)} p' CHANGELOG.md | tail -n +2 > notes.md
           test -s notes.md || { echo "CHANGELOG.md has no section for $version"; exit 1; }
-          flags=""
-          case "$version" in 0.*) flags="--prerelease" ;; esac
-          gh release create "$GITHUB_REF_NAME" --title "cellweave $GITHUB_REF_NAME" --notes-file notes.md $flags
+          gh release create "$GITHUB_REF_NAME" --title "cellweave $GITHUB_REF_NAME" --notes-file notes.md --latest
         env:
           GH_TOKEN: ${{ github.token }}
 
